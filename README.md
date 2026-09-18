@@ -63,20 +63,6 @@ python tools/smoke_test.py
 **分工原则**：所有算时长、算经停站、判换乘、划付费区的逻辑都留在 Python 内核里；
 `js/app.js` 只负责把内核返回的 JSON 画出来。新增功能时不要在 JS 里重算这些数字。
 
-## 部署到 Netlify
-
-1. 把本项目推到 GitHub 仓库；
-2. Netlify → Add new site → Import an existing project → 选该仓库；
-3. **Build settings 三个字段**：
-
-   | 字段 | 填 |
-   | --- | --- |
-   | Base directory | （留空） |
-   | Build command | （留空） |
-   | Publish directory | `.` |
-
-   本项目是纯静态站点（`netlify.toml` 里也只有 `publish = "."`），没有构建步骤——内核与数据都已提交在 `py/` 下。
-
 ## 已知限制与后续可做
 
 - **首次加载较慢**：Pyodide 运行时约 10&nbsp;MB，之后由浏览器缓存；可加 Service Worker 做离线缓存。
