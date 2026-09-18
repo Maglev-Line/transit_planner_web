@@ -1,0 +1,23 @@
+{
+  "source": "\\\\DS720plus\\文件存储\\3_张峻恺\\运转计划生成器",
+  "sourceVersion": "1.4.1",
+  "syncedAt": "2026-09-18T20:54:49+08:00",
+  "coreFiles": [
+    "transit_planner/__init__.py",
+    "transit_planner/core/__init__.py",
+    "transit_planner/core/engine.py",
+    "transit_planner/core/models.py",
+    "transit_planner/core/railway.py",
+    "transit_planner/core/settings.py"
+  ],
+  "dataFiles": [
+    "上海.json",
+    "东莞.json",
+    "佛山.json",
+    "北京.json",
+    "广州.json",
+    "深圳.json",
+    "苏州.json",
+    "重庆.json"
+  ]
+}

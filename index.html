@@ -1,0 +1,237 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>运转计划助手 · Web</title>
+  <meta name="description" content="交通迷绕路运转行程规划工具（浏览器版）：链条式手动规划、自动算时长、验换乘、付费区计费、导出运转图纸。">
+  <link rel="stylesheet" href="styles.css">
+</head>
+
+<body>
+  <!-- 启动遮罩：Pyodide 运行时与内核加载进度 -->
+  <div class="boot" id="boot">
+    <h1>运转计划助手 <span>Web</span></h1>
+    <p id="boot-msg">正在准备 Python 运行时…</p>
+    <div class="bar"><div id="boot-bar"></div></div>
+    <p class="boot-tip">
+      浏览器版直接运行桌面版同一份规划内核（Python + Pyodide），因此首次打开需下载约 10&nbsp;MB 运行时；
+      之后由浏览器缓存。
+    </p>
+  </div>
+
+  <!-- 主界面 -->
+  <div id="app" hidden>
+    <header class="topbar">
+      <div class="brand">运转计划助手<span>Web</span></div>
+
+      <label>城市
+        <select id="city-select" title="选择城市线路库；也可选「纯手动」不使用线路库"></select>
+      </label>
+
+      <label>方案名 <input id="trip-name" type="text" size="14" placeholder="我的运转方案"></label>
+      <label>日期 <input id="trip-date" type="date"></label>
+
+      <label class="check" title="不出闸的连续行程视为一段付费区，票价按进闸→出闸一次计费">
+        <input type="checkbox" id="paid-zone"> 付费区模式
+      </label>
+      <label title="段间未单独指定的换乘/站外步行分钟；同站换乘自动记 0">
+        默认换乘步行 <input id="walk-default" type="number" min="0" step="1" value="5"> 分
+      </label>
+
+      <div class="spacer"></div>
+      <button id="btn-import" title="载入本地方案 JSON（与桌面版格式互通）">导入方案</button>
+      <input type="file" id="file-import" accept=".json,application/json" hidden>
+      <button id="btn-export" title="保存为方案 JSON">导出方案</button>
+      <button id="btn-print" class="primary" title="生成 A4 运转图纸并调用打印（可选另存为 PDF）">导出图纸 (PDF)</button>
+    </header>
+
+    <main>
+      <!-- 左：线路库 -->
+      <aside class="panel library">
+        <h2>线路库 <span class="hint" id="city-label"></span></h2>
+        <input class="search" id="line-search" type="search" placeholder="搜索线路（名称 / 简称 / ID）">
+        <div id="line-list"></div>
+        <div class="detail" id="line-detail" hidden></div>
+      </aside>
+
+      <!-- 中：行程链条 -->
+      <section class="panel plan">
+        <h2>行程链条 <span class="hint">起点站 → 线路 → 方向 → 到达站</span></h2>
+        <div id="plan-status"></div>
+        <div id="step-list"></div>
+        <div class="add-row">
+          <button id="btn-add" class="primary" title="添加一段行程">＋ 添加行程</button>
+        </div>
+      </section>
+
+      <!-- 右：换乘提示 / 统计 / 时间轴 / 付费区 -->
+      <aside class="panel side">
+        <h2>当前位置换乘提示</h2>
+        <div class="hint-list" id="hints"></div>
+
+        <h2 style="margin-top:14px">全程统计</h2>
+        <div class="stats" id="stats"></div>
+
+        <h2 style="margin-top:14px">彩色时间轴</h2>
+        <div class="timeline" id="timeline"></div>
+
+        <h2 style="margin-top:14px">付费区与票价</h2>
+        <div id="zones"></div>
+
+        <h2 style="margin-top:14px">内核信息</h2>
+        <p class="hint" id="kernel-info"></p>
+      </aside>
+    </main>
+  </div>
+
+  <!-- 添加 / 编辑行程弹窗 -->
+  <dialog id="step-dialog">
+    <form method="dialog">
+      <div class="modal-head">
+        <h3 id="dlg-title">添加行程</h3>
+        <span class="hint" id="dlg-subtitle"></span>
+        <div class="spacer"></div>
+        <button type="button" class="ghost" id="btn-dlg-close">✕</button>
+      </div>
+
+      <div class="modal-body">
+        <div class="grid1">
+          <fieldset>
+            <legend>录入方式</legend>
+            <label class="check"><input type="radio" name="mode" id="mode-db" value="db" checked> 数据库线路（自动算时长与经停站）</label>
+            <label class="check"><input type="radio" name="mode" id="mode-manual" value="manual"> 手动自选（自定义线路名 / 时长 / 经停站）</label>
+          </fieldset>
+
+          <!-- 数据库线路 -->
+          <fieldset id="db-fields">
+            <legend>线路与方向</legend>
+            <div class="grid1">
+              <div class="field">
+                <span>线路名称（输入后从下方候选选择）</span>
+                <div class="row">
+                  <input id="line-name" type="text" list="line-options" placeholder="如：上海地铁1号线 / 1号线">
+                  <datalist id="line-options"></datalist>
+                  <button type="button" id="btn-line-clear" class="ghost" title="清除已选线路">清除</button>
+                </div>
+                <select id="line-candidates" size="4" hidden></select>
+                <div class="hint" id="line-picked"></div>
+              </div>
+              <div class="grid2">
+                <div class="field">
+                  <span>起点站</span>
+                  <select id="from-station"></select>
+                </div>
+                <div class="field">
+                  <span>方向</span>
+                  <select id="direction"></select>
+                </div>
+                <div class="field">
+                  <span>到达站</span>
+                  <select id="to-station"></select>
+                </div>
+                <div class="field">
+                  <span>本段运行时长</span>
+                  <div class="hint" id="db-run">选择起点与到达站后自动计算</div>
+                </div>
+              </div>
+            </div>
+          </fieldset>
+
+          <!-- 手动自选 -->
+          <fieldset id="manual-fields" hidden>
+            <legend>手动信息</legend>
+            <div class="grid2">
+              <div class="field">
+                <span>线路名称</span>
+                <input id="m-line-name" type="text" placeholder="如：京沪高铁 G123">
+              </div>
+              <div class="field">
+                <span>方向文字</span>
+                <input id="m-direction" type="text" placeholder="如：北京南方向（选填）">
+              </div>
+              <div class="field">
+                <span>交通类型</span>
+                <select id="m-type"></select>
+              </div>
+              <div class="field">
+                <span>起点站 / 到达站</span>
+                <div class="row">
+                  <input id="m-from" type="text" list="station-options" placeholder="起点站">
+                  <input id="m-to" type="text" list="station-options" placeholder="到达站">
+                </div>
+              </div>
+              <div class="field">
+                <span>运行时长（分钟）</span>
+                <input id="m-run" type="number" min="0" step="0.5" placeholder="如 34">
+              </div>
+              <div class="field">
+                <span>发车班次文字</span>
+                <input id="m-headway" type="text" placeholder="如：高峰8分钟一班 / 平峰15分钟一班">
+              </div>
+              <div class="field" style="grid-column:1/-1">
+                <span>经停站（顿号 / 逗号 / 箭头分隔）</span>
+                <textarea id="m-stops" rows="2" placeholder="上海虹桥、苏州北、南京南"></textarea>
+              </div>
+              <div class="field">
+                <span>标志色主色</span>
+                <div class="row">
+                  <input id="m-color" type="color" value="#2f6feb">
+                  <label class="check"><input type="checkbox" id="m-color2-on"> 副色</label>
+                  <input id="m-color2" type="color" value="#ffffff" disabled>
+                </div>
+              </div>
+            </div>
+            <datalist id="station-options"></datalist>
+          </fieldset>
+
+          <!-- 时刻表 -->
+          <fieldset>
+            <legend>国铁时刻表（选填）</legend>
+            <label class="check"><input type="checkbox" id="use-timetable"> 按时刻表乘坐列车（勾选后自动按发时/到时计算运行时长）</label>
+            <div id="timetable-rows" style="margin-top:8px"></div>
+            <button type="button" class="ghost" id="btn-tt-add">＋ 添加车次</button>
+          </fieldset>
+
+          <!-- 共有字段 -->
+          <fieldset>
+            <legend>其他</legend>
+            <div class="grid2">
+              <div class="field">
+                <span>票价（元，选填）</span>
+                <input id="price" type="number" min="0" step="0.5" placeholder="留空表示不计票价">
+              </div>
+              <div class="field">
+                <span>上车前换乘/步行（分钟，留空用默认值）</span>
+                <input id="walk-minutes" type="number" min="0" step="1" placeholder="同站自动 0，其余用默认 5">
+              </div>
+              <div class="field" style="grid-column:1/-1">
+                <span>备注</span>
+                <input id="note" type="text" placeholder="如：在 2 号口出站换乘">
+              </div>
+            </div>
+          </fieldset>
+
+          <div class="err" id="dlg-error" hidden></div>
+        </div>
+      </div>
+
+      <div class="modal-foot">
+        <span class="hint" id="dlg-foot-hint"></span>
+        <div class="spacer"></div>
+        <button type="button" id="btn-dlg-cancel">取消</button>
+        <button type="button" class="primary" id="btn-dlg-save">确定</button>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- 打印 / 另存为 PDF 的 A4 图纸 -->
+  <div id="print-view" hidden></div>
+
+  <script src="https://cdn.jsdelivr.net/pyodide/v0.27.2/full/pyodide.js"></script>
+  <script src="js/bridge.js"></script>
+  <script src="js/app.js"></script>
+</body>
+
+</html>

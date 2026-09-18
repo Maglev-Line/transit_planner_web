@@ -1,0 +1,76 @@
+{
+  "city": "东莞",
+  "region": "华南",
+  "version": "1.0",
+  "lines": [
+    {
+      "id": "dg_m2",
+      "name": "东莞地铁2号线",
+      "short_name": "2号线",
+      "type": "metro",
+      "color": "#D71921",
+      "color2": "",
+      "operator": "东莞轨道交通",
+      "stations": [
+        "东莞火车站",
+        "茶山",
+        "榴花公园",
+        "下桥",
+        "天宝",
+        "东城",
+        "旗峰公园",
+        "鸿福路",
+        "西平",
+        "蛤地",
+        "陈屋",
+        "寮厦",
+        "珊美",
+        "虎门火车站"
+      ],
+      "travel_minutes": [
+        4,
+        3.0,
+        3.0,
+        3.0,
+        3.0,
+        3.0,
+        3,
+        3.0,
+        3,
+        3.0,
+        3.0,
+        4,
+        4
+      ],
+      "headway_rush": 6,
+      "headway_normal": 10,
+      "first_train": "06:30",
+      "last_train": "23:00",
+      "ring": false,
+      "directions": [
+        {
+          "label": "虎门火车站方向",
+          "terminal": "虎门火车站",
+          "reverse": false
+        },
+        {
+          "label": "东莞火车站方向",
+          "terminal": "东莞火车站",
+          "reverse": false
+        }
+      ]
+    }
+  ],
+  "external_walks": {},
+  "transfers": [
+    [
+      "东莞火车站",
+      "东莞"
+    ],
+    [
+      "虎门火车站",
+      "虎门"
+    ]
+  ],
+  "aliases": []
+}

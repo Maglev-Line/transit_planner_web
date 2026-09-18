@@ -1,0 +1,15 @@
+# Netlify 部署配置
+# 本项目是「纯静态站点」：Python 核心逻辑由浏览器端的 Pyodide 运行，无需任何构建步骤。
+# 对应的 Netlify Build settings：
+#   Base directory    ：留空
+#   Build command     ：留空
+#   Publish directory ：.
+
+[build]
+  publish = "."
+
+[[headers]]
+  for = "/py/*"
+  [headers.values]
+    # Python 源码与城市数据随桌面版同步，改动频繁：只做短缓存，避免更新后仍加载旧内核
+    Cache-Control = "public, max-age=300"

@@ -1,0 +1,224 @@
+{
+  "city": "佛山",
+  "region": "华南",
+  "version": "1.0",
+  "lines": [
+    {
+      "id": "fs_m1",
+      "name": "广佛线(佛山地铁1号线)",
+      "short_name": "广佛线",
+      "type": "metro",
+      "color": "#D02B20",
+      "color2": "",
+      "operator": "佛山地铁",
+      "stations": [
+        "新城东",
+        "东平",
+        "世纪莲",
+        "澜石",
+        "魁奇路",
+        "季华园",
+        "同济路",
+        "祖庙",
+        "普君北路",
+        "朝安",
+        "桂城",
+        "南桂路",
+        "礌岗",
+        "千灯湖",
+        "金融高新区",
+        "龙溪",
+        "菊树",
+        "西朗"
+      ],
+      "travel_minutes": [
+        3,
+        3.0,
+        3.0,
+        3.0,
+        3.0,
+        2,
+        3.0,
+        3.0,
+        3.0,
+        3.0,
+        3.0,
+        3.0,
+        3,
+        3.0,
+        4,
+        3,
+        4
+      ],
+      "headway_rush": 4,
+      "headway_normal": 8,
+      "first_train": "06:00",
+      "last_train": "23:00",
+      "ring": false,
+      "directions": [
+        {
+          "label": "西朗方向",
+          "terminal": "西朗",
+          "reverse": false
+        },
+        {
+          "label": "新城东方向",
+          "terminal": "新城东",
+          "reverse": false
+        }
+      ]
+    },
+    {
+      "id": "fs_m2",
+      "name": "佛山地铁2号线",
+      "short_name": "2号线",
+      "type": "metro",
+      "color": "#5B3E9B",
+      "color2": "",
+      "operator": "佛山地铁",
+      "stations": [
+        "南庄",
+        "湖涌",
+        "绿岛湖",
+        "智慧新城",
+        "张槎",
+        "石湾",
+        "沙岗",
+        "魁奇路",
+        "石梁",
+        "湾华",
+        "登洲",
+        "花卉世界",
+        "仙涌",
+        "石洲",
+        "林岳西",
+        "林岳东",
+        "广州南站"
+      ],
+      "travel_minutes": [
+        4,
+        3.0,
+        3.0,
+        3,
+        3.0,
+        3,
+        3.0,
+        3.0,
+        3,
+        3.0,
+        3.0,
+        5,
+        3.0,
+        3.0,
+        3,
+        5
+      ],
+      "headway_rush": 6,
+      "headway_normal": 10,
+      "first_train": "06:00",
+      "last_train": "22:30",
+      "ring": false,
+      "directions": [
+        {
+          "label": "广州南站方向",
+          "terminal": "广州南站",
+          "reverse": false
+        },
+        {
+          "label": "南庄方向",
+          "terminal": "南庄",
+          "reverse": false
+        }
+      ]
+    },
+    {
+      "id": "fs_m3",
+      "name": "佛山地铁3号线",
+      "short_name": "3号线",
+      "type": "metro",
+      "color": "#00A5CE",
+      "color2": "",
+      "operator": "佛山地铁",
+      "stations": [
+        "镇安",
+        "季华六路",
+        "亚艺公园",
+        "深村",
+        "湾华",
+        "东平",
+        "大墩",
+        "岳步",
+        "潭洲会展",
+        "北滘西站",
+        "高村",
+        "北滘公园",
+        "美旗",
+        "三洪奇",
+        "广教",
+        "顺德医院",
+        "荔村",
+        "伦教",
+        "顺德一中",
+        "顺德欢乐海岸",
+        "驹荣北路",
+        "东乐路",
+        "大良钟楼",
+        "环市北",
+        "顺德人民医院",
+        "顺德学院"
+      ],
+      "travel_minutes": [
+        3,
+        3.0,
+        3,
+        3.0,
+        3.0,
+        4,
+        3.0,
+        3.0,
+        4,
+        3.0,
+        3.0,
+        3.0,
+        4,
+        3.0,
+        3.0,
+        3.0,
+        3,
+        3.0,
+        3.0,
+        3,
+        3.0,
+        3.0,
+        3.0,
+        3,
+        3.0
+      ],
+      "headway_rush": 7,
+      "headway_normal": 12,
+      "first_train": "06:00",
+      "last_train": "22:30",
+      "ring": false,
+      "directions": [
+        {
+          "label": "顺德学院方向",
+          "terminal": "顺德学院",
+          "reverse": false
+        },
+        {
+          "label": "镇安方向",
+          "terminal": "镇安",
+          "reverse": false
+        }
+      ]
+    }
+  ],
+  "external_walks": {},
+  "transfers": [],
+  "aliases": [
+    [
+      "西塱",
+      "西朗"
+    ]
+  ]
+}
