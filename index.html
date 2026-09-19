@@ -130,7 +130,39 @@
         <p class="hint" id="kernel-info"></p>
       </aside>
     </main>
+
+    <!-- 页脚：友情链接 -->
+    <footer class="site-footer">
+      <span class="ft-title">友情链接</span>
+
+      <a href="https://metrowordle.fun/" target="_blank" rel="noopener noreferrer"
+         title="MetroWordle · 地铁猜站游戏">MetroWordle</a>
+      <a href="https://railmapgen.org/?app=rmp" target="_blank" rel="noopener noreferrer"
+         title="地铁线路图工具包 · Rail Map Painter">地铁线路图工具包</a>
+      <a href="https://railab.cc/" target="_blank" rel="noopener noreferrer"
+         title="Railability · 铁路运转工具箱">Railability</a>
+      <a href="https://busline.design/" target="_blank" rel="noopener noreferrer"
+         title="Bus Line Designer · 公交线路设计器">Bus Line Designer</a>
+
+      <span class="ft-note">以上均为第三方站点，与本站无隶属关系</span>
+    </footer>
   </div>
+
+  <!-- 数据提示弹窗（如：所选城市线路库未完善） -->
+  <dialog id="notice-dialog" class="notice">
+    <div class="modal-head">
+      <h3 id="notice-title">提示</h3>
+      <div class="spacer"></div>
+      <button type="button" class="ghost" id="btn-notice-close">✕</button>
+    </div>
+    <div class="modal-body">
+      <p class="notice-msg" id="notice-msg"></p>
+    </div>
+    <div class="modal-foot">
+      <div class="spacer"></div>
+      <button type="button" class="primary" id="btn-notice-ok">我知道了</button>
+    </div>
+  </dialog>
 
   <!-- 添加 / 编辑行程弹窗 -->
   <dialog id="step-dialog">
@@ -166,16 +198,18 @@
               </div>
               <div class="grid2">
                 <div class="field">
-                  <span>起点站</span>
+                  <span>① 起点站</span>
                   <select id="from-station"></select>
                 </div>
                 <div class="field">
-                  <span>方向</span>
-                  <select id="direction"></select>
-                </div>
-                <div class="field">
-                  <span>到达站</span>
+                  <span>② 到达站</span>
                   <select id="to-station"></select>
+                </div>
+              </div>
+              <div class="grid2">
+                <div class="field">
+                  <span>方向（选好起终点后自动判定，可手动修改）</span>
+                  <select id="direction"></select>
                 </div>
                 <div class="field">
                   <span>本段运行时长</span>

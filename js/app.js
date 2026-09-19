@@ -144,7 +144,32 @@
     renderLibrary();
     await refreshStationOptions();
     await evaluate();
-    if (!silent) persist();
+    if (!silent) {
+      persist();
+      warnIncompleteCity(name);
+    }
+  }
+
+  // ---------------- 城市数据完善度提示 ----------------
+
+  /** 线路库较为完善的城市；其余城市选择时提示用户甄别数据。 */
+  const WELL_COVERED_CITIES = new Set(["上海", "苏州", "北京", "重庆"]);
+
+  function warnIncompleteCity(name) {
+    if (!name) return;                                   // 纯手动模式不提示
+    const parts = state.info?.combinedCities?.[name] || [name];
+    if (parts.every((p) => WELL_COVERED_CITIES.has(p))) return;
+    showNotice(
+      "线路库数据提示",
+      `「${name}」城市数据库信息未完善，请仔细甄别数据准确度，有必要的麻烦手动输入。`,
+    );
+  }
+
+  function showNotice(title, message) {
+    $("notice-title").textContent = title;
+    $("notice-msg").textContent = message;
+    const dlg = $("notice-dialog");
+    if (!dlg.open) dlg.showModal();
   }
 
   function renderLibrary() {
@@ -479,15 +504,31 @@
 
   $("btn-add").addEventListener("click", () => openStepDialog(null));
   $("line-search").addEventListener("input", debounce(renderLibrary, 150));
-  $("line-list").addEventListener("click", (ev) => {
-    const item = ev.target.closest("[data-line]");
-    if (item) showLineDetail(item.dataset.line);
-  });
-  $("line-list").addEventListener("dblclick", (ev) => {
+
+  // 单击查看线路详情；双击（同一线路 400ms 内两次单击）打开「添加行程」并预填该线路。
+  // 注意：这里不能用原生 dblclick——单击会重绘线路列表、替换掉被点的节点，
+  // 浏览器便不再对 line-list 派发 dblclick，双击会完全没有反应。
+  let lastLineClick = { id: "", at: 0 };
+  $("line-list").addEventListener("click", async (ev) => {
     const item = ev.target.closest("[data-line]");
     if (!item) return;
-    openStepDialog(null).then(() => setDialogLine(item.dataset.line));
+    const id = item.dataset.line;
+    const now = Date.now();
+    const isDouble = lastLineClick.id === id && now - lastLineClick.at < 400;
+    lastLineClick = isDouble ? { id: "", at: 0 } : { id, at: now };
+    if (isDouble) await addStepWithLine(id);
+    else await showLineDetail(id);
   });
+
+  /** 打开「添加行程」弹窗并预填指定数据库线路。 */
+  async function addStepWithLine(lineId) {
+    try {
+      await openStepDialog(null);
+      await setDialogLine(lineId);
+    } catch (err) {
+      setStatus(`打开添加行程失败：${err.message}`, true);
+    }
+  }
 
   // ---------------- 顶栏交互 ----------------
 
@@ -618,7 +659,7 @@
     $("dlg-title").textContent = index == null ? "添加行程" : `编辑第 ${index + 1} 段行程`;
     $("dlg-subtitle").textContent = state.cityInfo ? state.cityInfo.name : "纯手动模式";
     $("dlg-foot-hint").textContent = state.city
-      ? "数据库线路的时长与经停站由内核计算"
+      ? "先选起点站与到达站，方向由内核自动判定"
       : "未加载线路库：只能使用手动自选方式";
     setDialogError("");
 
@@ -703,12 +744,14 @@
       if (line.directions.includes(step.direction_label)) $("direction").value = step.direction_label;
     }
     await refreshToStations(step ? step.to_station : "");
-    await refreshRunHint();
+    if (step) await refreshRunHint();       // 编辑：保留原方向
+    else await autoPickDirection();         // 新增：按默认起终点直接给出方向
   }
 
+  /** 到达站候选只取决于线路与起点站（不限方向）；方向在选好起终点后自动判定。 */
   async function refreshToStations(prefer = "") {
     if (!dlg.line) return;
-    const res = TP.reachable(dlg.line.id, $("direction").value, $("from-station").value);
+    const res = TP.reachableAny(dlg.line.id, $("from-station").value);
     if (!res.ok) {
       $("to-station").innerHTML = "";
       $("db-run").textContent = res.error;
@@ -716,6 +759,17 @@
     }
     $("to-station").innerHTML = res.stations.map((s) => `<option value="${esc(s)}">${esc(s)}</option>`).join("");
     if (prefer && res.stations.includes(prefer)) $("to-station").value = prefer;
+  }
+
+  /** 按起点站 / 到达站自动判定乘车方向（多解时取线路方向表里第一个可行方向，如环线）。 */
+  async function autoPickDirection() {
+    if (!dlg.line) return;
+    const from = $("from-station").value;
+    const to = $("to-station").value;
+    if (from && to && from !== to) {
+      const res = TP.pickDirection(dlg.line.id, from, to);
+      if (res.ok && res.direction) $("direction").value = res.direction;
+    }
     await refreshRunHint();
   }
 
@@ -773,13 +827,12 @@
   });
   $("from-station").addEventListener("change", async () => {
     if (!dlg.line) return;
-    const to = $("to-station").value;
-    const res = TP.pickDirection(dlg.line.id, $("from-station").value, to);
-    if (res.ok && res.direction) $("direction").value = res.direction;
-    await refreshToStations();
+    // 起点变了：到达站候选随之刷新（尽量保留原到达站），再按起终点自动判定方向
+    await refreshToStations($("to-station").value);
+    await autoPickDirection();
   });
-  $("direction").addEventListener("change", () => refreshToStations());
-  $("to-station").addEventListener("change", refreshRunHint);
+  $("to-station").addEventListener("change", () => autoPickDirection());
+  $("direction").addEventListener("change", () => refreshRunHint());
 
   $("mode-db").addEventListener("change", () => setMode("db"));
   $("mode-manual").addEventListener("change", () => setMode("manual"));
@@ -833,6 +886,10 @@
   $("btn-dlg-close").addEventListener("click", () => $("step-dialog").close());
   $("step-dialog").addEventListener("submit", (ev) => { ev.preventDefault(); saveStep(); });
   $("btn-dlg-save").addEventListener("click", saveStep);
+
+  // 数据提示弹窗
+  $("btn-notice-ok").addEventListener("click", () => $("notice-dialog").close());
+  $("btn-notice-close").addEventListener("click", () => $("notice-dialog").close());
 
   async function saveStep() {
     const walkMinutes = numOrNull($("walk-minutes").value);

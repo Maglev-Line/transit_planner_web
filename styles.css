@@ -257,11 +257,25 @@ main {
 .zone-item:last-child { border-bottom: none; }
 .zone-item b { color: var(--ink); }
 
+/* ---------- 页脚：友情链接 ---------- */
+.site-footer {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px;
+  margin: 0 14px 18px; padding: 12px 14px;
+  background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius);
+  box-shadow: var(--shadow); font-size: 13px;
+}
+.site-footer .ft-title { font-size: 12.5px; font-weight: 700; color: var(--ink-2); }
+.site-footer a { color: var(--brand); text-decoration: none; font-weight: 600; }
+.site-footer a:hover, .site-footer a:focus-visible { text-decoration: underline; }
+.site-footer .ft-note { margin-left: auto; font-size: 12px; color: var(--ink-3); }
+
 /* ---------- 弹窗表单 ---------- */
 dialog {
   border: none; border-radius: 12px; padding: 0; width: min(640px, 94vw);
   box-shadow: 0 20px 60px rgba(15, 22, 36, .28);
 }
+dialog.notice { width: min(460px, 92vw); }
+.notice-msg { margin: 0; font-size: 13.5px; line-height: 1.7; }
 dialog::backdrop { background: rgba(18, 24, 36, .42); }
 .modal-head {
   display: flex; align-items: center; gap: 10px; padding: 12px 16px;

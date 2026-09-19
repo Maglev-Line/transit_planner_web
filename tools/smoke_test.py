@@ -50,6 +50,15 @@ def main() -> int:
     assert b in reachable, "可达站列表里应包含目标站"
     print(f"[√] {a} → {b} 自动选方向「{direction}」，可达 {len(reachable)} 站")
 
+    # 不限方向的可达站（界面：先选起点/到达站，方向自动判定）
+    any_from_head = call("api_reachable_any", line["id"], a)["stations"]
+    assert b in any_from_head, "不限方向时应包含目标站"
+    assert a not in any_from_head, "不限方向的可达站不应包含起点站自身"
+    assert set(any_from_head) == set(detail["stations"]) - {a}, "不限方向时应覆盖本线其余全部站点"
+    any_from_tail = call("api_reachable_any", line["id"], detail["stations"][-1])["stations"]
+    assert any_from_tail and detail["stations"][-2] in any_from_tail, "末站应能反向到达前一站"
+    print(f"[√] 不限方向：{a} 可达 {len(any_from_head)} 站；末站可达 {len(any_from_tail)} 站")
+
     trip = {
         "name": "冒烟测试", "date": "2026-01-01", "city": city_name, "note": "",
         "transfer_walk_default": 5.0, "paid_zone_mode": False,

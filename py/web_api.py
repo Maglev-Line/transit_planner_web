@@ -255,6 +255,24 @@ def api_reachable(line_id: str, direction_label: str, from_station: str) -> str:
         return _err(str(exc))
 
 
+def api_reachable_any(line_id: str, from_station: str) -> str:
+    """不限方向：从某站出发可到达的全部后续站点（供先选起终点、再自动定方向的录入方式）。
+
+    按线路方向表顺序合并两个方向的站表，重复站只保留首次出现的位置。
+    """
+    try:
+        city = _require_city()
+        ln = city.line(line_id)
+        out: list[str] = []
+        for d in ln.directions:
+            for station in engine.reachable_from(city, ln, d, from_station):
+                if station not in out:
+                    out.append(station)
+        return _ok(stations=out)
+    except Exception as exc:  # noqa: BLE001
+        return _err(str(exc))
+
+
 def api_transfer_hints(station: str, exclude_line_id: str = "") -> str:
     """某站可换乘的线路与方向。
 

@@ -94,6 +94,7 @@
     searchLines: (keyword) => call("api_search_lines", keyword, 30),
     pickDirection: (lineId, from, to) => call("api_pick_direction", lineId, from, to),
     reachable: (lineId, direction, from) => call("api_reachable", lineId, direction, from),
+    reachableAny: (lineId, from) => call("api_reachable_any", lineId, from),
     transferHints: (station, excludeLineId) => call("api_transfer_hints", station, excludeLineId || ""),
     evaluate: (trip) => call("api_evaluate", JSON.stringify(trip)),
     manualTypes: () => call("api_manual_types"),
