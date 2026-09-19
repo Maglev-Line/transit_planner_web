@@ -23,10 +23,55 @@
 
   <!-- 主界面 -->
   <div id="app" hidden>
-    <header class="topbar">
-      <div class="brand">运转计划助手<span>Web</span></div>
+    <div class="topstack">
+      <!-- 醒目操作条：下载桌面客户端 / 联系作者 -->
+      <div class="cta-strip">
+        <span class="cta-tip">浏览器版免安装、打开即用；也可下载 Windows 客户端获得完整体验。</span>
+        <div class="spacer"></div>
 
-      <label>城市
+        <a class="cta-btn dl" id="btn-download" href="https://github.com/Maglev-Line/transit_planner/releases/tag/v1.4.0"
+           target="_blank" rel="noopener noreferrer" title="前往 GitHub Releases 下载 Windows 客户端 v1.4.0">
+          ⬇ 下载 Windows 客户端
+        </a>
+
+        <div class="contact" id="contact">
+          <button type="button" class="cta-btn" id="btn-contact" aria-haspopup="true" aria-expanded="false">
+            ✉ 联系作者
+          </button>
+
+          <!-- 悬停展开的联系卡片 -->
+          <div class="contact-card" id="contact-card">
+            <div class="contact-box">
+              <div class="contact-title">联系作者</div>
+
+              <button type="button" class="contact-row" id="contact-wechat" title="单击复制微信号">
+                <span class="k">微信号</span>
+                <span class="v">francal2010</span>
+                <span class="copy" id="wechat-copy">复制</span>
+              </button>
+
+              <a class="contact-row" href="https://m.bilibili.com/space/3494369336232140"
+                 target="_blank" rel="noopener noreferrer" title="在 B 站查看「磁浮线」">
+                <span class="k">B 站</span>
+                <span class="v">磁浮线</span>
+                <span class="copy">前往 ↗</span>
+              </a>
+
+              <a class="contact-row" href="https://github.com/Maglev-Line"
+                 target="_blank" rel="noopener noreferrer" title="在 GitHub 查看 Maglev-Line">
+                <span class="k">GitHub</span>
+                <span class="v">Maglev-Line</span>
+                <span class="copy">前往 ↗</span>
+              </a>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <header class="topbar">
+        <div class="brand">运转计划助手<span>Web</span></div>
+
+        <label>城市
         <select id="city-select" title="选择城市线路库；也可选「纯手动」不使用线路库"></select>
       </label>
 
@@ -45,7 +90,8 @@
       <input type="file" id="file-import" accept=".json,application/json" hidden>
       <button id="btn-export" title="保存为方案 JSON">导出方案</button>
       <button id="btn-print" class="primary" title="生成 A4 运转图纸并调用打印（可选另存为 PDF）">导出图纸 (PDF)</button>
-    </header>
+      </header>
+    </div>
 
     <main>
       <!-- 左：线路库 -->
@@ -228,6 +274,9 @@
 
   <!-- 打印 / 另存为 PDF 的 A4 图纸 -->
   <div id="print-view" hidden></div>
+
+  <!-- 轻提示（如「已复制微信号」） -->
+  <div class="toast" id="toast" hidden></div>
 
   <script src="https://cdn.jsdelivr.net/pyodide/v0.27.2/full/pyodide.js"></script>
   <script src="js/bridge.js"></script>

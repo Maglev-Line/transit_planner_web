@@ -69,11 +69,77 @@ label > input, label > select { margin-left: 4px; }
 .bar > div { height: 100%; width: 0; background: var(--brand); transition: width .25s; }
 .boot.error #boot-msg { color: var(--warn); font-weight: 600; }
 
+/* ---------- 顶部固定区（操作条 + 顶栏） ---------- */
+:root { --strip-h: 40px; }
+
+.topstack { position: sticky; top: 0; z-index: 10; }
+
+/* 醒目操作条：下载客户端 / 联系作者 */
+.cta-strip {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px;
+  min-height: var(--strip-h); padding: 5px 16px;
+  background: linear-gradient(90deg, #1f4fd8 0%, #2f6feb 55%, #4a86f7 100%);
+  color: #fff; border-bottom: 1px solid #1d47bd;
+}
+.cta-strip .spacer { flex: 1 1 auto; }
+.cta-tip { font-size: 12.5px; color: #dce6ff; }
+.cta-btn {
+  display: inline-flex; align-items: center; gap: 6px;
+  font-size: 13px; font-weight: 600; line-height: 1;
+  padding: 7px 14px; border-radius: 999px; text-decoration: none; cursor: pointer;
+  color: #fff; background: rgba(255, 255, 255, .14);
+  border: 1px solid rgba(255, 255, 255, .45);
+  transition: background .15s, border-color .15s, transform .15s;
+}
+.cta-btn:hover, .cta-btn:focus-visible { background: rgba(255, 255, 255, .26); border-color: #fff; }
+.cta-btn.dl { background: #fff; color: #1f4fd8; border-color: #fff; box-shadow: 0 1px 4px rgba(6, 20, 60, .25); }
+.cta-btn.dl:hover { background: #eaf1ff; transform: translateY(-1px); }
+
+/* 联系作者：悬停 / 聚焦 / 点击展开卡片 */
+.contact { position: relative; }
+.contact-card {
+  position: absolute; right: 0; top: 100%; padding-top: 8px; z-index: 30;
+  opacity: 0; visibility: hidden; transform: translateY(-4px);
+  transition: opacity .15s, transform .15s, visibility .15s;
+  pointer-events: none;
+}
+.contact:hover .contact-card,
+.contact:focus-within .contact-card,
+.contact.open .contact-card {
+  opacity: 1; visibility: visible; transform: none; pointer-events: auto;
+}
+.contact-box {
+  min-width: 232px; padding: 10px; border-radius: var(--radius);
+  background: var(--panel); border: 1px solid var(--line);
+  box-shadow: 0 8px 26px rgba(20, 28, 44, .18);
+  text-align: left;
+}
+.contact-title { font-size: 12px; color: var(--ink-3); margin: 0 2px 6px; }
+.contact-row {
+  display: flex; align-items: center; gap: 8px; width: 100%;
+  padding: 7px 8px; border-radius: 8px; border: 1px solid transparent;
+  background: transparent; color: var(--ink); font-size: 13px;
+  text-decoration: none; text-align: left; cursor: pointer;
+}
+.contact-row:hover { background: #f3f6fb; border-color: #dbe3ef; }
+.contact-row .k { flex: 0 0 auto; width: 48px; color: var(--ink-3); font-size: 12px; }
+.contact-row .v { flex: 1 1 auto; font-family: ui-monospace, Consolas, monospace; }
+.contact-row .copy { flex: 0 0 auto; font-size: 11.5px; color: var(--brand); }
+.contact-row.copied { background: #eef8f1; border-color: #bfe4cd; }
+.contact-row.copied .copy { color: var(--ok); }
+
+/* 轻提示 */
+.toast {
+  position: fixed; left: 50%; bottom: 28px; transform: translateX(-50%);
+  z-index: 60; padding: 9px 16px; border-radius: 999px;
+  background: rgba(31, 36, 48, .92); color: #fff; font-size: 13px;
+  box-shadow: 0 6px 20px rgba(20, 28, 44, .28);
+}
+
 /* ---------- 顶栏 ---------- */
 .topbar {
   display: flex; flex-wrap: wrap; align-items: center; gap: 10px 14px;
   padding: 10px 16px; background: var(--panel); border-bottom: 1px solid var(--line);
-  position: sticky; top: 0; z-index: 10;
 }
 .brand { font-size: 16px; font-weight: 700; letter-spacing: .5px; }
 .brand span {
@@ -98,7 +164,7 @@ main {
   margin: 0 0 10px; font-size: 13px; color: var(--ink-2); font-weight: 700;
   display: flex; align-items: center; justify-content: space-between; gap: 8px;
 }
-.library, .side { position: sticky; top: 68px; max-height: calc(100vh - 90px); overflow: auto; }
+.library, .side { position: sticky; top: calc(var(--strip-h) + 68px); max-height: calc(100vh - 90px - var(--strip-h)); overflow: auto; }
 .plan { min-height: 200px; }
 
 /* ---------- 线路库 ---------- */
@@ -236,7 +302,7 @@ legend { font-size: 12px; color: var(--ink-2); padding: 0 4px; }
 
 @media print {
   body { background: #fff; }
-  #app, #boot, dialog { display: none !important; }
+  #app, #boot, dialog, .toast { display: none !important; }
   #print-view[hidden] { display: block !important; }
   #print-view { display: block; }
 }

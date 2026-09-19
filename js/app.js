@@ -511,6 +511,72 @@
     }
   });
 
+  // ---------------- 顶部操作条：下载客户端 / 联系作者 ----------------
+
+  const contact = $("contact");
+
+  function toast(msg) {
+    const el = $("toast");
+    el.textContent = msg;
+    el.hidden = false;
+    clearTimeout(toast._timer);
+    toast._timer = setTimeout(() => { el.hidden = true; }, 2000);
+  }
+
+  async function copyText(text) {
+    try {
+      if (navigator.clipboard && window.isSecureContext) {
+        await navigator.clipboard.writeText(text);
+        return true;
+      }
+    } catch { /* 无权限时走降级方案 */ }
+    try {
+      const ta = document.createElement("textarea");
+      ta.value = text;
+      ta.setAttribute("readonly", "");
+      ta.style.position = "fixed";
+      ta.style.top = "-1000px";
+      document.body.appendChild(ta);
+      ta.select();
+      const ok = document.execCommand("copy");
+      ta.remove();
+      return ok;
+    } catch {
+      return false;
+    }
+  }
+
+  // 触屏 / 键盘：点击「联系作者」切换卡片（桌面端悬停即可展开）
+  $("btn-contact").addEventListener("click", (ev) => {
+    ev.stopPropagation();
+    const open = contact.classList.toggle("open");
+    $("btn-contact").setAttribute("aria-expanded", String(open));
+  });
+  document.addEventListener("click", (ev) => {
+    if (!ev.target.closest(".contact")) {
+      contact.classList.remove("open");
+      $("btn-contact").setAttribute("aria-expanded", "false");
+    }
+  });
+  document.addEventListener("keydown", (ev) => {
+    if (ev.key === "Escape") contact.classList.remove("open");
+  });
+
+  // 单击微信号 → 复制到剪贴板
+  $("contact-wechat").addEventListener("click", async () => {
+    const row = $("contact-wechat");
+    const ok = await copyText("francal2010");
+    $("wechat-copy").textContent = ok ? "已复制 ✓" : "复制失败";
+    row.classList.toggle("copied", ok);
+    toast(ok ? "微信号 francal2010 已复制到剪贴板" : "复制失败，请手动记录：francal2010");
+    setTimeout(() => {
+      $("wechat-copy").textContent = "复制";
+      row.classList.remove("copied");
+    }, 2000);
+  });
+
+  $("btn-download").addEventListener("click", () => toast("正在打开 GitHub Releases 下载页…"));
+
   // ---------------- 行程弹窗 ----------------
 
   const dlg = { index: null, mode: "db", lineId: "", line: null };
