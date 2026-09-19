@@ -248,7 +248,11 @@ main {
 .tl-legend .dot { width: 10px; height: 10px; border-radius: 3px; display: inline-block; margin-right: 4px; }
 .hint-list { display: flex; flex-direction: column; gap: 3px; }
 .hint-item { display: flex; align-items: center; gap: 6px; font-size: 12.5px; }
-.hint-item .dirs { color: var(--ink-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.hint-item .dot {
+  width: 12px; height: 12px; border-radius: 3px; flex: 0 0 auto;
+  display: inline-block; border: 1px solid rgba(0, 0, 0, .12);
+}
+.hint-item .dirs { flex: 1 1 auto; min-width: 0; color: var(--ink-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .zone-item { font-size: 12.5px; color: var(--ink-2); border-bottom: 1px dashed var(--line); padding: 4px 0; }
 .zone-item:last-child { border-bottom: none; }
 .zone-item b { color: var(--ink); }

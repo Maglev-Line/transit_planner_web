@@ -14,6 +14,8 @@
   const fmtMin = (m) => (m == null || Number.isNaN(+m) ? "—" : (Number.isInteger(+m) ? `${+m} 分钟` : `${(+m).toFixed(1)} 分钟`));
   const numOrNull = (v) => (v === "" || v == null ? null : Number(v));
   const swatch = (c1, c2) => (c2 ? `linear-gradient(90deg, ${c1} 0 50%, ${c2} 50% 100%)` : (c1 || "#888888"));
+  // 双色线路的「上下各半」写法（用于彩色时间轴：上=主色、下=副色）
+  const swatchV = (c1, c2) => (c2 ? `linear-gradient(180deg, ${c1} 0 50%, ${c2} 50% 100%)` : (c1 || "#888888"));
   const debounce = (fn, ms = 280) => { let t; return (...a) => { clearTimeout(t); t = setTimeout(() => fn(...a), ms); }; };
   const STORAGE_KEY = "transit-planner-web.v1";
 
@@ -371,10 +373,10 @@
     const bars = segs.map((s, i) => {
       const parts = [];
       if (i > 0 && s.walk > 0) parts.push(`<div style="flex:${s.walk / total};background:#cfd8e6" title="换乘/步行 ${fmtMin(s.walk)}"></div>`);
-      parts.push(`<div style="flex:${Math.max(s.run, 0.01) / total};background:${swatch(s.color, s.color2)}" title="${esc(s.lineName)} ${esc(s.direction)} 运行 ${fmtMin(s.run)}"></div>`);
+      parts.push(`<div style="flex:${Math.max(s.run, 0.01) / total};background:${swatchV(s.color, s.color2)}" title="${esc(s.lineName)} ${esc(s.direction)} 运行 ${fmtMin(s.run)}"></div>`);
       return parts.join("");
     }).join("");
-    const legend = segs.map((s) => `<span><i class="dot" style="background:${swatch(s.color, s.color2)}"></i>${esc(s.shortName || s.lineName)} ${fmtMin(s.run)}</span>`).join("");
+    const legend = segs.map((s) => `<span><i class="dot" style="background:${swatchV(s.color, s.color2)}"></i>${esc(s.shortName || s.lineName)} ${fmtMin(s.run)}</span>`).join("");
     $("timeline").innerHTML = `
       <div class="tl-bar">${bars}</div>
       <div class="tl-legend">${legend}</div>
@@ -420,14 +422,28 @@
       $("hints").innerHTML = `<p class="hint">「${esc(station)}」暂无其他可换乘线路（本地数据未收录或不含换乘站）。</p>`;
       return;
     }
-    $("hints").innerHTML = `<p class="hint" style="margin:0 0 4px">在「${esc(station)}」可换乘：</p>` +
-      others.map((h) => `
+    const inZone = others.filter((h) => !h.transfer);   // 站内换乘（同付费区）
+    const crossZone = others.filter((h) => h.transfer); // 出闸转乘（跨付费区，如地铁↔国铁）
+    const row = (h) => `
         <div class="hint-item">
           <i class="dot" style="background:${swatch(h.color, h.color2)}"></i>
           <span>${esc(h.name)}</span>
           <span class="tag">${esc(h.typeLabel)}</span>
+          ${h.transfer ? '<span class="badge-transfer">出闸转乘</span>' : ""}
           <span class="dirs" title="${esc(h.directions.join(" / "))}">${esc(h.directions.join(" / "))}</span>
-        </div>`).join("");
+        </div>`;
+    const parts = [];
+    if (inZone.length) {
+      parts.push(`<p class="hint" style="margin:0">在「${esc(station)}」可换乘：</p>`, ...inZone.map(row));
+    }
+    if (crossZone.length) {
+      const exits = [...new Set(crossZone.map((h) => h.transferStation || station))];
+      parts.push(
+        `<p class="hint" style="margin:0">在「${esc(exits.join(" / "))}」出闸转乘（换付费区）：</p>`,
+        ...crossZone.map(row),
+      );
+    }
+    $("hints").innerHTML = parts.join("");
   }
 
   // ---------------- 行程卡片交互 ----------------
@@ -909,7 +925,7 @@
     const t = res.totals;
     const tl = res.segments.map((s, i) => {
       const walk = i > 0 && s.walk > 0 ? `<div style="flex:${s.walk};background:#e3e7ee"></div>` : "";
-      return `${walk}<div style="flex:${Math.max(s.run, 0.01)};background:${swatch(s.color, s.color2)}"></div>`;
+      return `${walk}<div style="flex:${Math.max(s.run, 0.01)};background:${swatchV(s.color, s.color2)}"></div>`;
     }).join("");
 
     const segs = res.segments.map((s, i) => {

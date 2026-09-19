@@ -256,18 +256,49 @@ def api_reachable(line_id: str, direction_label: str, from_station: str) -> str:
 
 
 def api_transfer_hints(station: str, exclude_line_id: str = "") -> str:
-    """某站可换乘的线路与方向（含同站异名）。"""
+    """某站可换乘的线路与方向。
+
+    返回两类：
+    - 站内换乘（`transfer: false`）：内核 `engine.transfer_hints` 的「同站异名」结果，不出闸；
+    - 出闸转乘（`transfer: true`）：同地点但分属不同付费系统的「转乘站组」线路
+      （`city.transfers`，如地铁「上海南站」↔ 国铁「上海南」可换乘金山铁路），
+      需出闸/换系统后再进站，附带实际站名 `transferStation`。
+    """
     try:
         city = _require_city()
         if not station:
             return _ok(hints=[])
-        hints = []
+        hints: list[dict] = []
+        seen: set[str] = set()
         for ln, dirs in engine.transfer_hints(city, station):
+            if ln.id in seen:
+                continue
+            seen.add(ln.id)
             hints.append({
                 **_line_summary(ln, brief=True),
                 "directions": [d.label for d in dirs],
                 "current": ln.id == exclude_line_id,
+                "transfer": False,
+                "transferStation": "",
             })
+        for grp in city.transfers:
+            if station not in grp:
+                continue
+            for name in grp:
+                if name == station:
+                    continue
+                for ln in city.lines_serving(name):
+                    if ln.id in seen:
+                        continue
+                    seen.add(ln.id)
+                    hints.append({
+                        **_line_summary(ln, brief=True),
+                        "directions": [d.label for d in ln.directions],
+                        "current": ln.id == exclude_line_id,
+                        "transfer": True,
+                        "transferStation": name,
+                    })
+        hints.sort(key=lambda h: h["transfer"])  # 先站内换乘，再出闸转乘（稳定排序，各自保持库中顺序）
         return _ok(hints=hints)
     except Exception as exc:  # noqa: BLE001
         return _err(str(exc))
