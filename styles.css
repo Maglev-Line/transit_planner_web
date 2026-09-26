@@ -184,6 +184,13 @@ main {
   padding: 1px 7px; flex: 0 0 auto;
 }
 .search { width: 100%; margin-bottom: 8px; }
+
+/* 线路库：列表独立滚动、详情固定在面板下部，选中后无需滚到列表底部 */
+.library { display: flex; flex-direction: column; overflow: auto; }
+.library > h2, .library > .search { flex: 0 0 auto; }
+.library > #line-list { flex: 1 1 auto; min-height: 80px; overflow: auto; }
+.library > .detail { flex: 1 1 auto; min-height: 96px; overflow: auto; }
+
 .hint { color: var(--ink-3); font-size: 12px; }
 .detail { margin-top: 10px; border-top: 1px dashed var(--line); padding-top: 10px; }
 .detail .kv { display: flex; gap: 8px; font-size: 12px; color: var(--ink-2); margin-bottom: 3px; }
@@ -276,6 +283,8 @@ dialog {
 }
 dialog.notice { width: min(460px, 92vw); }
 .notice-msg { margin: 0; font-size: 13.5px; line-height: 1.7; }
+dialog.welcome { width: min(520px, 92vw); }
+dialog.welcome strong { color: var(--brand); }
 dialog::backdrop { background: rgba(18, 24, 36, .42); }
 .modal-head {
   display: flex; align-items: center; gap: 10px; padding: 12px 16px;
@@ -301,7 +310,8 @@ legend { font-size: 12px; color: var(--ink-2); padding: 0 4px; }
 .err { color: var(--warn); font-size: 12.5px; }
 
 /* ---------- 打印（另存为 PDF） ---------- */
-#print-view { padding: 0; background: #fff; }
+/* 浏览器默认「不打印背景图形」会把色带/时间轴背景丢掉，这里强制保留 */
+#print-view { padding: 0; background: #fff; print-color-adjust: exact; -webkit-print-color-adjust: exact; }
 #print-view .sheet { padding: 0; }
 #print-view h1 { font-size: 20px; margin: 0 0 2px; }
 #print-view .sub { color: #444; font-size: 12.5px; margin-bottom: 10px; }
@@ -328,4 +338,6 @@ legend { font-size: 12px; color: var(--ink-2); padding: 0 4px; }
 @media (max-width: 1100px) {
   main { grid-template-columns: 1fr; }
   .library, .side { position: static; max-height: none; }
+  /* 窄屏下页面整体滚动，解除弹内滚动，改用脚本滚动定位 */
+  .library, .library > #line-list, .library > .detail { overflow: visible; }
 }

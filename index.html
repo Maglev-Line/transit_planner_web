@@ -148,6 +148,25 @@
     </footer>
   </div>
 
+  <!-- 首次使用欢迎弹窗 -->
+  <dialog id="welcome-dialog" class="notice welcome">
+    <div class="modal-head">
+      <h3>欢迎使用《运转计划助手》！</h3>
+    </div>
+    <div class="modal-body">
+      <p class="notice-msg">
+        普通地图软件追求“最短/最快路径”，而交通迷运转的核心是<strong>绕路</strong>——为了体验某条线路、某趟车型、
+        某个冷门站点而故意绕行。本软件<strong>不做自动寻路</strong>，采用「链条式手动规划 + 智能提示」：
+        把想坐的线路一段段串起来，软件负责查数据、算时长、验换乘、出图纸。
+      </p>
+    </div>
+    <div class="modal-foot">
+      <span class="hint">此提示仅在首次打开时显示</span>
+      <div class="spacer"></div>
+      <button type="button" class="primary" id="btn-welcome-ok">开始规划</button>
+    </div>
+  </dialog>
+
   <!-- 数据提示弹窗（如：所选城市线路库未完善） -->
   <dialog id="notice-dialog" class="notice">
     <div class="modal-head">

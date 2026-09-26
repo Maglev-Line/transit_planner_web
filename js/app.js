@@ -18,6 +18,7 @@
   const swatchV = (c1, c2) => (c2 ? `linear-gradient(180deg, ${c1} 0 50%, ${c2} 50% 100%)` : (c1 || "#888888"));
   const debounce = (fn, ms = 280) => { let t; return (...a) => { clearTimeout(t); t = setTimeout(() => fn(...a), ms); }; };
   const STORAGE_KEY = "transit-planner-web.v1";
+  const WELCOME_KEY = "transit-planner-web.welcome.v1";
 
   // ---------------- 状态 ----------------
 
@@ -73,6 +74,7 @@
       $("boot").hidden = true;
       $("app").hidden = false;
       renderAll();
+      maybeShowWelcome();
     } catch (err) {
       document.body.classList.add("err");
       $("boot").classList.add("error");
@@ -172,6 +174,18 @@
     if (!dlg.open) dlg.showModal();
   }
 
+  // ---------------- 首次使用欢迎语 ----------------
+
+  /** 首次打开（本浏览器从未看过欢迎语）时弹出；调试可用 index.html?welcome=1 强制显示。 */
+  function maybeShowWelcome() {
+    let seen = false;
+    try { seen = localStorage.getItem(WELCOME_KEY) === "1"; } catch { /* 隐私模式下忽略 */ }
+    const force = new URLSearchParams(location.search).has("welcome");
+    if (seen && !force) return;
+    const dlg = $("welcome-dialog");
+    if (!dlg.open) dlg.showModal();
+  }
+
   function renderLibrary() {
     const kw = ($("line-search").value || "").trim().toLowerCase();
     const items = state.lines.filter((ln) => {
@@ -213,6 +227,8 @@
       ${line.ring ? `<div class="kv">环线（首尾闭合）</div>` : ""}
       <div class="station-chain">${chain}</div>
       <p class="hint" style="margin:6px 0 0">双击左侧线路可把该线路预填到新行程。</p>`;
+    // 详情区固定在面板下部；窄屏下页面整体滚动，这里补一次滚动定位
+    $("line-detail").scrollIntoView({ block: "nearest" });
   }
 
   async function refreshStationOptions() {
@@ -891,6 +907,12 @@
   $("btn-notice-ok").addEventListener("click", () => $("notice-dialog").close());
   $("btn-notice-close").addEventListener("click", () => $("notice-dialog").close());
 
+  // 欢迎弹窗：关闭（含 Esc）即记下已看过
+  $("btn-welcome-ok").addEventListener("click", () => $("welcome-dialog").close());
+  $("welcome-dialog").addEventListener("close", () => {
+    try { localStorage.setItem(WELCOME_KEY, "1"); } catch { /* 隐私模式下忽略 */ }
+  });
+
   async function saveStep() {
     const walkMinutes = numOrNull($("walk-minutes").value);
     const price = numOrNull($("price").value);
@@ -972,9 +994,23 @@
     }
     $("print-view").innerHTML = buildPrintSheet();
     $("print-view").hidden = false;
+
+    // 打印 / 另存为 PDF 时浏览器用 <title> 作默认文件名 → 临时换成方案名，打完再还原
+    const savedTitle = document.title;
+    document.title = printFileTitle();
+    window.addEventListener("afterprint", () => {
+      $("print-view").hidden = true;
+      document.title = savedTitle;
+    }, { once: true });
+
     window.print();
-    window.addEventListener("afterprint", () => { $("print-view").hidden = true; }, { once: true });
   });
+
+  /** 另存为 PDF 时的默认文件名（不含扩展名）：方案名，剔除文件名非法字符。 */
+  function printFileTitle() {
+    const name = (state.trip.name || "我的运转方案").replace(/[\\/:*?"<>|]/g, "_").trim();
+    return name || "我的运转方案";
+  }
 
   function buildPrintSheet() {
     const trip = state.trip;
