@@ -55,11 +55,12 @@
       state.info = info;
       state.typeLabels = info.typeLabels || {};
       state.typeKeys = Object.keys(state.typeLabels);
-      state.cities = [...(info.cities || []), ...Object.keys(info.combinedCities || {})];
+      state.cities = [...new Set([...(info.cities || []), ...Object.keys(info.combinedCities || {})])];
 
+      const baseCities = (info.cities || []).filter((c) => !info.combinedCities?.[c]);
       $("kernel-info").textContent =
         `${info.appName} 内核 v${info.version} · 同步于 ${info.syncedAt || "未知"} · ` +
-        `${(info.cities || []).length} 座城市 + ${Object.keys(info.combinedCities || {}).length} 个同城组合 · ` +
+        `${baseCities.length} 座城市 + ${Object.keys(info.combinedCities || {}).length} 个同城组合 · ` +
         `${state.typeKeys.length} 种交通类型`;
 
       fillCitySelect();
@@ -129,6 +130,8 @@
     state.selectedLine = "";
     $("city-select").value = name;
     $("line-detail").hidden = true;
+    $("library-splitter").hidden = true;
+    resetLibrarySplit();
 
     const res = TP.loadCity(name);
     if (!res.ok) {
@@ -155,7 +158,7 @@
   // ---------------- 城市数据完善度提示 ----------------
 
   /** 线路库较为完善的城市；其余城市选择时提示用户甄别数据。 */
-  const WELL_COVERED_CITIES = new Set(["上海", "苏州", "北京", "重庆"]);
+  const WELL_COVERED_CITIES = new Set(["上海", "苏州", "北京", "重庆", "广州", "佛山"]);
 
   function warnIncompleteCity(name) {
     if (!name) return;                                   // 纯手动模式不提示
@@ -219,6 +222,7 @@
       return `<span class="st">${esc(s)}</span>${seg}`;
     }).join("");
     $("line-detail").hidden = false;
+    $("library-splitter").hidden = false;
     $("line-detail").innerHTML = `
       <div class="kv"><b>${esc(line.name)}</b><span class="tag">${esc(line.typeLabel)}</span></div>
       <div class="kv">方向：${esc(line.directions.join(" / "))}</div>
@@ -227,8 +231,114 @@
       ${line.ring ? `<div class="kv">环线（首尾闭合）</div>` : ""}
       <div class="station-chain">${chain}</div>
       <p class="hint" style="margin:6px 0 0">双击左侧线路可把该线路预填到新行程。</p>`;
-    // 详情区固定在面板下部；窄屏下页面整体滚动，这里补一次滚动定位
-    $("line-detail").scrollIntoView({ block: "nearest" });
+    $("line-detail").scrollTop = 0;
+    // 默认布局优先保证线路信息完整显示，之后可用分割条上下拖动调整
+    fitLibrarySplit();
+  }
+
+  // ---------------- 线路库分割条（列表 / 详情高度可拖动） ----------------
+
+  const SPLIT_MIN_LIST = 60;
+  const SPLIT_MIN_DETAIL = 96;
+
+  function librarySplitterVisible() {
+    const splitter = $("library-splitter");
+    return !splitter.hidden && splitter.offsetParent !== null;
+  }
+
+  /** 列表顶边到面板内容区底边之间的垂直空间（含列表、分割条、详情）。 */
+  function librarySplitSpace() {
+    const lib = document.querySelector(".library");
+    const rect = lib.getBoundingClientRect();
+    const cs = getComputedStyle(lib);
+    const bottom = rect.bottom - parseFloat(cs.paddingBottom) - parseFloat(cs.borderBottomWidth);
+    return Math.max(0, bottom - $("line-list").getBoundingClientRect().top);
+  }
+
+  function splitterHeight() {
+    const splitter = $("library-splitter");
+    const cs = getComputedStyle(splitter);
+    return splitter.offsetHeight + parseFloat(cs.marginTop) + parseFloat(cs.marginBottom);
+  }
+
+  function maxListHeight() {
+    return Math.max(SPLIT_MIN_LIST, librarySplitSpace() - splitterHeight() - SPLIT_MIN_DETAIL);
+  }
+
+  function setListHeight(px) {
+    $("line-list").style.flexBasis = `${Math.max(0, Math.round(px))}px`;
+  }
+
+  function resetLibrarySplit() {
+    $("line-list").style.flexBasis = "";
+    document.querySelector(".library").classList.remove("has-detail", "dragging");
+  }
+
+  /** 详情的自然高度：临时解除 flex 拉伸，量完立即还原。 */
+  function detailNaturalHeight() {
+    const detail = $("line-detail");
+    const prev = detail.style.flex;
+    detail.style.flex = "0 0 auto";
+    const height = detail.scrollHeight;
+    detail.style.flex = prev;
+    return height + 2;
+  }
+
+  /** 默认布局：优先给足详情高度，列表占用剩余空间；详情过长时才在内部滚动。 */
+  function fitLibrarySplit() {
+    document.querySelector(".library").classList.add("has-detail");
+    if (!librarySplitterVisible()) {
+      $("line-list").style.flexBasis = "";
+      return;
+    }
+    const available = librarySplitSpace() - splitterHeight();
+    const listHeight = available - detailNaturalHeight();
+    setListHeight(Math.min(Math.max(listHeight, SPLIT_MIN_LIST), maxListHeight()));
+  }
+
+  function initLibrarySplitter() {
+    const splitter = $("library-splitter");
+    const list = $("line-list");
+    const lib = document.querySelector(".library");
+    let drag = null;
+
+    splitter.addEventListener("pointerdown", (ev) => {
+      if (ev.pointerType === "mouse" && ev.button !== 0) return;
+      ev.preventDefault();
+      drag = { y: ev.clientY, height: list.getBoundingClientRect().height };
+      splitter.setPointerCapture(ev.pointerId);
+      lib.classList.add("dragging");
+    });
+    splitter.addEventListener("pointermove", (ev) => {
+      if (!drag) return;
+      const height = drag.height + (ev.clientY - drag.y);
+      setListHeight(Math.min(Math.max(height, SPLIT_MIN_LIST), maxListHeight()));
+    });
+    const stopDrag = () => {
+      drag = null;
+      lib.classList.remove("dragging");
+    };
+    splitter.addEventListener("pointerup", stopDrag);
+    splitter.addEventListener("pointercancel", stopDrag);
+    splitter.addEventListener("lostpointercapture", stopDrag);
+    splitter.addEventListener("dblclick", fitLibrarySplit);
+
+    splitter.addEventListener("keydown", (ev) => {
+      const current = list.getBoundingClientRect().height;
+      let next = null;
+      if (ev.key === "ArrowUp") next = current - 24;
+      else if (ev.key === "ArrowDown") next = current + 24;
+      else if (ev.key === "Home") next = SPLIT_MIN_LIST;
+      else if (ev.key === "End") next = maxListHeight();
+      if (next == null) return;
+      ev.preventDefault();
+      setListHeight(Math.min(Math.max(next, SPLIT_MIN_LIST), maxListHeight()));
+    });
+
+    // 窄屏隐藏分割条时，清掉内联高度，恢复按内容自然排布
+    window.addEventListener("resize", debounce(() => {
+      if (!librarySplitterVisible()) list.style.flexBasis = "";
+    }, 150));
   }
 
   async function refreshStationOptions() {
@@ -520,6 +630,7 @@
 
   $("btn-add").addEventListener("click", () => openStepDialog(null));
   $("line-search").addEventListener("input", debounce(renderLibrary, 150));
+  initLibrarySplitter();
 
   // 单击查看线路详情；双击（同一线路 400ms 内两次单击）打开「添加行程」并预填该线路。
   // 注意：这里不能用原生 dblclick——单击会重绘线路列表、替换掉被点的节点，

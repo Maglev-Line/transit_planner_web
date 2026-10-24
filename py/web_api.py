@@ -172,7 +172,7 @@ def api_init() -> str:
         version=__version__,
         syncedAt=manifest.get("syncedAt", ""),
         typeLabels=TYPE_LABELS,
-        cities=sorted(p.stem for p in Path(DATA_DIR).glob("*.json")),
+        cities=_library().list_cities(),
         combinedCities={k: list(v) for k, v in CityLibrary.COMBINED_CITIES.items()},
     )
 
@@ -288,17 +288,19 @@ def api_transfer_hints(station: str, exclude_line_id: str = "") -> str:
             return _ok(hints=[])
         hints: list[dict] = []
         seen: set[str] = set()
-        for ln, dirs in engine.transfer_hints(city, station):
-            if ln.id in seen:
-                continue
-            seen.add(ln.id)
-            hints.append({
-                **_line_summary(ln, brief=True),
-                "directions": [d.label for d in dirs],
-                "current": ln.id == exclude_line_id,
-                "transfer": False,
-                "transferStation": "",
-            })
+        # 站内换乘只取「同站异名」组；转乘站组在下面单独标记（需出闸/换系统）
+        for name in engine.alias_names(city, station):
+            for ln in city.lines_serving(name):
+                if ln.id in seen:
+                    continue
+                seen.add(ln.id)
+                hints.append({
+                    **_line_summary(ln, brief=True),
+                    "directions": [d.label for d in ln.directions],
+                    "current": ln.id == exclude_line_id,
+                    "transfer": False,
+                    "transferStation": "",
+                })
         for grp in city.transfers:
             if station not in grp:
                 continue

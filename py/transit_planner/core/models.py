@@ -19,6 +19,7 @@ TYPE_RAIL = "national_rail"   # 国家铁路
 TYPE_MAGLEV = "maglev"        # 磁浮
 TYPE_FERRY = "ferry"          # 轮渡
 TYPE_CABLEWAY = "cableway"    # 索道（缆车）
+TYPE_APM = "apm"              # 自动旅客捷运（APM）
 
 TYPE_LABELS = {
     TYPE_METRO: "地铁",
@@ -31,6 +32,7 @@ TYPE_LABELS = {
     TYPE_MAGLEV: "磁浮",
     TYPE_FERRY: "轮渡",
     TYPE_CABLEWAY: "索道",
+    TYPE_APM: "APM",
 }
 
 
@@ -40,7 +42,7 @@ def type_display(key: str) -> str:
 
 
 def all_type_keys() -> list[str]:
-    """内置交通类型 key 列表（含轮渡/索道）。"""
+    """内置交通类型 key 列表（含轮渡/索道/APM）。"""
     return list(TYPE_LABELS)
 
 
@@ -180,6 +182,33 @@ class City:
         )
 
 
+def merge_lines(first: Line, second: Line) -> Line:
+    """合并同一条线路的两份数据：站点数据更完整的一方优先，缺失字段由另一方补齐。"""
+    primary, secondary = (
+        (first, second) if len(first.stations) >= len(second.stations) else (second, first)
+    )
+    color = primary.color
+    if not color or color == "#888888":
+        color = secondary.color or color
+    return Line(
+        id=primary.id,
+        name=primary.name or secondary.name,
+        short_name=primary.short_name or secondary.short_name,
+        type=primary.type or secondary.type,
+        color=color,
+        color2=primary.color2 or secondary.color2,
+        operator=primary.operator or secondary.operator,
+        stations=list(primary.stations),
+        travel_minutes=list(primary.travel_minutes),
+        headway_rush=primary.headway_rush,
+        headway_normal=primary.headway_normal,
+        first_train=primary.first_train or secondary.first_train,
+        last_train=primary.last_train or secondary.last_train,
+        ring=primary.ring or secondary.ring,
+        directions=list(primary.directions) or list(secondary.directions),
+    )
+
+
 class CityLibrary:
     """管理多个城市的 JSON 城市库。
 
@@ -194,13 +223,29 @@ class CityLibrary:
         "珠江三角洲": ("广州", "深圳", "佛山", "东莞"),
     }
 
+    # 多城共用一份线路库文件：城市名 -> 数据文件 stem（广州 / 佛山 的线路统一存放于 广州-佛山.json）
+    SHARED_CITY_FILES: dict[str, str] = {
+        "广州": "广州-佛山",
+        "佛山": "广州-佛山",
+    }
+
+    # 共用文件中线路的归属：按线路 ID 前缀区分，用于分别保存各城市的改动
+    CITY_LINE_PREFIXES: dict[str, str] = {
+        "广州": "gz_",
+        "佛山": "fs_",
+    }
+
     def __init__(self, data_dir: str | Path) -> None:
         self.data_dir = Path(data_dir)
         self.data_dir.mkdir(parents=True, exist_ok=True)
 
+    def file_stem(self, city: str) -> str:
+        """城市对应的数据文件 stem（共用文件的城市返回共用文件）。"""
+        return self.SHARED_CITY_FILES.get(city, city)
+
     def list_cities(self) -> list[str]:
         files = sorted(p.stem for p in self.data_dir.glob("*.json"))
-        return sorted(set(files) | set(self.COMBINED_CITIES))
+        return sorted(set(files) | set(self.COMBINED_CITIES) | set(self.SHARED_CITY_FILES))
 
     @staticmethod
     def is_combined(name: str) -> bool:
@@ -209,27 +254,44 @@ class CityLibrary:
     def load(self, city: str) -> City:
         if city in self.COMBINED_CITIES:
             return self._load_combined(city)
-        path = self.data_dir / f"{city}.json"
+        path = self.data_dir / f"{self.file_stem(city)}.json"
         if not path.exists():
             raise FileNotFoundError(f"未找到城市线路库：{path}")
         with path.open("r", encoding="utf-8") as f:
-            return City.from_dict(json.load(f))
+            c = City.from_dict(json.load(f))
+        if city in self.SHARED_CITY_FILES:
+            c.name = city
+        return c
 
     def _load_combined(self, key: str) -> City:
-        """合并多座城市为一座虚拟城市（线路/换乘/同站异名全部合并）。"""
+        """合并多座城市为一座虚拟城市（同 ID / 同名的线路自动合并，换乘与同站异名全部合并）。"""
         merged = City(name=key, region="同城组合", version="1.0")
-        line_ids: set[str] = set()
+        index_by_id: dict[str, int] = {}
+        index_by_name: dict[str, int] = {}
+        loaded_stems: set[str] = set()
         for part in self.COMBINED_CITIES[key]:
-            path = self.data_dir / f"{part}.json"
+            stem = self.file_stem(part)
+            if stem in loaded_stems:
+                continue  # 多座城市共用同一文件时只读一次
+            loaded_stems.add(stem)
+            path = self.data_dir / f"{stem}.json"
             if not path.exists():
                 continue
             with path.open("r", encoding="utf-8") as f:
                 c = City.from_dict(json.load(f))
             for ln in c.lines:
-                if ln.id in line_ids:
-                    continue  # 避免 ID 冲突
-                line_ids.add(ln.id)
-                merged.lines.append(ln)
+                idx = index_by_id.get(ln.id)
+                if idx is None and ln.name.strip():
+                    idx = index_by_name.get(ln.name.strip())
+                if idx is not None:
+                    ln = merge_lines(merged.lines[idx], ln)
+                    merged.lines[idx] = ln
+                else:
+                    idx = len(merged.lines)
+                    merged.lines.append(ln)
+                index_by_id[ln.id] = idx
+                if ln.name.strip():
+                    index_by_name[ln.name.strip()] = idx
             merged.external_walks.update(c.external_walks)
             for grp in c.transfers:
                 if grp not in merged.transfers:
@@ -239,14 +301,61 @@ class CityLibrary:
                     merged.aliases.append(grp)
         return merged
 
+    def _shared_siblings(self, city: str) -> tuple[str, ...]:
+        """同一份共用文件中其它城市的线路 ID 前缀。"""
+        stem = self.file_stem(city)
+        return tuple(
+            self.CITY_LINE_PREFIXES[name]
+            for name in self.SHARED_CITY_FILES
+            if self.file_stem(name) == stem and name != city and name in self.CITY_LINE_PREFIXES
+        )
+
+    def _merge_into_shared(self, city: City, path: Path) -> City:
+        """把某城市的线路合并回共用文件：只替换本城市的线路，保留同文件内其它城市的线路。"""
+        with path.open("r", encoding="utf-8") as f:
+            existing = City.from_dict(json.load(f))
+        sibling_prefixes = self._shared_siblings(city.name)
+        keep = [ln for ln in existing.lines if ln.id.startswith(sibling_prefixes)]
+        mine = [ln for ln in city.lines if not ln.id.startswith(sibling_prefixes)]
+        lines = [*keep, *mine]
+        # 按城市顺序归位（广州线路在前、佛山线路在后），组内保持原顺序
+        order = tuple(
+            self.CITY_LINE_PREFIXES[n] for n in self.SHARED_CITY_FILES
+            if self.file_stem(n) == self.file_stem(city.name) and n in self.CITY_LINE_PREFIXES
+        )
+        lines = [ln for p in order for ln in lines if ln.id.startswith(p)] + [
+            ln for ln in lines if not ln.id.startswith(order)
+        ]
+        transfers = list(existing.transfers)
+        transfers += [g for g in city.transfers if g not in transfers]
+        aliases = list(existing.aliases)
+        aliases += [g for g in city.aliases if g not in aliases]
+        walks = dict(existing.external_walks)
+        walks.update(city.external_walks)
+        return City(
+            name=self.file_stem(city.name),
+            region=city.region or existing.region,
+            version=city.version or existing.version,
+            lines=lines,
+            external_walks=walks,
+            transfers=transfers,
+            aliases=aliases,
+        )
+
     def save(self, city: City) -> None:
-        path = self.data_dir / f"{city.name}.json"
+        path = self.data_dir / f"{self.file_stem(city.name)}.json"
+        doc = city.to_dict()
+        if city.name in self.SHARED_CITY_FILES and path.exists():
+            doc = self._merge_into_shared(city, path).to_dict()
         tmp = path.with_suffix(".json.tmp")
         with tmp.open("w", encoding="utf-8") as f:
-            json.dump(city.to_dict(), f, ensure_ascii=False, indent=2)
+            json.dump(doc, f, ensure_ascii=False, indent=2)
         tmp.replace(path)
 
     def delete(self, city: str) -> None:
+        shared_stems = set(self.SHARED_CITY_FILES.values())
+        if city in self.SHARED_CITY_FILES or city in shared_stems:
+            raise LineError(f"{city} 与其它城市共用线路库文件，不能单独删除，请直接编辑其中的线路")
         path = self.data_dir / f"{city}.json"
         if path.exists():
             path.unlink()

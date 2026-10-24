@@ -22,6 +22,32 @@ def alias_names(city: City | None, station: str) -> list[str]:
     return [station]
 
 
+def related_station_names(city: City, station: str) -> list[str]:
+    """返回同站异名及可转乘站组中关联的站名。"""
+    groups = city.aliases + city.transfers
+    names = [station]
+    seen = {station}
+    pending = [station]
+    while pending:
+        current = pending.pop()
+        for group in groups:
+            if current in group:
+                for name in group:
+                    if name not in seen:
+                        seen.add(name)
+                        names.append(name)
+                        pending.append(name)
+    return names
+
+
+def station_name_on_line(city: City, line: Line, station: str) -> str:
+    """返回关联站名中在线路上实际使用的名称。"""
+    return next(
+        (name for name in related_station_names(city, station) if name in line.stations),
+        station,
+    )
+
+
 def stations_same(city: City | None, a: str, b: str) -> bool:
     """两站是否为同一车站（同名或同站异名），同付费系统不出闸。"""
     if a == b:
@@ -329,14 +355,18 @@ def price_total(trip: Trip, result: TripResult) -> float:
     return sum(s.step.price for s in result.segments if s.step.price is not None)
 
 
-def transfer_hints(city: City, station: str) -> list[tuple[Line, list[Direction]]]:
-    """换乘提示：某站可换乘的所有线路及各自方向（含同站异名）。"""
-    seen: list[Line] = []
-    for s in alias_names(city, station):
+def transfer_hints(city: City, station: str,
+                   exclude_line_id: str | None = None) -> list[tuple[Line, list[Direction]]]:
+    """换乘提示：某站关联的可换乘线路及方向，可排除刚乘坐的线路。"""
+    seen: set[str] = set()
+    out: list[tuple[Line, list[Direction]]] = []
+    for s in related_station_names(city, station):
         for ln in city.lines_serving(s):
-            if ln not in seen:
-                seen.append(ln)
-    return [(ln, ln.directions) for ln in seen]
+            if ln.id == exclude_line_id or ln.id in seen:
+                continue
+            seen.add(ln.id)
+            out.append((ln, ln.directions))
+    return out
 
 
 def reachable_from(city: City, line: Line, direction: Direction, from_station: str) -> list[str]:

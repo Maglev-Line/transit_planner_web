@@ -15,8 +15,8 @@ APP = "settings"
 class AppSettings:
     # 常用出行
     favorite_city: str = ""
-    favorite_metro: str = ""
-    favorite_bus: str = ""
+    favorite_metro: list[str] = field(default_factory=list)
+    favorite_bus: list[str] = field(default_factory=list)
     # 自动保存
     auto_save: bool = False
     auto_save_dir: str = ""
@@ -45,19 +45,25 @@ class AppSettings:
         for f in fields(cls):
             default = f.default
             if f.default_factory is not MISSING:  # default_factory 字段（如 list）
-                raw = s.value(f.name, f.default_factory())
+                raw = s.value(f.name, [])
                 if isinstance(raw, str):  # QSettings 空列表有时以空串返回
-                    raw = [x for x in raw.split("\0") if x]
-                raw = list(raw or f.default_factory())
-                data[f.name] = [str(x) for x in raw]
+                    items = [x for x in raw.split("\0") if x]
+                elif isinstance(raw, (list, tuple)):
+                    items = list(raw)
+                else:
+                    items = []
+                data[f.name] = [str(x) for x in items]
             elif isinstance(default, bool):
                 data[f.name] = s.value(f.name, default, type=bool)
             elif isinstance(default, list):
                 raw = s.value(f.name, default)
                 if isinstance(raw, str):
-                    raw = [x for x in raw.split("\0") if x]
-                raw = list(raw or default)
-                data[f.name] = [str(x) for x in raw]
+                    items = [x for x in raw.split("\0") if x]
+                elif isinstance(raw, (list, tuple)):
+                    items = list(raw)
+                else:
+                    items = default
+                data[f.name] = [str(x) for x in items]
             else:
                 data[f.name] = s.value(f.name, default, type=str)
         return cls(**data)
