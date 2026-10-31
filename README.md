@@ -124,6 +124,23 @@ npx netlify-cli dev
 
 管理员口令只保存在当前标签页的 `sessionStorage`，关闭标签页即失效；修改 Netlify 环境变量后旧口令立即作废。
 
+### 管理员登录按钮显示「未配置 ADMIN_TOKEN」
+
+审核台右上角的「管理员登录」若显示为不可用（或状态为「未配置 ADMIN_TOKEN」），说明 Netlify Function
+在**运行时**没有读到该环境变量。依次检查：
+
+1. 环境变量作用域只勾了 **Builds**：必须勾选 **Functions**（Runtime 也建议勾选）。
+2. 刚添加/修改了变量但**没有重新部署**：Netlify → Deploys → Trigger deploy → Deploy site。
+3. 站点仍停留在旧部署：确认最新提交已构建完成。
+
+浏览器直接打开 `https://<你的站点>/api/health`，正常应看到：
+
+```json
+{ "ok": true, "backend": "netlify-blobs", "adminConfigured": true, ... }
+```
+
+修复后回到审核台点「重新检测配置」即可，无需刷新页面。
+
 ## 管理员操作
 
 登录后，在 `review.html` 可以看到：

@@ -48,6 +48,7 @@ body.rv-body {
   white-space: nowrap;
 }
 .rv-admin-state.admin { color: #1f6b3a; background: #e8f7ee; }
+.rv-admin-state.warn { color: #9a5b00; background: #fff4e2; }
 
 .rv-offline {
   max-width: 1080px;
@@ -190,6 +191,29 @@ main.rv-main {
   color: var(--ink-2);
   word-break: break-all;
 }
+
+/* 管理员配置提示 */
+.rv-config {
+  margin-top: 10px;
+  padding: 10px 12px;
+  border: 1px solid #f5d9a8;
+  border-radius: 9px;
+  background: #fff8ec;
+  color: #7a4b00;
+  font-size: 12.5px;
+  line-height: 1.6;
+}
+.rv-config b { display: block; margin-bottom: 3px; }
+.rv-config p { margin: 0 0 4px; }
+.rv-config ol { margin: 0 0 8px; padding-left: 20px; display: grid; gap: 3px; }
+.rv-config code {
+  padding: 0 4px;
+  border: 1px solid #f0dcb8;
+  border-radius: 4px;
+  background: #fff;
+  font-family: ui-monospace, Consolas, monospace;
+}
+.rv-config button { font-size: 12.5px; padding: 4px 10px; }
 .rv-empty {
   padding: 36px 16px;
   text-align: center;

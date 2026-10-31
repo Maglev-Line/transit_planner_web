@@ -70,10 +70,7 @@
 
   async function boot() {
     bindEvents();
-    const health = await DataApi.health();
-    state.backend = Boolean(health.ok);
-    state.adminConfigured = Boolean(health.adminConfigured);
-    $("offline").hidden = state.backend;
+    const health = await refreshHealth();
 
     if (DataApi.hasToken() && state.backend) {
       const check = await DataApi.adminCheck();
@@ -97,16 +94,32 @@
     }
   }
 
+  async function refreshHealth() {
+    const health = await DataApi.health();
+    state.backend = Boolean(health.ok);
+    state.adminConfigured = Boolean(health.adminConfigured);
+    $("offline").hidden = state.backend;
+    updateAdminUI();
+    return health;
+  }
+
   function updateAdminUI() {
     const label = $("admin-state");
-    label.textContent = state.admin ? "管理员已登录" : "未登录管理员";
+    const blocked = state.backend && !state.adminConfigured;
+    if (state.admin) label.textContent = "管理员已登录";
+    else if (!state.backend) label.textContent = "审核服务未启用";
+    else if (blocked) label.textContent = "未配置 ADMIN_TOKEN";
+    else label.textContent = "未登录管理员";
     label.classList.toggle("admin", state.admin);
+    label.classList.toggle("warn", !state.admin && (!state.backend || blocked));
+
     $("btn-logout").hidden = !state.admin;
     $("btn-login").hidden = state.admin;
-    $("btn-login").disabled = state.backend && !state.adminConfigured;
-    $("btn-login").title = state.adminConfigured
-      ? "输入 ADMIN_TOKEN 后可执行审核与回滚"
-      : "站点未配置 ADMIN_TOKEN 环境变量，审核接口已锁定";
+    // 始终允许点击：未配置时打开弹窗给出具体排查步骤，而不是变成无法点击的灰按钮
+    $("btn-login").disabled = false;
+    $("btn-login").title = blocked
+      ? "服务端未读取到 ADMIN_TOKEN，点击查看配置步骤"
+      : "输入 ADMIN_TOKEN 后可执行审核与回滚";
   }
 
   // ---------------- 数据加载 ----------------
@@ -461,14 +474,10 @@
       if (act === "hide") return hide(item);
     });
 
-    $("btn-login").addEventListener("click", () => {
-      $("admin-token").value = "";
-      $("login-error").hidden = true;
-      $("login-dialog").showModal();
-      requestAnimationFrame(() => $("admin-token").focus());
-    });
+    $("btn-login").addEventListener("click", openLoginDialog);
     $("btn-login-close").addEventListener("click", () => $("login-dialog").close());
     $("btn-login-cancel").addEventListener("click", () => $("login-dialog").close());
+    $("btn-recheck").addEventListener("click", recheckConfig);
     $("admin-token").addEventListener("keydown", (ev) => {
       if (ev.key === "Enter") {
         ev.preventDefault();
@@ -489,6 +498,40 @@
     });
   }
 
+  function openLoginDialog() {
+    if (!state.backend) {
+      toast("审核服务未启用：请通过 Netlify 部署（或运行 netlify dev）后再登录");
+      return;
+    }
+    $("admin-token").value = "";
+    $("login-error").hidden = true;
+    $("login-config").hidden = Boolean(state.adminConfigured);
+    $("login-dialog").showModal();
+    if (state.adminConfigured) requestAnimationFrame(() => $("admin-token").focus());
+  }
+
+  async function recheckConfig() {
+    const button = $("btn-recheck");
+    button.disabled = true;
+    button.textContent = "检测中…";
+    const health = await refreshHealth();
+    button.disabled = false;
+    button.textContent = "重新检测配置";
+
+    if (!health.ok) {
+      toast("仍无法连接审核服务，请确认站点已部署");
+      return;
+    }
+    if (health.adminConfigured) {
+      $("login-config").hidden = true;
+      toast("已检测到 ADMIN_TOKEN，可以输入口令登录");
+      $("admin-token").focus();
+    } else {
+      $("login-config").hidden = false;
+      toast("仍未检测到 ADMIN_TOKEN：请确认作用域包含 Functions 并已重新部署");
+    }
+  }
+
   async function login() {
     const error = $("login-error");
     const token = $("admin-token").value.trim();
@@ -503,6 +546,11 @@
       DataApi.setToken("");
       error.textContent = res.error || "登录失败";
       error.hidden = false;
+      if (res.code === "ADMIN_DISABLED") {
+        state.adminConfigured = false;
+        $("login-config").hidden = false;
+        updateAdminUI();
+      }
       return;
     }
     state.admin = true;
