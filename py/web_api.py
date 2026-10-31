@@ -167,12 +167,15 @@ def api_init() -> str:
     manifest = {}
     if manifest_path.exists():
         manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    library = _library()
+    cities = library.list_cities()
     return _ok(
         appName=APP_NAME,
         version=__version__,
         syncedAt=manifest.get("syncedAt", ""),
         typeLabels=TYPE_LABELS,
-        cities=_library().list_cities(),
+        cities=cities,
+        cityFiles={name: library.file_stem(name) for name in cities},
         combinedCities={k: list(v) for k, v in CityLibrary.COMBINED_CITIES.items()},
     )
 
@@ -201,6 +204,150 @@ def api_load_city(name: str) -> str:
         )
     except Exception as exc:  # noqa: BLE001 - 统一转成 JSON 错误返回界面
         return _err(f"加载线路库失败：{exc}")
+
+
+def api_city_json(name: str) -> str:
+    """城市原始 JSON（供「线路数据工坊」编辑）。
+
+    读取的是浏览器虚拟文件系统里的数据文件：桥接层在启动时已把
+    「审核通过」的覆盖数据写入 `/data`，因此这里拿到的就是当前生效版本。
+    """
+    try:
+        if not name:
+            return _err("缺少城市名")
+        stem = _library().file_stem(name)
+        path = Path(DATA_DIR) / f"{stem}.json"
+        if not path.exists():
+            return _err(f"未找到城市数据文件：{path.name}")
+        doc = json.loads(path.read_text(encoding="utf-8"))
+        return _ok(city=doc, fileName=f"{stem}.json", stem=stem)
+    except Exception as exc:  # noqa: BLE001
+        return _err(f"读取城市数据失败：{exc}")
+
+
+def _is_number(value) -> bool:
+    return isinstance(value, (int, float)) and not isinstance(value, bool)
+
+
+def api_validate_city(doc_json: str) -> str:
+    """用内核数据模型校验城市 JSON（编辑器提交前的最后一道关）。
+
+    返回 `{"ok": true, "valid": bool, "errors": [...], "warnings": [...], "stats": {...}, "city": 规范化后的文档}`
+    —— `ok` 表示接口调用成功，`valid` 才是数据是否可用。
+    """
+    errors: list[str] = []
+    warnings: list[str] = []
+    stats = {"lines": 0, "stations": 0, "segments": 0}
+    if len(doc_json) > 2_000_000:
+        return _err("城市数据过大（上限约 2 MB）")
+    try:
+        data = json.loads(doc_json)
+    except Exception as exc:  # noqa: BLE001
+        return _ok(valid=False, errors=[f"JSON 解析失败：{exc}"], warnings=[], stats=stats, city=None)
+    if not isinstance(data, dict):
+        return _ok(valid=False, errors=["城市数据必须是一个 JSON 对象"], warnings=[], stats=stats, city=None)
+
+    raw_lines = data.get("lines")
+    if not isinstance(raw_lines, list):
+        return _ok(valid=False, errors=["缺少线路列表（lines 必须是数组）"], warnings=[], stats=stats, city=None)
+    for i, raw in enumerate(raw_lines, 1):
+        if not isinstance(raw, dict):
+            errors.append(f"第 {i} 条线路不是对象")
+    if errors:
+        return _ok(valid=False, errors=errors[:40], warnings=[], stats=stats, city=None)
+
+    try:
+        city = City.from_dict(data)
+    except Exception as exc:  # noqa: BLE001
+        return _ok(valid=False, errors=[f"数据结构错误：{exc}"], warnings=[], stats=stats, city=None)
+
+    try:
+        if not isinstance(city.name, str) or not city.name.strip():
+            errors.append("缺少城市名（city 字段）")
+        if not city.lines:
+            errors.append("至少需要一条线路")
+
+        seen_ids: dict[str, int] = {}
+        all_stations: set[str] = set()
+        for i, ln in enumerate(city.lines, 1):
+            label = f"「{ln.name}」" if isinstance(ln.name, str) and ln.name.strip() else f"第 {i} 条线路"
+            if not isinstance(ln.id, str) or not ln.id.strip():
+                errors.append(f"第 {i} 条线路缺少线路 ID（id）")
+            elif ln.id in seen_ids:
+                errors.append(f"线路 ID「{ln.id}」重复（第 {seen_ids[ln.id]} 条与第 {i} 条）")
+            else:
+                seen_ids[ln.id] = i
+            if not isinstance(ln.name, str) or not ln.name.strip():
+                errors.append(f"第 {i} 条线路缺少线路名称（name）")
+            if not isinstance(ln.type, str) or not ln.type.strip():
+                errors.append(f"{label}缺少交通类型（type）")
+
+            if not isinstance(ln.stations, list):
+                errors.append(f"{label}站表（stations）必须是数组")
+                continue
+            if len(ln.stations) < 2:
+                errors.append(f"{label}至少需要 2 个车站")
+            if not isinstance(ln.travel_minutes, list):
+                errors.append(f"{label}区间时长（travel_minutes）必须是数组")
+            else:
+                closes_loop = (
+                    getattr(ln, "ring", False)
+                    and len(ln.stations) >= 2
+                    and ln.stations[0] == ln.stations[-1]
+                )
+                required = len(ln.stations) if getattr(ln, "ring", False) and not closes_loop else max(0, len(ln.stations) - 1)
+                if len(ln.travel_minutes) < required:
+                    warnings.append(f"{label}区间时长不足（{len(ln.travel_minutes)}/{required} 段），部分区段暂时无法计算")
+                elif len(ln.travel_minutes) > required + 1:
+                    warnings.append(f"{label}区间时长比站表多 {len(ln.travel_minutes) - required} 段，内核会忽略多余部分")
+
+            for j, station in enumerate(ln.stations, 1):
+                if not isinstance(station, str) or not station.strip():
+                    errors.append(f"{label}第 {j} 个车站名称为空")
+                else:
+                    all_stations.add(station)
+            for j, minutes in enumerate(ln.travel_minutes if isinstance(ln.travel_minutes, list) else [], 1):
+                if not _is_number(minutes):
+                    errors.append(f"{label}第 {j} 段时长不是数字")
+                elif minutes < 0:
+                    errors.append(f"{label}第 {j} 段时长为负数")
+                elif minutes > 300:
+                    warnings.append(f"{label}第 {j} 段时长超过 300 分钟，请确认")
+
+            stats["lines"] += 1
+            stats["segments"] += max(0, len(ln.stations) - 1)
+
+        for key, groups in (("transfers", city.transfers), ("aliases", city.aliases)):
+            if not isinstance(groups, list):
+                errors.append(f"{key} 必须是数组")
+                continue
+            for gi, group in enumerate(groups, 1):
+                if not isinstance(group, list) or len(group) < 2:
+                    errors.append(f"{key} 第 {gi} 组至少需要 2 个站名")
+                elif any(not isinstance(x, str) or not x.strip() for x in group):
+                    errors.append(f"{key} 第 {gi} 组包含空的站名")
+
+        if not isinstance(city.external_walks, dict):
+            errors.append("external_walks 必须是对象")
+        else:
+            for key, value in city.external_walks.items():
+                if "|" not in str(key):
+                    warnings.append(f"external_walks 的键「{key}」建议写成「站A|站B」")
+                if not _is_number(value) or value < 0:
+                    errors.append(f"external_walks「{key}」必须是不小于 0 的数字")
+    except Exception as exc:  # noqa: BLE001
+        errors.append(f"数据检查失败：{exc}")
+
+    stats["stations"] = len(all_stations)
+    errors = list(dict.fromkeys(errors))
+    warnings = list(dict.fromkeys(warnings))
+    return _ok(
+        valid=not errors,
+        errors=errors[:40],
+        warnings=warnings[:40],
+        stats=stats,
+        city=city.to_dict() if not errors else None,
+    )
 
 
 def api_line(line_id: str) -> str:

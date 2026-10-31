@@ -33,6 +33,22 @@ def main() -> int:
     cities = info["cities"]
     print(f"[√] 城市：{'、'.join(cities)}")
     print(f"[√] 同城组合：{'、'.join(info['combinedCities'])}")
+    assert info.get("cityFiles", {}).get("广州") == "广州-佛山", "共用文件城市应映射到 广州-佛山.json"
+    print("[√] 城市文件映射：广州 / 佛山 → 广州-佛山.json")
+
+    # 数据工坊：读取原始 JSON → 内核校验 → 故意制造错误
+    raw = call("api_city_json", "上海")
+    assert raw["fileName"] == "上海.json" and raw["city"]["city"] == "上海"
+    checked = call("api_validate_city", json.dumps(raw["city"], ensure_ascii=False))
+    assert checked["valid"] and checked["stats"]["lines"] == len(raw["city"]["lines"])
+    print(f"[√] 数据工坊：读取上海 JSON 并通过校验（{checked['stats']['lines']} 条线路、"
+          f"{checked['stats']['stations']} 站、{len(checked['warnings'])} 条提醒）")
+
+    broken_doc = json.loads(json.dumps(raw["city"], ensure_ascii=False))
+    broken_doc["lines"][0]["travel_minutes"] = ["不是数字"]
+    broken = call("api_validate_city", json.dumps(broken_doc, ensure_ascii=False))
+    assert not broken["valid"] and broken["errors"], "非法区间时长应被内核校验拦下"
+    print(f"[√] 数据工坊：非法数据被拦下（{broken['errors'][0][:24]}…）")
 
     city_name = "上海" if "上海" in cities else cities[0]
     city = call("api_load_city", city_name)

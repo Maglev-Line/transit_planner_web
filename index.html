@@ -86,9 +86,13 @@
       </label>
 
       <div class="spacer"></div>
+      <a class="btn-link" id="btn-editor" href="editor.html" title="在线编辑城市线路数据、上传 JSON、提交审核">
+        数据工坊
+      </a>
       <button id="btn-import" title="载入本地方案 JSON（与桌面版格式互通）">导入方案</button>
       <input type="file" id="file-import" accept=".json,application/json" hidden>
       <button id="btn-export" title="保存为方案 JSON">导出方案</button>
+      <button id="btn-clear" class="danger" title="一键清除当前方案的全部行程段（城市与方案设置保留）">清空规划</button>
       <button id="btn-print" class="primary" title="生成 A4 运转图纸并调用打印（可选另存为 PDF）">导出图纸 (PDF)</button>
       </header>
     </div>
@@ -149,7 +153,11 @@
       <a href="https://tools.kblack.cn/shmetro-faremap/" target="_blank" rel="noopener noreferrer"
          title="上海轨道交通票价图">上海轨道交通票价图</a>
 
-      <span class="ft-note">以上均为第三方站点，与本站无隶属关系</span>
+      <span class="ft-note">
+        <a href="editor.html" title="在线编辑线路数据并提交审核">数据工坊</a> ·
+        <a href="review.html" title="查看所有人的提交、差异与审核结果">数据审核台</a> ·
+        以上友情链接均为第三方站点，与本站无隶属关系
+      </span>
     </footer>
   </div>
 

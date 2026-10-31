@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>线路数据工坊 · 运转计划助手</title>
+  <meta name="description" content="以线路图方式在线编辑城市线路数据：增删车站、修改区间时长与换乘关系，导出城市 JSON，或匿名提交给管理员审核后全站生效。">
+  <link rel="stylesheet" href="styles.css">
+  <link rel="stylesheet" href="editor.css">
+</head>
+
+<body class="ed-body">
+  <!-- 启动遮罩：Pyodide 运行时与内核加载进度 -->
+  <div class="boot" id="boot">
+    <h1>线路数据工坊 <span>Web</span></h1>
+    <p id="boot-msg">正在准备 Python 运行时…</p>
+    <div class="bar"><div id="boot-bar"></div></div>
+    <p class="boot-tip">
+      编辑器与规划器共用同一份 Python 内核，用于校验城市数据是否合法；
+      首次打开需下载约 10&nbsp;MB 运行时，之后由浏览器缓存。
+    </p>
+  </div>
+
+  <div id="editor" hidden>
+    <header class="ed-header">
+      <a class="ed-back" href="index.html" title="返回运转计划器">← 返回规划器</a>
+      <div class="ed-brand">线路数据工坊 <span class="badge">社区协作</span></div>
+
+      <div class="ed-citybar">
+        <label>城市
+          <select id="city-select" title="选择要编辑的城市数据库"></select>
+        </label>
+        <button type="button" id="btn-new-city" class="ghost" title="从空白或现有城市创建新的城市数据库">＋ 新建城市</button>
+        <button type="button" id="btn-upload" class="ghost" title="上传城市 JSON，覆盖当前编辑内容">⬆ 上传 JSON</button>
+        <input type="file" id="file-upload" accept=".json,application/json" hidden>
+      </div>
+
+      <div class="spacer"></div>
+      <span class="ed-state" id="ed-state">—</span>
+      <a class="ed-link" href="review.html" title="查看所有提交记录、差异与已发布数据">审核台 ↗</a>
+      <button type="button" id="btn-reset" class="ghost" title="放弃未提交的修改，恢复为线上数据">还原</button>
+      <button type="button" id="btn-export" title="下载当前编辑的城市 JSON">导出 JSON</button>
+      <button type="button" id="btn-submit" class="primary" title="匿名提交给管理员审核；通过后全站生效">提交审核</button>
+    </header>
+
+    <div class="ed-banner" id="banner" hidden></div>
+
+    <main class="ed-main">
+      <!-- 左：线路列表（迷你线路图） -->
+      <aside class="ed-panel ed-lines">
+        <div class="ed-panel-head">
+          <h2>线路</h2>
+          <span class="hint" id="line-count"></span>
+          <div class="spacer"></div>
+          <button type="button" id="btn-add-line" class="ghost" title="新增一条线路">＋</button>
+        </div>
+        <div class="ed-line-list" id="line-list"></div>
+        <p class="ed-tip">
+          单击线路开始编辑；在线路图里可以直接点选站点、拖动站点排序、点击区间上的「＋」插入车站。
+        </p>
+      </aside>
+
+      <!-- 中：线路图 / 线路属性 / JSON -->
+      <section class="ed-panel ed-workspace">
+        <div class="ed-panel-head">
+          <h2 id="line-title">线路图</h2>
+          <div class="spacer"></div>
+          <div class="ed-tabs" role="tablist">
+            <button type="button" role="tab" data-view="map" class="active">线路图</button>
+            <button type="button" role="tab" data-view="props">线路属性</button>
+            <button type="button" role="tab" data-view="json">JSON</button>
+          </div>
+        </div>
+
+        <div class="ed-view" id="view-map">
+          <div class="ed-map-toolbar" id="map-toolbar"></div>
+          <div class="ed-mapwrap" id="mapwrap"><div id="map"></div></div>
+          <div id="station-editor"></div>
+        </div>
+
+        <div class="ed-view" id="view-props" hidden></div>
+
+        <div class="ed-view" id="view-json" hidden>
+          <div class="ed-json-actions">
+            <button type="button" id="btn-json-apply" class="primary">从 JSON 应用</button>
+            <button type="button" id="btn-json-format">格式化</button>
+            <span class="hint">JSON 模式可编辑全部字段（含方向、双色等）；应用时会用内核数据模型校验。</span>
+          </div>
+          <div class="err" id="json-error" hidden></div>
+          <textarea id="json-text" spellcheck="false" autocomplete="off"></textarea>
+        </div>
+      </section>
+
+      <!-- 右：城市信息 / 换乘关系 / 校验 -->
+      <aside class="ed-panel ed-meta">
+        <div class="ed-panel-head"><h2>城市信息</h2></div>
+        <div id="city-meta" class="ed-form"></div>
+
+        <div class="ed-panel-head"><h2>换乘 / 同站异名</h2></div>
+        <div id="group-meta"></div>
+
+        <div class="ed-panel-head"><h2>站外步行</h2></div>
+        <div id="walk-meta"></div>
+
+        <div class="ed-panel-head"><h2>数据校验</h2></div>
+        <div id="validation" class="ed-validation"></div>
+      </aside>
+    </main>
+  </div>
+
+  <!-- 新建城市 -->
+  <dialog id="new-city-dialog">
+    <form method="dialog">
+      <div class="modal-head">
+        <h3>新建城市数据库</h3>
+        <div class="spacer"></div>
+        <button type="button" class="ghost" id="btn-new-close">✕</button>
+      </div>
+      <div class="modal-body">
+        <div class="field">
+          <span>城市名（同时作为 JSON 文件名）</span>
+          <input id="new-city-name" type="text" placeholder="如：杭州" autocomplete="off">
+        </div>
+        <div class="grid2">
+          <div class="field">
+            <span>地区（选填）</span>
+            <input id="new-city-region" type="text" placeholder="如：华东" autocomplete="off">
+          </div>
+          <div class="field">
+            <span>初始内容</span>
+            <select id="new-city-source"></select>
+          </div>
+        </div>
+        <div class="err" id="new-city-error" hidden></div>
+      </div>
+      <div class="modal-foot">
+        <span class="hint">创建后先编辑线路，再提交审核。</span>
+        <div class="spacer"></div>
+        <button type="button" id="btn-new-cancel">取消</button>
+        <button type="button" class="primary" id="btn-new-ok">创建</button>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- 提交审核 -->
+  <dialog id="submit-dialog" class="ed-submit-dialog">
+    <form method="dialog">
+      <div class="modal-head">
+        <h3>提交审核</h3>
+        <div class="spacer"></div>
+        <button type="button" class="ghost" id="btn-submit-close">✕</button>
+      </div>
+      <div class="modal-body">
+        <div class="submit-target" id="submit-target"></div>
+
+        <div class="field">
+          <span>修改说明（所有人可见）</span>
+          <textarea id="submit-summary" rows="3" placeholder="如：补充 19 号线后通段 4 站，并修正 2 站区间时长"></textarea>
+        </div>
+        <div class="field">
+          <span>联系方式（选填，仅管理员可见）</span>
+          <input id="submit-contact" type="text" placeholder="邮箱 / 微信 / B 站，方便管理员联系你" autocomplete="off">
+        </div>
+
+        <h4 class="ed-diff-title">变更预览</h4>
+        <div class="diff-preview" id="diff-preview"></div>
+
+        <p class="hint">
+          提交后，本次修改内容、差异与审核结果会对所有访客公开（联系方式不会公开）；
+          管理员通过后立即对全站生效，并可随时回滚。
+        </p>
+        <div class="err" id="submit-error" hidden></div>
+      </div>
+      <div class="modal-foot">
+        <span class="hint" id="submit-hint"></span>
+        <div class="spacer"></div>
+        <button type="button" id="btn-submit-cancel">取消</button>
+        <button type="button" class="primary" id="btn-submit-ok">提交</button>
+      </div>
+    </form>
+  </dialog>
+
+  <div class="toast" id="toast" hidden></div>
+
+  <script src="https://cdn.jsdelivr.net/pyodide/v0.27.2/full/pyodide.js"></script>
+  <script src="js/bridge.js"></script>
+  <script src="js/data-api.js"></script>
+  <script src="js/city-diff.js"></script>
+  <script src="js/editor.js"></script>
+</body>
+
+</html>

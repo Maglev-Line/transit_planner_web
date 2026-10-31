@@ -1,0 +1,20 @@
+{
+  "name": "transit-planner-web",
+  "version": "1.5.0",
+  "private": true,
+  "description": "运转计划助手 Web：静态前端 + Netlify Functions（匿名提交线路数据、管理员审核与回滚）",
+  "type": "module",
+  "scripts": {
+    "build": "node tools/build_site.mjs",
+    "dev": "netlify dev",
+    "test": "node tools/test_server.mjs && python tools/smoke_test.py",
+    "test:server": "node tools/test_server.mjs",
+    "test:core": "python tools/smoke_test.py"
+  },
+  "dependencies": {
+    "@netlify/blobs": "^11.1.7"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

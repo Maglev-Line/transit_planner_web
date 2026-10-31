@@ -1,15 +1,44 @@
 # Netlify 部署配置
-# 本项目是「纯静态站点」：Python 核心逻辑由浏览器端的 Pyodide 运行，无需任何构建步骤。
+# 前端仍是「纯静态站点」：Python 核心逻辑由浏览器端的 Pyodide 运行。
+# 构建命令只做一件事：把浏览器需要的文件复制到 dist/，避免把 node_modules
+# 与函数源码当作静态资源发布。数据审核接口由 Netlify Functions + Netlify Blobs 提供。
 # 对应的 Netlify Build settings：
 #   Base directory    ：留空
-#   Build command     ：留空
-#   Publish directory ：.
+#   Build command     ：node tools/build_site.mjs（netlify.toml 已配置）
+#   Publish directory ：dist（netlify.toml 已配置）
 
 [build]
-  publish = "."
+  command = "node tools/build_site.mjs"
+  publish = "dist"
+  functions = "netlify/functions"
+
+[build.environment]
+  NODE_VERSION = "20"
+
+[functions]
+  node_bundler = "esbuild"
+
+# 审核接口：/api/* → 函数 api
+[[redirects]]
+  from = "/api/*"
+  to = "/.netlify/functions/api/:splat"
+  status = 200
+  force = true
 
 [[headers]]
   for = "/py/*"
   [headers.values]
     # Python 源码与城市数据随桌面版同步，改动频繁：只做短缓存，避免更新后仍加载旧内核
+    Cache-Control = "public, max-age=300"
+
+[[headers]]
+  for = "/api/*"
+  [headers.values]
+    # 审核数据随时可能被通过或回滚，禁止任何缓存
+    Cache-Control = "no-store"
+    X-Content-Type-Options = "nosniff"
+
+[[headers]]
+  for = "/js/*"
+  [headers.values]
     Cache-Control = "public, max-age=300"

@@ -44,6 +44,17 @@ button.primary:hover { background: #2559c4; }
 button.ghost { border-color: transparent; background: transparent; color: var(--ink-2); padding: 4px 8px; }
 button.ghost:hover { background: #eef1f6; }
 button:disabled { opacity: .5; cursor: not-allowed; }
+button.danger { color: var(--warn); border-color: #f0c2bc; background: #fdf7f6; }
+button.danger:hover { background: #fbeae7; border-color: #e3a69e; }
+
+/* 顶栏内的链接按钮（与 button 视觉一致） */
+a.btn-link {
+  display: inline-flex; align-items: center;
+  border: 1px solid #c3d5fb; background: #eef4ff; color: var(--brand);
+  border-radius: 8px; padding: 6px 12px; font-size: 14px; font-weight: 600;
+  text-decoration: none; white-space: nowrap;
+}
+a.btn-link:hover { background: #e2ecff; border-color: #a9c2f7; }
 
 input, select, textarea {
   border: 1px solid var(--line);
@@ -359,3 +370,54 @@ legend { font-size: 12px; color: var(--ink-2); padding: 0 4px; }
   /* 窄屏下页面整体滚动，解除弹内滚动，改用脚本滚动定位 */
   .library, .library > #line-list, .library > .detail { overflow: visible; }
 }
+
+/* ================= 数据工坊 / 审核台共用：徽章与差异对比 ================= */
+
+.badge {
+  display: inline-block;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.6;
+  padding: 0 7px;
+  border-radius: 99px;
+  color: var(--brand);
+  background: #eef4ff;
+  border: 1px solid #c3d5fb;
+  white-space: nowrap;
+}
+
+.status {
+  display: inline-block;
+  font-size: 11.5px;
+  font-weight: 600;
+  line-height: 1.7;
+  padding: 0 8px;
+  border-radius: 99px;
+  border: 1px solid var(--line);
+  background: #f4f6fa;
+  color: var(--ink-2);
+  white-space: nowrap;
+}
+.status-pending { background: #fff4e2; border-color: #f5d9a8; color: #9a5b00; }
+.status-approved { background: #e8f7ee; border-color: #bfe4cd; color: #1f6b3a; }
+.status-rejected { background: #fdf2f0; border-color: #f0c2bc; color: #a33426; }
+.status-reverted { background: #eef1f6; border-color: #dbe3ef; color: #5b6472; }
+.status-hidden { background: #f3f0fa; border-color: #d8d0ea; color: #5b4b85; }
+
+.diff { font-size: 12.5px; line-height: 1.55; }
+.diff-summary { margin: 0 0 8px; }
+.diff-table { width: 100%; border-collapse: collapse; margin: 6px 0 8px; font-size: 12px; }
+.diff-table th, .diff-table td { border: 1px solid var(--line); padding: 4px 7px; text-align: left; vertical-align: top; }
+.diff-table th { background: #f6f8fc; color: var(--ink-2); font-weight: 600; }
+.diff-table .old { color: #a33426; }
+.diff-table .new { color: #1f6b3a; font-weight: 600; }
+.diff-group { margin: 8px 0; }
+.diff-group h4 { margin: 6px 0 4px; font-size: 12.5px; }
+.diff-line { border: 1px solid var(--line); border-radius: 8px; padding: 7px 9px; margin: 5px 0; background: #fcfdff; }
+.diff-line.removed { border-color: #f0c2bc; background: #fdf7f6; }
+.diff-line-head { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.diff-line-head .swatch { width: 18px; height: 6px; border-radius: 3px; }
+.diff-ops { margin: 5px 0 0; padding-left: 18px; display: grid; gap: 2px; }
+.diff-ops li.add { color: #1f6b3a; }
+.diff-ops li.del { color: #a33426; }
+.diff-ops li.rename { color: #1f4f9e; }

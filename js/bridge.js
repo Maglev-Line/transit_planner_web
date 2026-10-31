@@ -45,6 +45,7 @@
 
     onProgress("正在读取内核清单…", 0.35);
     const manifest = JSON.parse(await fetchText("py/manifest.json"));
+    TP.manifest = manifest;
 
     const coreUrls = manifest.coreFiles.map((rel) => `py/${rel}`);
     const dataUrls = manifest.dataFiles.map((f) => `py/data/${f}`);
@@ -76,14 +77,53 @@
     });
 
     pyodide.runPython(`import sys\nif "${PY_ROOT}" not in sys.path:\n    sys.path.insert(0, "${PY_ROOT}")`);
+
+    // 社区审核通过的覆盖数据：写入 /data 后，内核加载城市时自然使用最新版本
+    onProgress("正在同步审核通过的线路数据…", 0.94);
+    await applyPublishedOverrides();
+
     pyodide.runPython("import web_api");
 
     onProgress("内核就绪", 1);
     return call("api_init");
   }
 
+  /**
+   * 拉取审核通过的覆盖数据。未部署 Netlify Functions（纯静态服务器）时静默跳过，
+   * 规划器照常使用内置数据。
+   */
+  async function applyPublishedOverrides() {
+    TP.published = {};
+    TP.backendAvailable = false;
+    try {
+      const res = await fetch("/api/cities", { cache: "no-store" });
+      if (!res.ok) return;
+      const data = await res.json();
+      if (!data?.ok || !data.cities) return;
+      TP.backendAvailable = true;
+      for (const [name, entry] of Object.entries(data.cities)) {
+        // 城市名即数据文件名：拒绝任何路径分隔符，避免写到 /data 之外
+        if (!name || /[\\/]/.test(name) || name.includes("..")) continue;
+        const doc = entry?.doc;
+        if (!doc || typeof doc !== "object") continue;
+        writeFile(`${DATA_ROOT}/${name}.json`, JSON.stringify(doc, null, 2));
+        TP.published[name] = {
+          updatedAt: entry.updatedAt || "",
+          submissionId: entry.submissionId || "",
+          summary: entry.summary || "",
+          kind: entry.kind || "edit",
+        };
+      }
+    } catch {
+      /* 离线 / 本地静态服务器：忽略 */
+    }
+  }
+
   window.TP = {
     boot,
+    published: {},
+    backendAvailable: false,
+    manifest: null,
     get pyodide() { return pyodide; },
 
     // ---- 内核接口（全部返回已解析的 JSON）----
@@ -100,5 +140,9 @@
     manualTypes: () => call("api_manual_types"),
     newTrip: (city) => call("api_new_trip", city || ""),
     walkSuggestion: (trip, index) => call("api_walk_suggestion", JSON.stringify(trip), index),
+
+    // ---- 数据工坊（编辑器）----
+    cityJson: (name) => call("api_city_json", name),
+    validateCity: (doc) => call("api_validate_city", JSON.stringify(doc)),
   };
 })();

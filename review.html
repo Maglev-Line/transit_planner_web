@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>数据审核台 · 运转计划助手</title>
+  <meta name="description" content="运转计划助手城市数据的公开审核记录：匿名提交、差异对比、审核结果与已发布数据全部公开可查；管理员通过后可随时回滚。">
+  <link rel="stylesheet" href="styles.css">
+  <link rel="stylesheet" href="review.css">
+</head>
+
+<body class="rv-body">
+  <header class="rv-header">
+    <a class="ed-back" href="index.html" title="返回运转计划器">← 规划器</a>
+    <div class="rv-brand">数据审核台</div>
+    <span class="hint">所有提交与差异公开可查</span>
+    <div class="spacer"></div>
+    <a class="ed-link" href="editor.html">线路数据工坊 ↗</a>
+    <span class="rv-admin-state" id="admin-state">未登录管理员</span>
+    <button type="button" id="btn-login">管理员登录</button>
+    <button type="button" id="btn-logout" class="ghost" hidden>退出登录</button>
+  </header>
+
+  <div class="rv-offline" id="offline" hidden>
+    审核服务未启用：当前是纯静态环境（例如本地 python -m http.server）。部署到 Netlify 后即可查看公开审核记录与进行审核。
+  </div>
+
+  <main class="rv-main">
+    <section class="rv-summary" id="summary"></section>
+
+    <nav class="rv-tabs" id="tabs" aria-label="审核记录分类">
+      <button type="button" data-tab="pending" class="active">待审核 <span class="count" id="count-pending"></span></button>
+      <button type="button" data-tab="approved">已通过 <span class="count" id="count-approved"></span></button>
+      <button type="button" data-tab="rejected">已驳回 <span class="count" id="count-rejected"></span></button>
+      <button type="button" data-tab="reverted">已回滚 <span class="count" id="count-reverted"></span></button>
+      <button type="button" data-tab="all">全部提交</button>
+      <button type="button" data-tab="published">已发布数据</button>
+      <button type="button" data-tab="rollbacks">回滚记录</button>
+    </nav>
+
+    <div class="rv-list" id="list">
+      <p class="hint">正在加载审核记录…</p>
+    </div>
+
+    <section class="rv-help">
+      <h3>审核规则</h3>
+      <ul>
+        <li>任何人都可以匿名提交城市数据修改或新建城市（JSON 由系统做结构与数值校验）。</li>
+        <li>提交说明、完整数据、差异对比与审核结果对所有访客公开；<b>联系方式仅管理员可见</b>。</li>
+        <li>管理员通过后，覆盖数据立即对全站生效（优先于内置数据），所有访客刷新页面即可使用。</li>
+        <li>管理员可随时回滚到内置数据或任意历史版本；每次回滚同样记录在本页。</li>
+      </ul>
+    </section>
+  </main>
+
+  <!-- 管理员登录 -->
+  <dialog id="login-dialog" class="notice">
+    <form method="dialog">
+      <div class="modal-head">
+        <h3>管理员登录</h3>
+        <div class="spacer"></div>
+        <button type="button" class="ghost" id="btn-login-close">✕</button>
+      </div>
+      <div class="modal-body">
+        <p class="hint">
+          请输入 Netlify 站点环境变量 <code>ADMIN_TOKEN</code> 的值。
+          口令只保存在当前浏览器标签页（sessionStorage），关闭标签页后自动失效。
+        </p>
+        <div class="field">
+          <span>管理员口令</span>
+          <input id="admin-token" type="password" autocomplete="current-password" placeholder="ADMIN_TOKEN">
+        </div>
+        <div class="err" id="login-error" hidden></div>
+      </div>
+      <div class="modal-foot">
+        <span class="hint">通过口令后，审核按钮才会出现在记录卡片上。</span>
+        <div class="spacer"></div>
+        <button type="button" id="btn-login-cancel">取消</button>
+        <button type="button" class="primary" id="btn-login-ok">登录</button>
+      </div>
+    </form>
+  </dialog>
+
+  <div class="toast" id="toast" hidden></div>
+
+  <script src="js/data-api.js"></script>
+  <script src="js/city-diff.js"></script>
+  <script src="js/review.js"></script>
+</body>
+
+</html>

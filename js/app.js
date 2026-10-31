@@ -141,9 +141,21 @@
     } else {
       state.lines = res.lines || [];
       state.cityInfo = res.city;
+      const stem = state.info?.cityFiles?.[name] || name;
+      const override = TP.published?.[stem];
       $("city-label").textContent = res.city
-        ? `${res.city.lineCount} 条线路 · ${res.city.stationCount} 站${res.city.combined ? " · 只读同城组合" : ""}`
+        ? `${res.city.lineCount} 条线路 · ${res.city.stationCount} 站${res.city.combined ? " · 只读同城组合" : ""}${override ? " · 含社区审核数据" : ""}`
         : "纯手动模式";
+
+      const editorButton = $("btn-editor");
+      if (editorButton) {
+        editorButton.href = name && !res.city?.combined
+          ? `editor.html?city=${encodeURIComponent(stem)}`
+          : "editor.html";
+        editorButton.title = res.city?.combined
+          ? "同城组合由多座城市合并而成，请分别编辑组成城市的数据"
+          : "在线编辑该城市线路数据、上传 JSON、提交审核";
+      }
     }
     state.lineDetail.clear();
     renderLibrary();
@@ -675,6 +687,21 @@
     a.download = `${state.trip.name || "运转方案"}.json`;
     a.click();
     URL.revokeObjectURL(a.href);
+  });
+
+  // 一键清除当前方案的全部行程段（保留城市、方案名、日期与付费区设置）
+  $("btn-clear").addEventListener("click", () => {
+    if (!state.trip.steps.length) {
+      toast("当前没有行程可清除");
+      return;
+    }
+    if (!confirm(`确定清除当前方案的 ${state.trip.steps.length} 段行程吗？\n城市、方案名、日期与付费区设置会保留，此操作不可撤销。`)) return;
+    state.trip.steps = [];
+    state.result = null;
+    setStatus("");
+    renderAll();
+    persist();
+    toast("已清除当前规划");
   });
 
   $("btn-import").addEventListener("click", () => $("file-import").click());

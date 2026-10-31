@@ -4,6 +4,12 @@ __pycache__/
 Thumbs.db
 .vscode/
 .idea/
+node_modules/
+.netlify/
+dist/
+.env
+.env.*
+!.env.example
 
 # py/ 是 tools/sync_core.py 从桌面版同步来的（生成物），但必须提交：
-# Netlify 上没有任何构建步骤，缺了它就加载不到内核与数据。
+# Netlify 的构建步骤只是把站点文件复制到 dist/，缺了 py/ 同样加载不到内核与数据。
