@@ -157,7 +157,7 @@
 
   function normalizeLine(raw) {
     const line = raw && typeof raw === "object" ? raw : {};
-    return {
+    const normalized = {
       ...line,
       id: String(line.id ?? ""),
       name: String(line.name ?? ""),
@@ -182,6 +182,12 @@
         }))
         : [],
     };
+    // 环线首尾重复记录的闭合站在编辑器中统一去掉，只保留闭合区间的时长
+    if (normalized.ring && normalized.stations.length >= 3 && normalized.stations[0] === normalized.stations[normalized.stations.length - 1]) {
+      normalized.stations = normalized.stations.slice(0, -1);
+      normalized.travel_minutes = normalized.travel_minutes.slice(0, normalized.stations.length);
+    }
+    return normalized;
   }
 
   function normalizeDoc(raw, fallbackName) {
@@ -369,13 +375,23 @@
 
   function miniMap(line) {
     const stations = line.stations || [];
+    const color = safeColor(line.color);
+    if (line.ring && ringSize(line) >= 3) {
+      const m = ringSize(line);
+      const dots = Array.from({ length: Math.min(m, 16) }, (_, i) => {
+        const a = (-Math.PI / 2) + (i * 2 * Math.PI) / Math.min(m, 16);
+        const x = 29 + 5 * Math.cos(a);
+        const y = 7 + 5 * Math.sin(a);
+        return `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="1.3" fill="#fff" stroke="${color}" stroke-width="1"/>`;
+      }).join("");
+      return `<svg class="mini" viewBox="0 0 58 14" aria-hidden="true"><circle cx="29" cy="7" r="5" fill="none" stroke="${color}" stroke-width="2.6"/>${dots}</svg>`;
+    }
     const shown = stations.slice(0, 14);
     const count = Math.max(shown.length, 2);
     const width = 58;
     const height = 14;
     const pad = 3;
     const gap = (width - pad * 2) / (count - 1);
-    const color = safeColor(line.color);
     const dots = shown.map((_, i) => `<circle cx="${(pad + i * gap).toFixed(1)}" cy="7" r="1.8" fill="#fff" stroke="${color}" stroke-width="1.2"/>`).join("");
     return `<svg class="mini" viewBox="0 0 ${width} ${height}" aria-hidden="true"><line x1="${pad}" y1="7" x2="${width - pad}" y2="7" stroke="${color}" stroke-width="3" stroke-linecap="round"/>${dots}</svg>`;
   }
@@ -392,7 +408,7 @@
         <span class="ed-line-mini">${miniMap(line)}</span>
         <span class="ed-line-info">
           <span class="ed-line-name">${esc(line.name || "未命名线路")}</span>
-          <span class="ed-line-sub">${esc(typeLabel(line.type))} · ${line.stations.length} 站${line.ring ? " · 环线" : ""}</span>
+          <span class="ed-line-sub">${esc(typeLabel(line.type))} · ${line.ring ? ringSize(line) : line.stations.length} 站${line.ring ? " · 环线" : ""}</span>
         </span>
         <span class="ed-line-ops">
           <button type="button" class="ghost" data-move="-1" title="上移">↑</button>
@@ -418,10 +434,11 @@
       box.innerHTML = `<span class="hint">${state.doc?.lines.length ? "从左侧选择一条线路" : "还没有线路，先新增一条"}</span>`;
       return;
     }
-    const segments = Math.max(0, line.stations.length - 1);
+    const segments = segmentCount(line);
+    const stationCount = line.ring ? ringSize(line) : line.stations.length;
     box.innerHTML = `
       <span class="line-chip"><i style="background:${line.color2 ? `linear-gradient(90deg, ${safeColor(line.color)} 0 50%, ${safeColor(line.color2)} 50% 100%)` : safeColor(line.color)}"></i>${esc(line.name || "未命名线路")}</span>
-      <span class="hint">${esc(typeLabel(line.type))} · ${line.stations.length} 站 · ${segments} 段</span>
+      <span class="hint">${esc(typeLabel(line.type))} · ${stationCount} 站 · ${segments} 段</span>
       <div class="spacer"></div>
       <button type="button" data-tool="add-station" title="在线路末端添加一个车站">＋ 末尾加站</button>
       <button type="button" data-tool="fill" title="为缺失的区间补上默认 3 分钟">补齐区间时长</button>
@@ -438,6 +455,35 @@
     return set;
   }
 
+  /** 环线的真实站数：站表首尾重复记录闭合站时，去重后少 1 站。 */
+  function ringSize(line) {
+    const n = (line.stations || []).length;
+    if (line.ring && n >= 2 && line.stations[0] === line.stations[n - 1]) return n - 1;
+    return n;
+  }
+
+  /** 需要编辑的区间数：环线包含「末站 → 首站」的闭合区间。 */
+  function segmentCount(line) {
+    if (line.ring) return Math.max(0, ringSize(line));
+    return Math.max(0, (line.stations || []).length - 1);
+  }
+
+  function prevSegmentIndex(line, i) {
+    if (line.ring) {
+      const m = ringSize(line);
+      return m > 0 ? (i - 1 + m) % m : -1;
+    }
+    return i > 0 ? i - 1 : -1;
+  }
+
+  function nextSegmentIndex(line, i) {
+    if (line.ring) {
+      const m = ringSize(line);
+      return i >= 0 && i < m ? i : -1;
+    }
+    return i < (line.stations || []).length - 1 ? i : -1;
+  }
+
   function renderMap() {
     const map = $("map");
     const line = selectedLine();
@@ -446,6 +492,12 @@
       map.innerHTML = `<p class="empty">${state.doc?.lines.length ? "从左侧选择一条线路，开始编辑线路图。" : "还没有线路，点击左侧「＋」新增。"}</p>`;
       return;
     }
+    if (line.ring && ringSize(line) >= 3) renderRingMap(line);
+    else renderLinearMap(line);
+  }
+
+  function renderLinearMap(line) {
+    const map = $("map");
     const stations = line.stations || [];
     const n = stations.length;
     const gap = n > 30 ? 58 : n > 22 ? 70 : n > 14 ? 86 : n > 8 ? 104 : 124;
@@ -473,7 +525,6 @@
       } else {
         parts.push(`<rect x="${x0}" y="${y - 6}" width="${x1 - x0}" height="12" rx="6" fill="${color}"/>`);
       }
-      parts.push(`<path d="M${x1 + 4} ${y} l11 -7 v14 z" fill="${color}"/>`);
     }
 
     for (let i = 0; i < n - 1; i += 1) {
@@ -517,6 +568,76 @@
     state.mapMetrics = { padL, gap, y, width };
   }
 
+  /** 环线：按环形排布站点，区间时长放在环内，插入按钮放在环上。 */
+  function renderRingMap(line) {
+    const map = $("map");
+    const stations = line.stations || [];
+    const m = ringSize(line);
+    const color = safeColor(line.color);
+    const color2 = /^#([0-9a-f]{3}|[0-9a-f]{6})$/i.test(line.color2 || "") ? line.color2 : "";
+    const interchanges = interchangeSet(line);
+    const arc = m > 36 ? 54 : 62;
+    const radius = Math.max(150, (m * arc) / (2 * Math.PI));
+    const pad = 120;
+    const size = Math.ceil(2 * (radius + pad));
+    const cx = size / 2;
+    const cy = size / 2 + 8;
+    const parts = [];
+
+    const dirs = (line.directions || []).map((d) => d.label).filter(Boolean);
+    parts.push(`<text x="20" y="26" class="dir-text">${esc(dirs.join("  /  ") || "（尚未生成方向）")}</text>`);
+
+    const circumference = 2 * Math.PI * radius;
+    if (color2) {
+      parts.push(`<circle cx="${cx}" cy="${cy}" r="${radius}" fill="none" stroke="${color2}" stroke-width="12"/>`);
+      parts.push(`<circle cx="${cx}" cy="${cy}" r="${radius}" fill="none" stroke="${color}" stroke-width="12" stroke-dasharray="${(circumference / 2).toFixed(2)} ${(circumference / 2).toFixed(2)}" transform="rotate(-90 ${cx} ${cy})"/>`);
+    } else {
+      parts.push(`<circle cx="${cx}" cy="${cy}" r="${radius}" fill="none" stroke="${color}" stroke-width="12"/>`);
+    }
+
+    const angleAt = (i) => (-Math.PI / 2) + (i * 2 * Math.PI) / m;
+    const pointAt = (angle, r) => ({ x: cx + r * Math.cos(angle), y: cy + r * Math.sin(angle) });
+
+    for (let i = 0; i < m; i += 1) {
+      const a0 = angleAt(i);
+      const a1 = angleAt((i + 1) % m);
+      let mid = (a0 + a1) / 2;
+      if (i === m - 1) mid += Math.PI;
+      const pill = pointAt(mid, radius - 30);
+      const plus = pointAt(mid, radius);
+      const value = line.travel_minutes[i];
+      parts.push(`<g class="seg-label" data-seg="${i}" role="button" tabindex="0" aria-label="第 ${i + 1} 段区间时长">
+        <rect class="pill" x="${(pill.x - 20).toFixed(1)}" y="${(pill.y - 12).toFixed(1)}" width="40" height="24" rx="12"/>
+        <text class="seg-text" x="${pill.x.toFixed(1)}" y="${(pill.y + 4).toFixed(1)}">${esc(fmtMinute(value))}</text>
+      </g>`);
+      parts.push(`<g class="insert" data-insert="${i + 1}" role="button" tabindex="0" aria-label="在第 ${i + 1} 段插入车站">
+        <circle cx="${plus.x.toFixed(1)}" cy="${plus.y.toFixed(1)}" r="10"/>
+        <path class="plus" d="M${(plus.x - 4.5).toFixed(1)} ${plus.y.toFixed(1)} h9 M${plus.x.toFixed(1)} ${(plus.y - 4.5).toFixed(1)} v9"/>
+      </g>`);
+    }
+
+    for (let i = 0; i < m; i += 1) {
+      const angle = angleAt(i);
+      const p = pointAt(angle, radius);
+      const name = stations[i];
+      const isInterchange = interchanges.has(name);
+      const nodeR = isInterchange ? 10 : 7;
+      const selected = i === state.stationIndex;
+      const label = pointAt(angle, radius + 16);
+      let deg = (angle * 180) / Math.PI;
+      const left = Math.cos(angle) < 0;
+      if (left) deg += 180;
+      parts.push(`<g class="station${selected ? " selected" : ""}${isInterchange ? " interchange" : ""}" data-station="${i}" role="button" tabindex="0" aria-label="${esc(name)}">
+        ${selected ? `<circle class="halo" cx="${p.x.toFixed(1)}" cy="${p.y.toFixed(1)}" r="${nodeR + 7}"/>` : ""}
+        <circle class="node" cx="${p.x.toFixed(1)}" cy="${p.y.toFixed(1)}" r="${nodeR}" style="stroke:${color}"/>
+        <text class="st-name" x="${label.x.toFixed(1)}" y="${label.y.toFixed(1)}" transform="rotate(${deg.toFixed(1)} ${label.x.toFixed(1)} ${label.y.toFixed(1)})" style="text-anchor:${left ? "end" : "start"}">${esc(name)}</text>
+      </g>`);
+    }
+
+    map.innerHTML = `<svg class="ed-svg" width="${size}" height="${size}" viewBox="0 0 ${size} ${size}" role="img" aria-label="${esc(line.name || "线路")} 环线图">${parts.join("")}</svg>`;
+    state.mapMetrics = { ring: true, cx, cy, radius };
+  }
+
   function renderStationEditor() {
     const box = $("station-editor");
     const line = selectedLine();
@@ -525,14 +646,16 @@
       return;
     }
 
-    if (state.segmentIndex >= 0 && state.segmentIndex < line.stations.length - 1) {
+    if (state.segmentIndex >= 0 && state.segmentIndex < segmentCount(line)) {
       const i = state.segmentIndex;
       const value = line.travel_minutes[i];
+      const m = line.ring ? ringSize(line) : line.stations.length - 1;
+      const toStation = line.ring ? line.stations[(i + 1) % m] : line.stations[i + 1];
       box.innerHTML = `
         <div class="ed-station-card">
           <div class="ed-sc-head">
             <span class="ed-sc-badge">区间 ${i + 1}</span>
-            <b>${esc(line.stations[i])} → ${esc(line.stations[i + 1])}</b>
+            <b>${esc(line.stations[i])} → ${esc(toStation)}</b>
             <div class="spacer"></div>
             <span class="hint">点线路上的时长胶囊即可编辑</span>
           </div>
@@ -554,26 +677,30 @@
     }
 
     const i = state.stationIndex;
-    const prev = i > 0 ? line.travel_minutes[i - 1] : null;
-    const next = i < line.stations.length - 1 ? line.travel_minutes[i] : null;
+    const prevIndex = prevSegmentIndex(line, i);
+    const nextIndex = nextSegmentIndex(line, i);
+    const prev = prevIndex >= 0 ? line.travel_minutes[prevIndex] : null;
+    const next = nextIndex >= 0 ? line.travel_minutes[nextIndex] : null;
+    const isRing = line.ring && ringSize(line) >= 3;
+    const canRight = isRing ? i < ringSize(line) - 1 : i < line.stations.length - 1;
     box.innerHTML = `
       <div class="ed-station-card">
         <div class="ed-sc-head">
           <span class="ed-sc-badge" style="background:${safeColor(line.color)}">第 ${i + 1} 站</span>
           <b id="st-head-name">${esc(line.stations[i] || "（空站名）")}</b>
           <div class="spacer"></div>
-          <span class="hint">拖动圆点可排序</span>
+          <span class="hint">${isRing ? "环线可用左右按钮调整顺序" : "拖动圆点可排序"}</span>
         </div>
         <div class="ed-sc-grid">
           <div class="field"><span>站名</span><input id="st-name" type="text" value="${esc(line.stations[i] || "")}" placeholder="车站名称"></div>
-          <div class="field"><span>上一段时长（分钟）</span><input id="st-prev" type="number" min="0" step="0.5" value="${Number.isFinite(Number(prev)) ? Number(prev) : ""}" ${i > 0 ? "" : "disabled"}></div>
-          <div class="field"><span>下一段时长（分钟）</span><input id="st-next" type="number" min="0" step="0.5" value="${Number.isFinite(Number(next)) ? Number(next) : ""}" ${i < line.stations.length - 1 ? "" : "disabled"}></div>
+          <div class="field"><span>上一段时长（分钟）</span><input id="st-prev" type="number" min="0" step="0.5" value="${Number.isFinite(Number(prev)) ? Number(prev) : ""}" ${prevIndex >= 0 ? "" : "disabled"}></div>
+          <div class="field"><span>下一段时长（分钟）</span><input id="st-next" type="number" min="0" step="0.5" value="${Number.isFinite(Number(next)) ? Number(next) : ""}" ${nextIndex >= 0 ? "" : "disabled"}></div>
         </div>
         <div class="row">
           <button type="button" data-act="insert-before">← 在前面插入</button>
           <button type="button" data-act="insert-after">在后面插入 →</button>
           <button type="button" data-act="left" ${i > 0 ? "" : "disabled"}>◀ 左移</button>
-          <button type="button" data-act="right" ${i < line.stations.length - 1 ? "" : "disabled"}>右移 ▶</button>
+          <button type="button" data-act="right" ${canRight ? "" : "disabled"}>右移 ▶</button>
           <div class="spacer"></div>
           <button type="button" class="danger" data-act="delete">删除本站</button>
         </div>
@@ -903,6 +1030,8 @@
 
   function onMapPointerMove(ev) {
     if (!drag || ev.pointerId !== drag.pointerId || !drag.svg) return;
+    const line = selectedLine();
+    if (!line || (line.ring && ringSize(line) >= 3)) return; // 环线不支持线性拖动排序
     if (!drag.moved && Math.hypot(ev.clientX - drag.startX, ev.clientY - drag.startY) < 8) return;
     drag.moved = true;
     const rect = drag.svg.getBoundingClientRect();
@@ -910,8 +1039,6 @@
     const scale = viewBox.width > 0 && rect.width > 0 ? viewBox.width / rect.width : 1;
     const x = (ev.clientX - rect.left) * scale;
     const { padL, gap } = state.mapMetrics || { padL: 64, gap: 100 };
-    const line = selectedLine();
-    if (!line) return;
     const target = Math.max(0, Math.min(line.stations.length - 1, Math.round((x - padL) / gap)));
     drag.target = target;
     const marker = drag.svg.querySelector("#drag-marker");
@@ -1075,7 +1202,8 @@
       if (!line) return;
       const tool = btn.dataset.tool;
       if (tool === "add-station") {
-        const at = insertStation(line, line.stations.length);
+        const closingDuplicate = line.ring && line.stations.length >= 2 && line.stations[0] === line.stations[line.stations.length - 1];
+        const at = insertStation(line, closingDuplicate ? line.stations.length - 1 : line.stations.length);
         state.stationIndex = at;
         state.segmentIndex = -1;
         touch();
@@ -1085,7 +1213,7 @@
           if (input) { input.focus(); input.select(); }
         });
       } else if (tool === "fill") {
-        const needed = Math.max(0, line.stations.length - 1);
+        const needed = segmentCount(line);
         for (let i = 0; i < needed; i += 1) {
           const value = Number(line.travel_minutes[i]);
           if (!Number.isFinite(value)) line.travel_minutes[i] = 3;
@@ -1094,8 +1222,19 @@
         renderWorkspace();
         toast("已为缺失的区间补上 3 分钟");
       } else if (tool === "reverse") {
-        line.stations.reverse();
-        line.travel_minutes.reverse();
+        if (line.ring && ringSize(line) >= 3) {
+          const m = ringSize(line);
+          const oldMinutes = line.travel_minutes.slice();
+          const unique = line.stations.slice(0, m).reverse();
+          const newMinutes = [];
+          for (let j = 0; j < m; j += 1) newMinutes.push(oldMinutes[(m - 2 - j + m) % m]);
+          const hasClosingDuplicate = line.stations.length > m;
+          line.stations = hasClosingDuplicate ? [...unique, unique[0]] : unique;
+          line.travel_minutes = hasClosingDuplicate ? [...newMinutes, oldMinutes[oldMinutes.length - 1]] : newMinutes;
+        } else {
+          line.stations.reverse();
+          line.travel_minutes.reverse();
+        }
         ensureDirections(line);
         state.stationIndex = -1;
         state.segmentIndex = -1;
@@ -1135,11 +1274,13 @@
         renderMap();
         refreshLineListSoon();
       } else if (el.id === "st-prev") {
-        line.travel_minutes[state.stationIndex - 1] = toNumber(el.value);
+        const prevIndex = prevSegmentIndex(line, state.stationIndex);
+        if (prevIndex >= 0) line.travel_minutes[prevIndex] = toNumber(el.value);
         touch();
         renderMap();
       } else if (el.id === "st-next") {
-        line.travel_minutes[state.stationIndex] = toNumber(el.value);
+        const nextIndex = nextSegmentIndex(line, state.stationIndex);
+        if (nextIndex >= 0) line.travel_minutes[nextIndex] = toNumber(el.value);
         touch();
         renderMap();
       } else if (el.id === "seg-minutes") {
@@ -1558,7 +1699,7 @@
     $("submit-target").innerHTML = `
       <span class="badge">${kind === "new" ? "新建城市" : "修改现有城市"}</span>
       <b>${esc(state.cityName)}</b>
-      <span class="hint">${state.doc.lines.length} 条线路 · ${state.doc.lines.reduce((sum, line) => sum + line.stations.length, 0)} 站</span>`;
+      <span class="hint">${state.doc.lines.length} 条线路 · ${state.doc.lines.reduce((sum, line) => sum + (line.ring ? ringSize(line) : line.stations.length), 0)} 站</span>`;
     $("submit-summary").value = "";
     $("submit-contact").value = (() => { try { return localStorage.getItem(CONTACT_KEY) || ""; } catch { return ""; } })();
     $("diff-preview").innerHTML = CityDiff.renderHtml(CityDiff.diff(state.baseDoc, state.doc));

@@ -114,11 +114,22 @@
     return result;
   }
 
+  /** 环线首尾重复的闭合站只是数据写法差异：对比时统一去掉，避免误报「新增/删除一站」。 */
+  function normalizeRingLine(line) {
+    if (!line || !line.ring) return line;
+    const stations = line.stations || [];
+    if (stations.length >= 3 && stations[0] === stations[stations.length - 1]) {
+      const unique = stations.slice(0, -1);
+      return { ...line, stations: unique, travel_minutes: (line.travel_minutes || []).slice(0, unique.length) };
+    }
+    return line;
+  }
+
   function diffLines(beforeLines, afterLines) {
     const before = new Map();
-    (beforeLines || []).forEach((line) => { if (line && line.id) before.set(line.id, line); });
+    (beforeLines || []).forEach((line) => { if (line && line.id) before.set(line.id, normalizeRingLine(line)); });
     const after = new Map();
-    (afterLines || []).forEach((line) => { if (line && line.id) after.set(line.id, line); });
+    (afterLines || []).forEach((line) => { if (line && line.id) after.set(line.id, normalizeRingLine(line)); });
 
     const added = [];
     const removed = [];
