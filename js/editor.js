@@ -379,14 +379,9 @@
     const stations = line.stations || [];
     const color = safeColor(line.color);
     if (line.ring && ringSize(line) >= 3) {
-      const m = ringSize(line);
-      const dots = Array.from({ length: Math.min(m, 16) }, (_, i) => {
-        const a = (-Math.PI / 2) + (i * 2 * Math.PI) / Math.min(m, 16);
-        const x = 29 + 5 * Math.cos(a);
-        const y = 7 + 5 * Math.sin(a);
-        return `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="1.3" fill="#fff" stroke="${color}" stroke-width="1"/>`;
-      }).join("");
-      return `<svg class="mini" viewBox="0 0 58 14" aria-hidden="true"><circle cx="29" cy="7" r="5" fill="none" stroke="${color}" stroke-width="2.6"/>${dots}</svg>`;
+      const dots = [17, 29, 41].map((x) => `<circle cx="${x}" cy="3.5" r="1.2" fill="#fff" stroke="${color}" stroke-width="1"/>`).join("")
+        + [17, 29, 41].map((x) => `<circle cx="${x}" cy="10.5" r="1.2" fill="#fff" stroke="${color}" stroke-width="1"/>`).join("");
+      return `<svg class="mini" viewBox="0 0 58 14" aria-hidden="true"><rect x="5" y="2.5" width="48" height="9" rx="4.5" fill="none" stroke="${color}" stroke-width="2.2"/>${dots}</svg>`;
     }
     const shown = stations.slice(0, 14);
     const count = Math.max(shown.length, 2);
@@ -446,6 +441,15 @@
       <button type="button" data-tool="fill" title="为缺失的区间补上默认 3 分钟">补齐区间时长</button>
       <button type="button" data-tool="reverse" title="把站表与区间顺序整体倒过来">反向站表</button>
       <button type="button" data-tool="dirs" title="按当前站表重新生成两个方向">重建方向</button>`;
+  }
+
+  /** 粗略估算站名在 SVG 里的渲染宽度：中日韩字符按 1 字宽，拉丁字符按半字宽。 */
+  function estimateTextWidth(text, fontSize) {
+    let units = 0;
+    for (const ch of String(text ?? "")) {
+      units += /[\u2E80-\u9FFF\uF900-\uFAFF\uFF00-\uFFEF]/.test(ch) ? 1 : 0.55;
+    }
+    return units * fontSize;
   }
 
   function interchangeSet(line) {
@@ -570,7 +574,7 @@
     state.mapMetrics = { padL, gap, y, width };
   }
 
-  /** 环线：按环形排布站点，区间时长放在环内，插入按钮放在环上。 */
+  /** 环线：扁平圆角矩形（体育场形），站点上下各一半，区间时长放在环内。 */
   function renderRingMap(line) {
     const map = $("map");
     const stations = line.stations || [];
@@ -578,82 +582,114 @@
     const color = safeColor(line.color);
     const color2 = /^#([0-9a-f]{3}|[0-9a-f]{6})$/i.test(line.color2 || "") ? line.color2 : "";
     const interchanges = interchangeSet(line);
-    // 环线自动适配当前图纸区域，避免只看到圆环顶部而误以为是直线/矩形
     const wrap = $("mapwrap");
-    const availW = Math.max(300, (wrap?.clientWidth || 480) - 16);
-    const availH = Math.max(260, (wrap?.clientHeight || 440) - 16);
-    const arc = m > 36 ? 54 : 62;
-    const desired = Math.max(150, (m * arc) / (2 * Math.PI));
-    const pad = availH < 360 ? 64 : 82;
-    const fit = Math.min(availW / 2 - pad, availH / 2 - pad);
-    const radius = Math.max(availH < 360 ? 96 : 110, Math.min(desired, fit));
-    const size = Math.ceil(2 * (radius + pad));
-    const cx = size / 2;
-    const cy = size / 2 + 6;
-    const compact = m >= 22;
-    const dense = m > 34;
-    const pillW = m > 40 ? 14 : m > 34 ? 18 : m > 28 ? 20 : compact ? 24 : 40;
-    const pillH = compact ? 16 : 24;
-    const pillFont = m > 40 ? 7.5 : m > 34 ? 8.5 : compact ? 9.5 : 11;
-    const pillOffset = compact ? 26 : 30;
+    const availH = Math.max(240, (wrap?.clientHeight || 440) - 24);
+
+    // 上下各分一半车站：多出来的一站放在上边
+    const topCount = Math.ceil(m / 2);
+    const bottomCount = m - topCount;
+    const radius = Math.round(Math.min(84, Math.max(46, availH * 0.17)));
+    // 与非环线线路一致：按车站数量撑开版面，宽度不足时由图纸区域横向滚动。
+    // 站名是水平居中排版的，站距再按最长站名放宽，避免相邻站名相互压字。
+    const baseGap = topCount > 30 ? 58 : topCount > 22 ? 70 : topCount > 14 ? 86 : topCount > 8 ? 104 : 124;
+    const labelFont = baseGap < 62 ? 9.5 : m > 24 ? 10.5 : 11.5;
+    const widestName = stations.reduce((w, name) => Math.max(w, estimateTextWidth(name, labelFont)), 0);
+    const stationGap = Math.min(210, Math.max(baseGap, Math.ceil(widestName + 16)));
+    const straight = Math.max(240, (topCount - 1) * stationGap);
+    const width = straight + radius * 2;
+    const padX = 18;
+    const svgW = Math.ceil(width + padX * 2);
+    const xLeft = padX;
+    const xRight = xLeft + width - radius;
+
+    const topGap = topCount > 1 ? straight / (topCount - 1) : straight;
+    const bottomGap = bottomCount > 1 ? straight / (bottomCount - 1) : straight;
+    const gap = Math.min(topGap, bottomGap);
+    const dense = gap < 62;
+    const compact = gap < 52;
+    const pillW = compact ? 30 : 40;
+    const pillH = compact ? 20 : 24;
+    const pillFont = compact ? 10 : 11;
+    const pillInset = pillH / 2 + 6;
+    const capInset = pillW / 2 + 12;
     const plusR = dense ? 7 : 10;
-    const labelFont = dense ? 9.5 : compact ? 10.5 : 11.5;
+    const yTop = dense ? 96 : 88;
+    const yBottom = yTop + radius * 2;
+    const cy = yTop + radius;
+    const svgH = Math.ceil(yBottom + (dense ? 46 : 30) + 16);
     const parts = [];
 
-    const dirs = (line.directions || []).map((d) => d.label).filter(Boolean);
-    parts.push(`<text x="20" y="26" class="dir-text">${esc(dirs.join("  /  ") || "（尚未生成方向）")}</text>`);
-
-    const circumference = 2 * Math.PI * radius;
-    if (color2) {
-      parts.push(`<circle cx="${cx}" cy="${cy}" r="${radius}" fill="none" stroke="${color2}" stroke-width="12"/>`);
-      parts.push(`<circle cx="${cx}" cy="${cy}" r="${radius}" fill="none" stroke="${color}" stroke-width="12" stroke-dasharray="${(circumference / 2).toFixed(2)} ${(circumference / 2).toFixed(2)}" transform="rotate(-90 ${cx} ${cy})"/>`);
-    } else {
-      parts.push(`<circle cx="${cx}" cy="${cy}" r="${radius}" fill="none" stroke="${color}" stroke-width="12"/>`);
+    const pos = [];
+    for (let i = 0; i < topCount; i += 1) {
+      const t = topCount === 1 ? 0.5 : i / (topCount - 1);
+      pos.push({ x: xLeft + radius + t * straight, y: yTop });
+    }
+    for (let j = 0; j < bottomCount; j += 1) {
+      const t = bottomCount === 1 ? 0.5 : j / (bottomCount - 1);
+      pos.push({ x: xRight - t * straight, y: yBottom });
     }
 
-    const angleAt = (i) => (-Math.PI / 2) + (i * 2 * Math.PI) / m;
-    const pointAt = (angle, r) => ({ x: cx + r * Math.cos(angle), y: cy + r * Math.sin(angle) });
+    const dirs = (line.directions || []).map((d) => d.label).filter(Boolean);
+    parts.push(`<text x="18" y="20" class="dir-text">${esc(dirs.join("  /  ") || "（尚未生成方向）")}</text>`);
 
-    for (let i = 0; i < m; i += 1) {
-      const a0 = angleAt(i);
-      const a1 = angleAt((i + 1) % m);
-      let mid = (a0 + a1) / 2;
-      if (i === m - 1) mid += Math.PI;
-      const pill = pointAt(mid, radius - pillOffset);
-      const plus = pointAt(mid, radius);
+    // 轨道：上下两条直线 + 两端半圆，双色时上半圈用主色、下半圈用副色
+    const sw = 12;
+    if (color2) {
+      parts.push(`<line x1="${xLeft + radius}" y1="${yTop}" x2="${xRight}" y2="${yTop}" stroke="${color}" stroke-width="${sw}"/>`);
+      parts.push(`<path d="M${xRight} ${yTop} A${radius} ${radius} 0 0 1 ${xRight + radius} ${cy}" fill="none" stroke="${color}" stroke-width="${sw}"/>`);
+      parts.push(`<path d="M${xLeft} ${cy} A${radius} ${radius} 0 0 1 ${xLeft + radius} ${yTop}" fill="none" stroke="${color}" stroke-width="${sw}"/>`);
+      parts.push(`<line x1="${xLeft + radius}" y1="${yBottom}" x2="${xRight}" y2="${yBottom}" stroke="${color2}" stroke-width="${sw}"/>`);
+      parts.push(`<path d="M${xRight + radius} ${cy} A${radius} ${radius} 0 0 1 ${xRight} ${yBottom}" fill="none" stroke="${color2}" stroke-width="${sw}"/>`);
+      parts.push(`<path d="M${xLeft + radius} ${yBottom} A${radius} ${radius} 0 0 1 ${xLeft} ${cy}" fill="none" stroke="${color2}" stroke-width="${sw}"/>`);
+    } else {
+      parts.push(`<path d="M${xLeft + radius} ${yTop} H${xRight} A${radius} ${radius} 0 0 1 ${xRight} ${yBottom} H${xLeft + radius} A${radius} ${radius} 0 0 1 ${xLeft + radius} ${yTop}" fill="none" stroke="${color}" stroke-width="${sw}"/>`);
+    }
+
+    const plusHalf = plusR * 0.45;
+    const addSegment = (i, x, y, px, py) => {
       const value = line.travel_minutes[i];
-      const plusHalf = plusR * 0.45;
       parts.push(`<g class="seg-label" data-seg="${i}" role="button" tabindex="0" aria-label="第 ${i + 1} 段区间时长">
-        <rect class="pill" x="${(pill.x - pillW / 2).toFixed(1)}" y="${(pill.y - pillH / 2).toFixed(1)}" width="${pillW}" height="${pillH}" rx="${pillH / 2}"/>
-        <text class="seg-text" x="${pill.x.toFixed(1)}" y="${(pill.y + pillH * 0.17).toFixed(1)}" style="font-size:${pillFont}px">${esc(fmtMinute(value))}</text>
+        <rect class="pill" x="${(x - pillW / 2).toFixed(1)}" y="${(y - pillH / 2).toFixed(1)}" width="${pillW}" height="${pillH}" rx="${pillH / 2}"/>
+        <text class="seg-text" x="${x.toFixed(1)}" y="${(y + pillH * 0.17).toFixed(1)}" style="font-size:${pillFont}px">${esc(fmtMinute(value))}</text>
       </g>`);
       parts.push(`<g class="insert" data-insert="${i + 1}" role="button" tabindex="0" aria-label="在第 ${i + 1} 段插入车站">
-        <circle cx="${plus.x.toFixed(1)}" cy="${plus.y.toFixed(1)}" r="${plusR}"/>
-        <path class="plus" d="M${(plus.x - plusHalf).toFixed(1)} ${plus.y.toFixed(1)} h${(plusHalf * 2).toFixed(1)} M${plus.x.toFixed(1)} ${(plus.y - plusHalf).toFixed(1)} v${(plusHalf * 2).toFixed(1)}"/>
+        <circle cx="${px.toFixed(1)}" cy="${py.toFixed(1)}" r="${plusR}"/>
+        <path class="plus" d="M${(px - plusHalf).toFixed(1)} ${py.toFixed(1)} h${(plusHalf * 2).toFixed(1)} M${px.toFixed(1)} ${(py - plusHalf).toFixed(1)} v${(plusHalf * 2).toFixed(1)}"/>
       </g>`);
+    };
+
+    for (let i = 0; i < m; i += 1) {
+      if (i < topCount - 1) {
+        const x = (pos[i].x + pos[i + 1].x) / 2;
+        addSegment(i, x, yTop + pillInset, x, yTop);
+      } else if (i === topCount - 1) {
+        addSegment(i, xRight + radius - capInset, cy, xRight + radius, cy);
+      } else if (i < m - 1) {
+        const x = (pos[i].x + pos[i + 1].x) / 2;
+        addSegment(i, x, yBottom - pillInset, x, yBottom);
+      } else {
+        addSegment(i, xLeft + capInset, cy, xLeft, cy);
+      }
     }
 
     for (let i = 0; i < m; i += 1) {
-      const angle = angleAt(i);
-      const p = pointAt(angle, radius);
+      const p = pos[i];
       const name = stations[i];
       const isInterchange = interchanges.has(name);
       const nodeR = isInterchange ? (dense ? 8 : 10) : (dense ? 5.5 : 7);
       const selected = i === state.stationIndex;
-      const labelOffset = compact ? 14 + (i % 2) * 12 : 16;
-      const label = pointAt(angle, radius + labelOffset);
-      let deg = (angle * 180) / Math.PI;
-      const left = Math.cos(angle) < 0;
-      if (left) deg += 180;
+      const isTop = i < topCount;
+      const stagger = dense && (isTop ? i : i - topCount) % 2 === 1;
+      const labelY = isTop ? yTop - 20 - (stagger ? 16 : 0) : yBottom + 30 + (stagger ? 16 : 0);
       parts.push(`<g class="station${selected ? " selected" : ""}${isInterchange ? " interchange" : ""}" data-station="${i}" role="button" tabindex="0" aria-label="${esc(name)}">
         ${selected ? `<circle class="halo" cx="${p.x.toFixed(1)}" cy="${p.y.toFixed(1)}" r="${nodeR + 7}"/>` : ""}
         <circle class="node" cx="${p.x.toFixed(1)}" cy="${p.y.toFixed(1)}" r="${nodeR}" style="stroke:${color}"/>
-        <text class="st-name" x="${label.x.toFixed(1)}" y="${label.y.toFixed(1)}" transform="rotate(${deg.toFixed(1)} ${label.x.toFixed(1)} ${label.y.toFixed(1)})" style="font-size:${labelFont}px;text-anchor:${left ? "end" : "start"}">${esc(name)}</text>
+        <text class="st-name" x="${p.x.toFixed(1)}" y="${labelY}" style="font-size:${labelFont}px;text-anchor:middle">${esc(name)}</text>
       </g>`);
     }
 
-    map.innerHTML = `<svg class="ed-svg" width="${size}" height="${size}" viewBox="0 0 ${size} ${size}" style="display:block;margin:6px auto" role="img" aria-label="${esc(line.name || "线路")} 环线图">${parts.join("")}</svg>`;
-    state.mapMetrics = { ring: true, cx, cy, radius };
+    map.innerHTML = `<svg class="ed-svg" width="${svgW}" height="${svgH}" viewBox="0 0 ${svgW} ${svgH}" style="display:block;margin:8px auto" role="img" aria-label="${esc(line.name || "线路")} 环线图">${parts.join("")}</svg>`;
+    state.mapMetrics = { ring: true, stadium: true, cx: xLeft + width / 2, cy, radius };
   }
 
   function renderStationEditor() {
