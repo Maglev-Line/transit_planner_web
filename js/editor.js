@@ -117,6 +117,8 @@
 
       $("boot").hidden = true;
       $("editor").hidden = false;
+      // 编辑器从 hidden 变为可见后再渲染一次，让环线按真实图纸尺寸自适应
+      requestAnimationFrame(() => { if (state.doc) renderMap(); });
     } catch (err) {
       document.body.classList.add("err");
       $("boot").classList.add("error");
@@ -576,12 +578,26 @@
     const color = safeColor(line.color);
     const color2 = /^#([0-9a-f]{3}|[0-9a-f]{6})$/i.test(line.color2 || "") ? line.color2 : "";
     const interchanges = interchangeSet(line);
+    // 环线自动适配当前图纸区域，避免只看到圆环顶部而误以为是直线/矩形
+    const wrap = $("mapwrap");
+    const availW = Math.max(300, (wrap?.clientWidth || 480) - 16);
+    const availH = Math.max(260, (wrap?.clientHeight || 440) - 16);
     const arc = m > 36 ? 54 : 62;
-    const radius = Math.max(150, (m * arc) / (2 * Math.PI));
-    const pad = 120;
+    const desired = Math.max(150, (m * arc) / (2 * Math.PI));
+    const pad = availH < 360 ? 64 : 82;
+    const fit = Math.min(availW / 2 - pad, availH / 2 - pad);
+    const radius = Math.max(availH < 360 ? 96 : 110, Math.min(desired, fit));
     const size = Math.ceil(2 * (radius + pad));
     const cx = size / 2;
-    const cy = size / 2 + 8;
+    const cy = size / 2 + 6;
+    const compact = m >= 22;
+    const dense = m > 34;
+    const pillW = m > 40 ? 14 : m > 34 ? 18 : m > 28 ? 20 : compact ? 24 : 40;
+    const pillH = compact ? 16 : 24;
+    const pillFont = m > 40 ? 7.5 : m > 34 ? 8.5 : compact ? 9.5 : 11;
+    const pillOffset = compact ? 26 : 30;
+    const plusR = dense ? 7 : 10;
+    const labelFont = dense ? 9.5 : compact ? 10.5 : 11.5;
     const parts = [];
 
     const dirs = (line.directions || []).map((d) => d.label).filter(Boolean);
@@ -603,16 +619,17 @@
       const a1 = angleAt((i + 1) % m);
       let mid = (a0 + a1) / 2;
       if (i === m - 1) mid += Math.PI;
-      const pill = pointAt(mid, radius - 30);
+      const pill = pointAt(mid, radius - pillOffset);
       const plus = pointAt(mid, radius);
       const value = line.travel_minutes[i];
+      const plusHalf = plusR * 0.45;
       parts.push(`<g class="seg-label" data-seg="${i}" role="button" tabindex="0" aria-label="第 ${i + 1} 段区间时长">
-        <rect class="pill" x="${(pill.x - 20).toFixed(1)}" y="${(pill.y - 12).toFixed(1)}" width="40" height="24" rx="12"/>
-        <text class="seg-text" x="${pill.x.toFixed(1)}" y="${(pill.y + 4).toFixed(1)}">${esc(fmtMinute(value))}</text>
+        <rect class="pill" x="${(pill.x - pillW / 2).toFixed(1)}" y="${(pill.y - pillH / 2).toFixed(1)}" width="${pillW}" height="${pillH}" rx="${pillH / 2}"/>
+        <text class="seg-text" x="${pill.x.toFixed(1)}" y="${(pill.y + pillH * 0.17).toFixed(1)}" style="font-size:${pillFont}px">${esc(fmtMinute(value))}</text>
       </g>`);
       parts.push(`<g class="insert" data-insert="${i + 1}" role="button" tabindex="0" aria-label="在第 ${i + 1} 段插入车站">
-        <circle cx="${plus.x.toFixed(1)}" cy="${plus.y.toFixed(1)}" r="10"/>
-        <path class="plus" d="M${(plus.x - 4.5).toFixed(1)} ${plus.y.toFixed(1)} h9 M${plus.x.toFixed(1)} ${(plus.y - 4.5).toFixed(1)} v9"/>
+        <circle cx="${plus.x.toFixed(1)}" cy="${plus.y.toFixed(1)}" r="${plusR}"/>
+        <path class="plus" d="M${(plus.x - plusHalf).toFixed(1)} ${plus.y.toFixed(1)} h${(plusHalf * 2).toFixed(1)} M${plus.x.toFixed(1)} ${(plus.y - plusHalf).toFixed(1)} v${(plusHalf * 2).toFixed(1)}"/>
       </g>`);
     }
 
@@ -621,20 +638,21 @@
       const p = pointAt(angle, radius);
       const name = stations[i];
       const isInterchange = interchanges.has(name);
-      const nodeR = isInterchange ? 10 : 7;
+      const nodeR = isInterchange ? (dense ? 8 : 10) : (dense ? 5.5 : 7);
       const selected = i === state.stationIndex;
-      const label = pointAt(angle, radius + 16);
+      const labelOffset = compact ? 14 + (i % 2) * 12 : 16;
+      const label = pointAt(angle, radius + labelOffset);
       let deg = (angle * 180) / Math.PI;
       const left = Math.cos(angle) < 0;
       if (left) deg += 180;
       parts.push(`<g class="station${selected ? " selected" : ""}${isInterchange ? " interchange" : ""}" data-station="${i}" role="button" tabindex="0" aria-label="${esc(name)}">
         ${selected ? `<circle class="halo" cx="${p.x.toFixed(1)}" cy="${p.y.toFixed(1)}" r="${nodeR + 7}"/>` : ""}
         <circle class="node" cx="${p.x.toFixed(1)}" cy="${p.y.toFixed(1)}" r="${nodeR}" style="stroke:${color}"/>
-        <text class="st-name" x="${label.x.toFixed(1)}" y="${label.y.toFixed(1)}" transform="rotate(${deg.toFixed(1)} ${label.x.toFixed(1)} ${label.y.toFixed(1)})" style="text-anchor:${left ? "end" : "start"}">${esc(name)}</text>
+        <text class="st-name" x="${label.x.toFixed(1)}" y="${label.y.toFixed(1)}" transform="rotate(${deg.toFixed(1)} ${label.x.toFixed(1)} ${label.y.toFixed(1)})" style="font-size:${labelFont}px;text-anchor:${left ? "end" : "start"}">${esc(name)}</text>
       </g>`);
     }
 
-    map.innerHTML = `<svg class="ed-svg" width="${size}" height="${size}" viewBox="0 0 ${size} ${size}" role="img" aria-label="${esc(line.name || "线路")} 环线图">${parts.join("")}</svg>`;
+    map.innerHTML = `<svg class="ed-svg" width="${size}" height="${size}" viewBox="0 0 ${size} ${size}" style="display:block;margin:6px auto" role="img" aria-label="${esc(line.name || "线路")} 环线图">${parts.join("")}</svg>`;
     state.mapMetrics = { ring: true, cx, cy, radius };
   }
 
@@ -1429,6 +1447,11 @@
       ev.preventDefault();
       ev.returnValue = "";
     });
+
+    // 窗口尺寸变化时重新计算环线半径，保证圆环完整可见
+    window.addEventListener("resize", debounce(() => {
+      if (state.view === "map" && selectedLine()?.ring) renderMap();
+    }, 160));
   }
 
   function onPropsInput(ev) {

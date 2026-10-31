@@ -219,7 +219,7 @@ main.ed-main {
 /* 图纸画布 */
 .ed-mapwrap {
   flex: 1 1 auto;
-  min-height: 220px;
+  min-height: 340px;
   overflow: auto;
   background-color: var(--ed-canvas);
   background-image:
