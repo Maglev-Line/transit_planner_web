@@ -240,10 +240,12 @@
       $("line-list").innerHTML = `<p class="hint">${state.lines.length ? "没有匹配的线路" : "未加载线路库"}</p>`;
       return;
     }
+    const isBranch = (name) => Boolean(window.LineBranches?.parseBranchName(name));
     $("line-list").innerHTML = items.map((ln) => `
       <div class="line-item${ln.id === state.selectedLine ? " active" : ""}" data-line="${esc(ln.id)}" title="单击查看详情，双击预填到新行程">
         <span class="swatch" style="background:${swatch(ln.color, ln.color2)}"></span>
         <span class="nm">${esc(ln.name)}</span>
+        ${isBranch(ln.name) ? '<span class="tag tag-branch">支线</span>' : ""}
         <span class="tag">${esc(ln.typeLabel)}</span>
       </div>`).join("");
   }

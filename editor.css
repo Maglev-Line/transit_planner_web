@@ -405,3 +405,34 @@ dialog.ed-submit-dialog { width: min(760px, 94vw); }
 .ed-express-foot .hint { flex: 1 1 auto; }
 .ed-express-foot button { font-size: 12px; }
 .ed-express > button { font-size: 12.5px; }
+
+/* 支线识别：线路列表徽标与站台面板提示条 */
+.ed-line-item.has-branch .ed-line-name::after {
+  content: '支线';
+  margin-left: 6px;
+  font-size: 10px;
+  font-weight: 700;
+  color: #6b3fa0;
+  background: #f3edff;
+  border: 1px solid #d9cbf5;
+  border-radius: 99px;
+  padding: 0 5px;
+  vertical-align: 1px;
+}
+.ed-branch-banner {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 8px;
+  padding: 7px 10px;
+  font-size: 12.5px;
+  color: #5b4b85;
+  background: #f6f2ff;
+  border: 1px solid #ded3f5;
+  border-radius: 8px;
+}
+.ed-branch-banner .spacer { flex: 1 1 auto; }
+.ed-branch-banner button { font-size: 12px; padding: 3px 9px; }
+.ed-branch-row { margin-top: 6px; padding-top: 6px; border-top: 1px dashed var(--ed-line); }
+.ed-branch-row .hint { flex: 1 1 160px; }

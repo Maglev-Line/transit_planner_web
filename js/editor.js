@@ -404,31 +404,83 @@
     return `<svg class="mini" viewBox="0 0 ${width} ${height}" aria-hidden="true"><line x1="${pad}" y1="7" x2="${width - pad}" y2="7" stroke="${color}" stroke-width="3" stroke-linecap="round"/>${dots}</svg>`;
   }
 
+  /** 当前城市的分组（主线 + 其支线合并为一条）。 */
+  function lineGroups() {
+    return window.LineBranches.groupLines(state.doc?.lines || []);
+  }
+
+  /** 选中线路所属的分组（选中的是支线时同样返回主线分组）。 */
+  function selectedGroup() {
+    const line = selectedLine();
+    if (!line) return null;
+    return window.LineBranches.groupOf(state.doc?.lines || [], line.id);
+  }
+
   function renderLineList() {
     const lines = state.doc?.lines || [];
-    $("line-count").textContent = `${lines.length} 条`;
+    const groups = lineGroups();
+    $("line-count").textContent = lines.length === groups.length
+      ? `${lines.length} 条`
+      : `${groups.length} 条（含 ${lines.length - groups.length} 条支线）`;
     if (!lines.length) {
       $("line-list").innerHTML = `<p class="hint" style="padding:10px">还没有线路，点击右上角「＋」新增。</p>`;
       return;
     }
-    $("line-list").innerHTML = lines.map((line) => `
-      <div class="ed-line-item${line.id === state.selectedLineId ? " active" : ""}" data-id="${esc(line.id)}" role="button" tabindex="0" aria-label="${esc(line.name || "未命名线路")}">
-        <span class="ed-line-mini">${miniMap(line)}</span>
+    const current = selectedLine();
+    const inGroup = (group) => group.main.id === current?.id
+      || group.branches.some((branch) => branch.id === current?.id);
+    $("line-list").innerHTML = groups.map((group) => {
+      const main = group.main;
+      const count = window.LineBranches.groupStationCount(group);
+      const branchNote = group.branches.length
+        ? ` · 含 ${group.branches.length} 条支线 · ${esc(window.LineBranches.groupShape(group))}`
+        : "";
+      return `
+      <div class="ed-line-item${inGroup(group) ? " active" : ""}${group.branches.length ? " has-branch" : ""}" data-id="${esc(main.id)}" role="button" tabindex="0" aria-label="${esc(main.name || "未命名线路")}">
+        <span class="ed-line-mini">${group.branches.length ? miniMapGroup(group) : miniMap(main)}</span>
         <span class="ed-line-info">
-          <span class="ed-line-name">${esc(line.name || "未命名线路")}</span>
-          <span class="ed-line-sub">${esc(typeLabel(line.type))} · ${line.ring ? ringSize(line) : line.stations.length} 站${line.ring ? " · 环线" : ""}</span>
+          <span class="ed-line-name">${esc(main.name || "未命名线路")}</span>
+          <span class="ed-line-sub">${esc(typeLabel(main.type))} · ${main.ring ? ringSize(main) : count} 站${main.ring ? " · 环线" : ""}${branchNote}</span>
         </span>
         <span class="ed-line-ops">
           <button type="button" class="ghost" data-move="-1" title="上移">↑</button>
           <button type="button" class="ghost" data-move="1" title="下移">↓</button>
-          <button type="button" class="ghost danger" data-del="1" title="删除线路">✕</button>
+          <button type="button" class="ghost danger" data-del="1" title="${group.branches.length ? "删除线路及其支线" : "删除线路"}">✕</button>
         </span>
-      </div>`).join("");
+      </div>`;
+    }).join("");
+  }
+
+  /** 分组缩略图：主线水平，支线从分叉点斜向引出。 */
+  function miniMapGroup(group) {
+    const color = safeColor(group.main.color);
+    const height = 22;
+    const nodes = [];
+    const run = window.LineBranches.longestCommonRun(group.main, group.branches[0]);
+    const branchHeadBefore = run.bStart > 0;
+    for (let k = 0; k < 4; k += 1) {
+      nodes.push({ x: 8 + k * 10, y: 15 });
+    }
+    if (branchHeadBefore) nodes.push({ x: 8, y: 4 });
+    else nodes.push({ x: 48, y: 4 });
+    const path = branchHeadBefore
+      ? `M8 4 L18 15 L38 15`
+      : `M18 15 L28 4 L38 4`;
+    const dots = nodes.map((node) => `<circle cx="${node.x}" cy="${node.y}" r="1.6" fill="#fff" stroke="${color}" stroke-width="1.2"/>`).join("");
+    return `<svg class="mini" viewBox="0 0 58 ${height}" aria-hidden="true">
+      <line x1="8" y1="15" x2="48" y2="15" stroke="${color}" stroke-width="2.6" stroke-linecap="round"/>
+      <path d="${path}" fill="none" stroke="${color}" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/>
+      ${dots}
+    </svg>`;
   }
 
   function renderWorkspace() {
     const line = selectedLine();
-    $("line-title").textContent = line ? `${line.name || "未命名线路"} · 线路图` : "线路图";
+    const group = selectedGroup();
+    const groupSuffix = group?.branches.length && group.main.id === line?.id
+      ? `（含 ${group.branches.length} 条支线）`
+      : "";
+    $("line-title").textContent = line ? `${line.name || "未命名线路"} · 线路图${groupSuffix}` : "线路图";
     renderMapToolbar();
     renderMap();
     renderStationEditor();
@@ -461,6 +513,33 @@
       units += /[\u2E80-\u9FFF\uF900-\uFAFF\uFF00-\uFFEF]/.test(ch) ? 1 : 0.55;
     }
     return units * fontSize;
+  }
+
+  /** 折线转角处用二次贝塞尔做圆角，返回 SVG path 的 d 属性。 */
+  function roundedPolyline(points, radius) {
+    if (!points || points.length < 2) return "";
+    const d = [`M${points[0].x} ${points[0].y}`];
+    for (let i = 1; i < points.length - 1; i += 1) {
+      const prev = points[i - 1];
+      const cur = points[i];
+      const next = points[i + 1];
+      const lenIn = Math.hypot(cur.x - prev.x, cur.y - prev.y);
+      const lenOut = Math.hypot(next.x - cur.x, next.y - cur.y);
+      if (lenIn < 0.5 || lenOut < 0.5) {
+        d.push(`L${cur.x} ${cur.y}`);
+        continue;
+      }
+      const r = Math.min(radius, lenIn / 2, lenOut / 2);
+      const ax = cur.x - ((cur.x - prev.x) / lenIn) * r;
+      const ay = cur.y - ((cur.y - prev.y) / lenIn) * r;
+      const bx = cur.x + ((next.x - cur.x) / lenOut) * r;
+      const by = cur.y + ((next.y - cur.y) / lenOut) * r;
+      d.push(`L${ax} ${ay}`);
+      d.push(`Q${cur.x} ${cur.y} ${bx} ${by}`);
+    }
+    const last = points[points.length - 1];
+    d.push(`L${last.x} ${last.y}`);
+    return d.join(" ");
   }
 
   function interchangeSet(line) {
@@ -509,8 +588,211 @@
       map.innerHTML = `<p class="empty">${state.doc?.lines.length ? "从左侧选择一条线路，开始编辑线路图。" : "还没有线路，点击左侧「＋」新增。"}</p>`;
       return;
     }
-    if (line.ring && ringSize(line) >= 3) renderRingMap(line);
+    if (line.ring && ringSize(line) >= 3) {
+      renderRingMap(line);
+      return;
+    }
+    const group = selectedGroup();
+    if (group?.branches.length) renderBranchMap(group);
     else renderLinearMap(line);
+  }
+
+  /**
+   * 带支线的线路图：
+   * 主线水平作为主干；支线在「分离车站之后的那一段区间」伸出，抬到一条平行轨道后
+   * 与主线平行运行，站序与支线站表一致。
+   * 若支线在主干之前另有车站（两头分叉），则在「汇入车站之前的那一段区间」斜向汇入主干。
+   */
+  function renderBranchMap(group) {
+    const map = $("map");
+    const main = group.main;
+    const mainStations = main.stations || [];
+    const interchanges = interchangeSet(main);
+    group.branches.forEach((branch) => {
+      (branch.stations || []).forEach((station) => interchanges.add(station));
+    });
+    const color = safeColor(main.color);
+    const color2 = /^#([0-9a-f]{3}|[0-9a-f]{6})$/i.test(main.color2 || "") ? main.color2 : "";
+
+    let maxStations = mainStations.length;
+    group.branches.forEach((branch) => {
+      maxStations = Math.max(maxStations, (branch.stations || []).length);
+    });
+    const gap = maxStations > 30 ? 58 : maxStations > 22 ? 70 : maxStations > 14 ? 86 : maxStations > 8 ? 104 : 124;
+    // 平行轨道与主干之间的垂直距离（所有支线共用同一条平行轨道）
+    const trackOffset = 104;
+
+    // 每条支线：公共区段沿用主干坐标，独有车站排在平行轨道的网格上
+    const branchGeom = new Map(); // branchId -> { nodes: Map(station -> {x, y}), before, after, ... }
+    let minIdx = 0;   // 允许出现负的“主线列号”（支线在主干左侧延伸）
+    let maxIdx = mainStations.length - 1;
+    group.branches.forEach((branch) => {
+      const run = window.LineBranches.longestCommonRun(main, branch);
+      const stations = branch.stations || [];
+      const beforeCount = run.bStart;
+      const afterStart = run.bStart + run.length;
+      const afterCount = stations.length - afterStart;
+      const nodes = new Map();
+      // 汇入主干前的那几站：从「汇入站的前一站」往左排
+      for (let k = 0; k < beforeCount; k += 1) {
+        const column = run.aStart - beforeCount + k;
+        minIdx = Math.min(minIdx, column);
+        nodes.set(stations[k], { column, y: -trackOffset });
+      }
+      // 从主干分离出去的那几站：从「分离站的下一站」往右排
+      for (let k = 0; k < afterCount; k += 1) {
+        const column = run.aStart + run.length + k;
+        maxIdx = Math.max(maxIdx, column);
+        nodes.set(stations[afterStart + k], { column, y: -trackOffset });
+      }
+      branchGeom.set(branch.id, {
+        run,
+        nodes,
+        beforeCount,
+        afterCount,
+        afterStart,
+      });
+    });
+
+    const padL = 64;
+    const shiftX = padL - minIdx * gap; // 列号为 0 时的 x 位置（含左侧延伸的补偿）
+    const xAt = (column) => shiftX + column * gap;
+    const xMain = mainStations.map((_, i) => xAt(i));
+    const topPad = 46;
+    const spineY = topPad + trackOffset + 26;
+    const trackY = spineY - trackOffset;
+    const width = Math.max(xAt(maxIdx) + 120, 620);
+    const height = spineY + 150;
+
+    const parts = [];
+    parts.push(`<line id="drag-marker" x1="0" y1="0" x2="0" y2="${height}" class="drag-marker" style="opacity:0"/>`);
+    const dirLabels = (main.directions || []).map((d) => d.label).filter(Boolean);
+    parts.push(`<text x="${padL}" y="26" class="dir-text">${esc(dirLabels.join("  /  ") || "（尚未生成方向）")}${group.branches.length ? "  ·  含支线" : ""}</text>`);
+
+    // 主干
+    if (mainStations.length >= 2) {
+      const x0 = xMain[0];
+      const x1 = xMain[xMain.length - 1];
+      if (color2) {
+        parts.push(`<rect x="${x0}" y="${spineY - 6}" width="${x1 - x0}" height="6" rx="3" fill="${color}"/>`);
+        parts.push(`<rect x="${x0}" y="${spineY}" width="${x1 - x0}" height="6" rx="3" fill="${color2}"/>`);
+      } else {
+        parts.push(`<rect x="${x0}" y="${spineY - 6}" width="${x1 - x0}" height="12" rx="6" fill="${color}"/>`);
+      }
+    }
+
+    // 支线：平行轨道 + 分离/汇入主干的两段连接线
+    group.branches.forEach((branch) => {
+      const stations = branch.stations || [];
+      if (stations.length < 2) return;
+      const geom = branchGeom.get(branch.id);
+      const pointOf = (index) => {
+        const station = stations[index];
+        const custom = geom.nodes.get(station);
+        if (custom) return { x: xAt(custom.column), y: trackY, column: custom.column };
+        const mainIdx = mainStations.indexOf(station);
+        return { x: xAt(mainIdx), y: spineY, column: mainIdx };
+      };
+      const points = stations.map((_, index) => pointOf(index));
+      const stroke = `stroke="${color}" stroke-width="12" stroke-linecap="round" stroke-linejoin="round"`;
+
+      // 分离/汇入段：斜线接入平行轨道，转角做成圆角，且转角与首/末站之间留出直线段
+      const run = geom.run;
+      const radius = Math.max(18, Math.min(34, gap * 0.32));
+      const stub = Math.max(18, gap * 0.22); // 转角到车站之间的直线段长度
+      const need = radius + stub;            // 除斜线外，转角与直线段占用的水平空间
+      if (geom.afterCount) {
+        const lastShared = run.aStart + run.length - 1;
+        const firstAfter = points[run.bStart + run.length];
+        const baseX = xAt(lastShared);
+        // 分离点默认落在共线区间的中点；空间不够时向左挪（仍在该区间内）
+        const departX = Math.max(baseX + gap * 0.12, Math.min(baseX + gap * 0.42, firstAfter.x - need - 6));
+        const depart = { x: departX, y: spineY };
+        const leadIn = Math.max(12, Math.min(need, firstAfter.x - departX - 2));
+        const corner = { x: firstAfter.x - leadIn, y: trackY };
+        const path = roundedPolyline([depart, corner, ...points.slice(run.bStart + run.length)], radius);
+        parts.push(`<path d="${path}" fill="none" ${stroke} opacity="0.95"/>`);
+      }
+      if (geom.beforeCount) {
+        const lastBefore = points[run.bStart - 1];
+        const baseX = xAt(run.aStart);
+        // 汇入点默认落在共线区间的中点；空间不够时向右挪（仍在该区间内）
+        const mergeX = Math.min(baseX - gap * 0.12, Math.max(baseX - gap * 0.42, lastBefore.x + need + 6));
+        const merge = { x: mergeX, y: spineY };
+        const leadIn = Math.max(12, Math.min(need, mergeX - lastBefore.x - 2));
+        const corner = { x: lastBefore.x + leadIn, y: trackY };
+        const path = roundedPolyline([...points.slice(0, geom.beforeCount), corner, merge], radius);
+        parts.push(`<path d="${path}" fill="none" ${stroke} opacity="0.95"/>`);
+      }
+
+      // 没有连接段时（理论上不会出现），平行轨道仍按直线补上
+      if (!geom.afterCount && !geom.beforeCount && points.length >= 2) {
+        parts.push(`<line x1="${points[0].x}" y1="${trackY}" x2="${points[points.length - 1].x}" y2="${trackY}" ${stroke} opacity="0.95"/>`);
+      }
+
+      // 支线区间时长（含连接段）
+      for (let i = 0; i < points.length - 1; i += 1) {
+        const a = points[i];
+        const b = points[i + 1];
+        const onTrack = a.y === trackY && b.y === trackY;
+        const mx = (a.x + b.x) / 2;
+        const my = (onTrack ? trackY : spineY) - (onTrack ? 18 : 26);
+        const value = branch.travel_minutes?.[i];
+        parts.push(`<g class="seg-label" data-seg="${i}" data-line="${esc(branch.id)}" role="button" tabindex="0" aria-label="${esc(branch.name)} 第 ${i + 1} 段区间时长">
+          <rect class="pill" x="${mx - 20}" y="${my - 12}" width="40" height="24" rx="12"/>
+          <text class="seg-text" x="${mx}" y="${my + 5}">${esc(fmtMinute(value))}</text>
+        </g>`);
+      }
+    });
+
+    // 主线区间时长 + 插入点
+    for (let i = 0; i < mainStations.length - 1; i += 1) {
+      const xa = xMain[i];
+      const xm = xa + gap / 2;
+      const value = main.travel_minutes[i];
+      parts.push(`<g class="seg-label" data-seg="${i}" data-line="${esc(main.id)}" role="button" tabindex="0" aria-label="第 ${i + 1} 段区间时长">
+        <rect class="pill" x="${xm - 20}" y="${spineY - 44}" width="40" height="24" rx="12"/>
+        <text class="seg-text" x="${xm}" y="${spineY - 27}">${esc(fmtMinute(value))}</text>
+      </g>`);
+      parts.push(`<g class="insert" data-insert="${i + 1}" data-line="${esc(main.id)}" role="button" tabindex="0" aria-label="在第 ${i + 2} 站前插入车站">
+        <circle cx="${xm}" cy="${spineY}" r="10"/>
+        <path class="plus" d="M${xm - 4.5} ${spineY} h9 M${xm} ${spineY - 4.5} v9"/>
+      </g>`);
+    }
+
+    // 站点（主线）
+    const stationNode = (line, stationName, x, y, indexInLine, labelAbove, labelToRight = false) => {
+      const isInterchange = interchanges.has(stationName);
+      const r = isInterchange ? 10 : 7;
+      const selected = line.id === state.selectedLineId && indexInLine === state.stationIndex;
+      const labelY = labelAbove ? y - 16 : y + 30;
+      // 站名默认向左上展开；支线首站改为向右上展开，避免压到分离/汇入的圆角连接线
+      const anchorStyle = labelToRight ? ' style="text-anchor:start"' : "";
+      return `<g class="station${selected ? " selected" : ""}${isInterchange ? " interchange" : ""}" data-station="${indexInLine}" data-line="${esc(line.id)}" role="button" tabindex="0" aria-label="${esc(stationName)}">
+        ${selected ? `<circle class="halo" cx="${x}" cy="${y}" r="${r + 7}"/>` : ""}
+        <circle class="node" cx="${x}" cy="${y}" r="${r}" style="stroke:${color}"/>
+        <text class="st-name" x="${x}" y="${labelY}"${anchorStyle} transform="rotate(-38 ${x} ${labelY})">${esc(stationName)}</text>
+      </g>`;
+    };
+
+    mainStations.forEach((name, i) => {
+      parts.push(stationNode(main, name, xMain[i], spineY, i, false));
+    });
+
+    group.branches.forEach((branch) => {
+      const geom = branchGeom.get(branch.id);
+      const afterStart = geom.run.bStart + geom.run.length;
+      (branch.stations || []).forEach((name, i) => {
+        const custom = geom.nodes.get(name);
+        if (!custom) return; // 共线车站已由主线绘制
+        const toRight = geom.afterCount > 0 && i === afterStart;
+        parts.push(stationNode(branch, name, xAt(custom.column), trackY, i, true, toRight));
+      });
+    });
+
+    map.innerHTML = `<svg class="ed-svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" role="img" aria-label="${esc(main.name || "线路")} 支线线路图">${parts.join("")}</svg>`;
+    // 拖动排序按列号换算：padL 取第 0 列的 x（支线可在主干左侧延伸）
+    state.mapMetrics = { padL: shiftX, gap, y: spineY, width };
   }
 
   function renderLinearMap(line) {
@@ -703,6 +985,67 @@
     state.mapMetrics = { ring: true, stadium: true, cx: xLeft + width / 2, cy, radius };
   }
 
+  /** 当前线路所属分组的信息（主线名、共线站数、是否支线）。 */
+  function branchContext(line) {
+    const api = window.LineBranches;
+    const group = api.groupOf(state.doc?.lines || [], line.id);
+    if (!group) return null;
+    const isBranch = group.main.id !== line.id;
+    return {
+      group,
+      isBranch,
+      main: group.main,
+      parent: isBranch ? group.main : null,
+      sharedCount: isBranch ? api.sharedStations(group.main, line).length : 0,
+    };
+  }
+
+  /**
+   * 改名后同步：方向标签、快车停靠站，以及同组支线/主线上的同名车站。
+   * 不这么做的话，改一个主干站名就会让支线与主线“断开”，支线也会失去分组。
+   */
+  function syncRenamedStation(line, before, after) {
+    const oldName = String(before ?? "");
+    const newName = String(after ?? "");
+    if (!oldName || oldName === newName) return;
+    const renameInLine = (target) => {
+      if (!target || target === line) return;
+      target.stations = (target.stations || []).map((station) => (station === oldName ? newName : station));
+    };
+    const renameLabels = (target) => {
+      (target?.directions || []).forEach((direction) => {
+        if (typeof direction.label === "string" && direction.label.includes(oldName)) {
+          direction.label = direction.label.split(oldName).join(newName);
+        }
+        if (direction.terminal === oldName) direction.terminal = newName;
+      });
+      (target?.express || []).forEach((service) => {
+        if (Array.isArray(service.stops)) {
+          service.stops = service.stops.map((station) => (station === oldName ? newName : station));
+        }
+      });
+    };
+    renameLabels(line);
+    const group = window.LineBranches.groupOf(state.doc?.lines || [], line.id);
+    if (!group) return;
+    [group.main, ...group.branches].forEach((member) => {
+      renameInLine(member);
+      renameLabels(member);
+    });
+  }
+
+  /** 支线提示条：说明当前编辑的是支线，并可一键切回主线。 */
+  function branchBanner(line) {
+    const ctx = branchContext(line);
+    if (!ctx?.isBranch) return "";
+    return `<div class="ed-branch-banner">
+      <span class="badge">支线</span>
+      本条是「${esc(ctx.parent.name)}」的支线，与主线共线 ${ctx.sharedCount} 站
+      <div class="spacer"></div>
+      <button type="button" data-act="goto-main">切到主线</button>
+    </div>`;
+  }
+
   function renderStationEditor() {
     const box = $("station-editor");
     const line = selectedLine();
@@ -710,13 +1053,14 @@
       box.innerHTML = "";
       return;
     }
+    const banner = branchBanner(line);
 
     if (state.segmentIndex >= 0 && state.segmentIndex < segmentCount(line)) {
       const i = state.segmentIndex;
       const value = line.travel_minutes[i];
       const m = line.ring ? ringSize(line) : line.stations.length - 1;
       const toStation = line.ring ? line.stations[(i + 1) % m] : line.stations[i + 1];
-      box.innerHTML = `
+      box.innerHTML = `${banner}
         <div class="ed-station-card">
           <div class="ed-sc-head">
             <span class="ed-sc-badge">区间 ${i + 1}</span>
@@ -737,7 +1081,8 @@
     }
 
     if (state.stationIndex < 0 || state.stationIndex >= line.stations.length) {
-      box.innerHTML = `<div class="ed-station-hint">点击线路图上的站点可编辑站名与相邻区间；拖动站点圆点可调整顺序。</div>`;
+      const hasBranch = (selectedGroup()?.branches || []).length > 0;
+      box.innerHTML = `${banner}<div class="ed-station-hint">点击线路图上的站点可编辑站名与相邻区间；拖动站点圆点可调整顺序。${hasBranch ? "支线站点同样可以点击编辑。" : ""}</div>`;
       return;
     }
 
@@ -748,7 +1093,7 @@
     const next = nextIndex >= 0 ? line.travel_minutes[nextIndex] : null;
     const isRing = line.ring && ringSize(line) >= 3;
     const canRight = isRing ? i < ringSize(line) - 1 : i < line.stations.length - 1;
-    box.innerHTML = `
+    box.innerHTML = `${banner}
       <div class="ed-station-card">
         <div class="ed-sc-head">
           <span class="ed-sc-badge" style="background:${safeColor(line.color)}">第 ${i + 1} 站</span>
@@ -769,7 +1114,68 @@
           <div class="spacer"></div>
           <button type="button" class="danger" data-act="delete">删除本站</button>
         </div>
+        ${canOpenBranch(line) ? `<div class="row ed-branch-row">
+          <button type="button" data-act="open-branch" title="以本站为分叉点新建一条支线">⑂ 从本站开新支线</button>
+          <span class="hint">非环线可用；支线会与本线共用分叉点之前（或之后）的车站。</span>
+        </div>` : ""}
       </div>`;
+  }
+
+  /** 只有非环线主线、且当前站点属于该线路时才允许开新支线。 */
+  function canOpenBranch(line) {
+    if (!line || line.ring) return false;
+    if (window.LineBranches.parseBranchName(line.name)) return false; // 支线自身不再开分支
+    return (line.stations || []).length >= 2;
+  }
+
+  /**
+   * 从第 index 站开启一条新支线：
+   * 支线先复制分叉点及其之前（靠主干起点一侧）的共线车站，末尾追加一个待命名的新站。
+   */
+  function openBranchFromStation(line, index) {
+    if (!canOpenBranch(line) || index < 0 || index >= line.stations.length) return;
+    const identity = window.LineBranches.nextBranchIdentity(state.doc.lines, line);
+    const stations = line.stations.slice(0, index + 1);
+    const minutes = line.travel_minutes.slice(0, index);
+    const existing = new Set(state.doc.lines.flatMap((item) => item.stations || []));
+    let newName = "新站";
+    let serial = 1;
+    while (existing.has(newName)) {
+      serial += 1;
+      newName = `新站${serial}`;
+    }
+    stations.push(newName);
+    minutes.push(3);
+    const branch = normalizeLine({
+      ...line,
+      id: identity.id,
+      name: identity.name,
+      short_name: `${line.short_name || line.name}支线${identity.index > 1 ? identity.index : ""}`,
+      stations,
+      travel_minutes: minutes,
+      ring: false,
+      directions: [],
+      express: [],
+      first_train: line.first_train,
+      last_train: line.last_train,
+    });
+    rebuildDirections(branch);
+    const at = state.doc.lines.findIndex((item) => item.id === line.id);
+    state.doc.lines.splice(at + 1, 0, branch);
+    state.selectedLineId = branch.id;
+    state.stationIndex = stations.length - 1;
+    state.segmentIndex = -1;
+    touch();
+    renderAll();
+    requestAnimationFrame(() => {
+      const input = $("st-name");
+      if (input) { input.focus(); input.select(); }
+    });
+    // 共线不足 3 站时不会被识别为支线分组，这里给出提示
+    const shared = window.LineBranches.sharedStations(line, branch).length;
+    toast(shared >= window.LineBranches.MIN_SHARED
+      ? `已创建「${branch.name}」，换个站名即可`
+      : `已创建「${branch.name}」：与主线共线 ${shared} 站，少于 3 站不会显示为支线分组`);
   }
 
   function renderProps() {
@@ -1135,11 +1541,15 @@
   }
 
   function deleteLine(id) {
+    const group = window.LineBranches.groupOf(state.doc.lines, id);
     const line = state.doc.lines.find((item) => item.id === id);
     if (!line) return;
-    if (!confirm(`确定删除线路「${line.name || id}」？此操作在提交前只影响当前草稿。`)) return;
-    state.doc.lines = state.doc.lines.filter((item) => item.id !== id);
-    if (state.selectedLineId === id) {
+    const branches = group?.main.id === id ? group.branches : [];
+    const extra = branches.length ? `及其 ${branches.length} 条支线（${branches.map((b) => b.name).join("、")}）` : "";
+    if (!confirm(`确定删除线路「${line.name || id}」${extra}？此操作在提交前只影响当前草稿。`)) return;
+    const removed = new Set([id, ...branches.map((branch) => branch.id)]);
+    state.doc.lines = state.doc.lines.filter((item) => !removed.has(item.id));
+    if (removed.has(state.selectedLineId)) {
       state.selectedLineId = state.doc.lines[0]?.id || "";
       state.stationIndex = -1;
       state.segmentIndex = -1;
@@ -1148,12 +1558,17 @@
     renderAll();
   }
 
+  /** 按分组上下移动：主线与其支线作为整体一起移动。 */
   function moveLine(id, delta) {
-    const index = state.doc.lines.findIndex((line) => line.id === id);
-    const target = index + delta;
-    if (index < 0 || target < 0 || target >= state.doc.lines.length) return;
-    const [line] = state.doc.lines.splice(index, 1);
-    state.doc.lines.splice(target, 0, line);
+    const groups = lineGroups();
+    const groupIndex = groups.findIndex((group) => group.main.id === id
+      || group.branches.some((branch) => branch.id === id));
+    const target = groupIndex + delta;
+    if (groupIndex < 0 || target < 0 || target >= groups.length) return;
+    const ordered = [...groups];
+    const [moved] = ordered.splice(groupIndex, 1);
+    ordered.splice(target, 0, moved);
+    state.doc.lines = ordered.flatMap((group) => [group.main, ...group.branches]);
     touch();
     renderLineList();
   }
@@ -1166,6 +1581,11 @@
     const node = ev.target.closest?.("g[data-station]");
     if (!node) return;
     const index = Number(node.dataset.station);
+    // 跨线路（支线图里点到支线节点）：只做选中，不启用拖动排序
+    if (node.dataset.line && node.dataset.line !== state.selectedLineId) {
+      drag = { index, pointerId: ev.pointerId, moved: false, crossLine: true, node, svg: null };
+      return;
+    }
     drag = {
       index,
       startX: ev.clientX,
@@ -1174,8 +1594,11 @@
       target: index,
       pointerId: ev.pointerId,
       svg: $("map").querySelector("svg"),
+      node,
     };
-    node.setPointerCapture?.(ev.pointerId);
+    try {
+      node.setPointerCapture?.(ev.pointerId);
+    } catch { /* 合成事件或已释放的指针：忽略 */ }
   }
 
   function onMapPointerMove(ev) {
@@ -1204,6 +1627,14 @@
     if (!drag) return;
     const current = drag;
     drag = null;
+    if (current.crossLine) {
+      // 点击支线节点：切换到该支线并选中站点
+      focusLineFromEvent(current.node);
+      state.stationIndex = current.index;
+      state.segmentIndex = -1;
+      renderAll();
+      return;
+    }
     const marker = current.svg?.querySelector("#drag-marker");
     if (marker) marker.style.opacity = "0";
     if (current.moved && current.target !== current.index) {
@@ -1214,14 +1645,28 @@
       state.segmentIndex = -1;
       touch();
       renderAll();
-      return;
+    } else {
+      selectStation(current.index);
     }
-    selectStation(current.index);
+  }
+
+  /** 点击支线图上的元素时，先把编辑目标切到该元素所属的线路。 */
+  function focusLineFromEvent(node) {
+    const lineId = node?.dataset?.line;
+    if (!lineId || lineId === state.selectedLineId) return false;
+    const line = state.doc?.lines.find((item) => item.id === lineId);
+    if (!line) return false;
+    state.selectedLineId = line.id;
+    state.stationIndex = -1;
+    state.segmentIndex = -1;
+    renderLineList();
+    return true;
   }
 
   function onMapClick(ev) {
     const insert = ev.target.closest("[data-insert]");
     if (insert) {
+      if (focusLineFromEvent(insert)) renderMap();
       const line = selectedLine();
       if (!line) return;
       const at = insertStation(line, Number(insert.dataset.insert));
@@ -1236,7 +1681,10 @@
       return;
     }
     const seg = ev.target.closest("[data-seg]");
-    if (seg) selectSegment(Number(seg.dataset.seg));
+    if (seg) {
+      if (focusLineFromEvent(seg)) renderMap();
+      selectSegment(Number(seg.dataset.seg));
+    }
   }
 
   function onMapKeydown(ev) {
@@ -1244,6 +1692,7 @@
     const station = ev.target.closest("[data-station]");
     if (station) {
       ev.preventDefault();
+      if (focusLineFromEvent(station)) renderMap();
       selectStation(Number(station.dataset.station));
       return;
     }
@@ -1417,7 +1866,9 @@
       if (!line) return;
       const el = ev.target;
       if (el.id === "st-name") {
+        const before = line.stations[state.stationIndex];
         line.stations[state.stationIndex] = el.value;
+        syncRenamedStation(line, before, el.value);
         const head = $("st-head-name");
         if (head) head.textContent = el.value || "（空站名）";
         touch();
@@ -1447,6 +1898,11 @@
       if (!line) return;
       const act = btn.dataset.act;
       if (act === "seg-close") { state.segmentIndex = -1; renderMap(); renderStationEditor(); return; }
+      if (act === "goto-main") {
+        const ctx = branchContext(line);
+        if (ctx?.parent) selectLine(ctx.parent.id);
+        return;
+      }
       if (act === "seg-insert") {
         const at = insertStation(line, state.segmentIndex + 1);
         state.stationIndex = at;
@@ -1482,6 +1938,8 @@
         state.segmentIndex = -1;
         touch();
         renderAll();
+      } else if (act === "open-branch") {
+        openBranchFromStation(line, index);
       }
     });
 

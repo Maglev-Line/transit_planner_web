@@ -192,6 +192,7 @@ main {
   font-size: 11px; color: var(--ink-2); background: #eef1f6; border-radius: 99px;
   padding: 1px 7px; flex: 0 0 auto;
 }
+.tag-branch { color: #6b3fa0; background: #f3edff; border: 1px solid #d9cbf5; }
 .search { width: 100%; margin-bottom: 8px; }
 
 /* 线路库：列表与详情各占一段高度，中间的分割条可上下拖动 */
