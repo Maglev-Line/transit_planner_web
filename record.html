@@ -1,0 +1,197 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>运转记录 · 运转计划助手 Web</title>
+  <meta name="description" content="按时间记录一次真实运转：自定义交通类型、线路、起止站与时间、车型等字段，自动统计用时，导出 JSON 或 PDF。">
+  <link rel="stylesheet" href="styles.css">
+  <link rel="stylesheet" href="record.css">
+</head>
+
+<body class="record-body">
+  <div class="topstack">
+    <div class="cta-strip">
+      <a class="cta-btn" href="index.html" title="返回首页">← 返回首页</a>
+      <span class="cta-tip">记录一次真实运转，草稿自动保存在本浏览器。</span>
+      <div class="spacer"></div>
+      <a class="cta-btn" href="plan.html" title="切换到规划模式">🗺 规划模式</a>
+    </div>
+
+    <header class="topbar record-topbar">
+      <div class="brand">运转记录<span>Web</span></div>
+
+      <label>记录名 <input id="rec-title" type="text" size="18" placeholder="我的运转记录"></label>
+      <label>日期 <input id="rec-date" type="date"></label>
+      <span class="draft-chip" id="rec-save-state">草稿已自动保存</span>
+
+      <div class="spacer"></div>
+      <button type="button" id="btn-rec-export" title="导出为 JSON 文件（可再次导入编辑）">导出 JSON</button>
+      <button type="button" class="primary" id="btn-rec-print" title="生成 A4 记录表并调用打印（可选另存为 PDF）">导出 PDF</button>
+    </header>
+  </div>
+
+  <div class="record-main">
+    <!-- 左：行程记录列表 -->
+    <section class="panel record-list-panel">
+      <h2>运转行程 <span class="hint">按时间顺序记录每一段乘车</span></h2>
+      <div id="rec-list"></div>
+      <div class="add-row">
+        <button type="button" class="primary" id="btn-rec-add" title="添加一段乘车记录">＋ 添加一段行程</button>
+      </div>
+    </section>
+
+    <!-- 右：概览 / 时间轴 / 自定义字段 / 备注 -->
+    <aside class="panel record-side">
+      <h2>本次运转概览</h2>
+      <div class="stats" id="rec-stats"></div>
+
+      <h2 style="margin-top:14px">全程时间轴</h2>
+      <div id="rec-timeline"></div>
+
+      <h2 style="margin-top:14px">
+        自定义字段
+        <button type="button" class="ghost" id="btn-rec-field-add" title="添加整次运转的自定义字段">＋ 添加</button>
+      </h2>
+      <div id="rec-fields"></div>
+
+      <h2 style="margin-top:14px">备注</h2>
+      <textarea id="rec-note" rows="4" placeholder="记录这次运转的整体感受、同行人、天气等"></textarea>
+    </aside>
+  </div>
+
+  <!-- 页脚：友情链接 -->
+  <footer class="site-footer">
+    <span class="ft-title">友情链接</span>
+
+    <a href="https://metrowordle.fun/" target="_blank" rel="noopener noreferrer"
+       title="MetroWordle · 地铁猜站游戏">MetroWordle</a>
+    <a href="https://railmapgen.org/?app=rmp" target="_blank" rel="noopener noreferrer"
+       title="地铁线路图工具包 · Rail Map Painter">地铁线路图工具包</a>
+    <a href="https://railab.cc/" target="_blank" rel="noopener noreferrer"
+       title="Railability · 铁路运转工具箱">Railability</a>
+    <a href="https://busline.design/" target="_blank" rel="noopener noreferrer"
+       title="Bus Line Designer · 公交线路设计器">Bus Line Designer</a>
+    <a href="https://tools.kblack.cn/shmetro-faremap/" target="_blank" rel="noopener noreferrer"
+       title="上海轨道交通票价图">上海轨道交通票价图</a>
+
+    <span class="ft-note">以上均为第三方站点，与本站无隶属关系</span>
+  </footer>
+
+  <!-- 添加 / 编辑行程记录弹窗 -->
+  <dialog id="rec-dialog">
+    <form method="dialog">
+      <div class="modal-head">
+        <h3 id="rec-dlg-title">添加行程记录</h3>
+        <span class="hint" id="rec-dlg-subtitle"></span>
+        <div class="spacer"></div>
+        <button type="button" class="ghost" id="btn-rec-dlg-close" title="关闭">✕</button>
+      </div>
+
+      <div class="modal-body">
+        <div class="grid1">
+          <fieldset>
+            <legend>乘车信息</legend>
+            <div class="grid2">
+              <div class="field">
+                <span>交通类型（可直接输入自定义类型）</span>
+                <input id="seg-type" type="text" list="rec-type-options" placeholder="地铁 / 高铁 / 公交…">
+              </div>
+              <div class="field">
+                <span>线路名称</span>
+                <input id="seg-line" type="text" placeholder="如：上海地铁 1 号线 / 京沪高铁">
+              </div>
+              <div class="field">
+                <span>车次 / 班次（选填）</span>
+                <input id="seg-train" type="text" placeholder="如：G123 / 71 路">
+              </div>
+              <div class="field">
+                <span>车型（选填，可直接输入）</span>
+                <input id="seg-model" type="text" list="rec-model-options" placeholder="如：A 型车 / CR400AF">
+              </div>
+              <div class="field">
+                <span>起始站</span>
+                <input id="seg-from" type="text" placeholder="如：人民广场">
+              </div>
+              <div class="field">
+                <span>起始时间</span>
+                <input id="seg-start" type="time">
+              </div>
+              <div class="field">
+                <span>到达站</span>
+                <input id="seg-to" type="text" placeholder="如：徐家汇">
+              </div>
+              <div class="field">
+                <span>到达时间</span>
+                <input id="seg-end" type="time">
+              </div>
+              <div class="field">
+                <span>票价（元，选填）</span>
+                <input id="seg-price" type="number" min="0" step="0.5" placeholder="如 4">
+              </div>
+              <div class="field">
+                <span>备注（选填）</span>
+                <input id="seg-note" type="text" placeholder="如：坐在车头位置">
+              </div>
+            </div>
+            <div class="seg-duration" id="seg-duration-hint">填写起始与到达时间后自动计算用时</div>
+          </fieldset>
+
+          <fieldset>
+            <legend>本段自定义字段（座位号、编组、方向等）</legend>
+            <div id="seg-extras" class="extra-list"></div>
+            <button type="button" class="ghost" id="btn-seg-extra-add">＋ 添加字段</button>
+          </fieldset>
+
+          <div class="err" id="seg-error" hidden></div>
+        </div>
+      </div>
+
+      <div class="modal-foot">
+        <span class="hint" id="seg-foot-hint">时间可以留空，但填写后会自动计算本段用时</span>
+        <div class="spacer"></div>
+        <button type="button" id="btn-rec-dlg-cancel">取消</button>
+        <button type="button" class="primary" id="btn-rec-dlg-save">确定</button>
+      </div>
+    </form>
+  </dialog>
+
+  <datalist id="rec-type-options">
+    <option value="地铁"></option>
+    <option value="市域铁路"></option>
+    <option value="国铁"></option>
+    <option value="高铁"></option>
+    <option value="城际铁路"></option>
+    <option value="公交"></option>
+    <option value="有轨电车"></option>
+    <option value="磁浮"></option>
+    <option value="轮渡"></option>
+    <option value="步行"></option>
+    <option value="其他"></option>
+  </datalist>
+
+  <datalist id="rec-model-options">
+    <option value="A 型车"></option>
+    <option value="B 型车"></option>
+    <option value="C 型车"></option>
+    <option value="L 型车"></option>
+    <option value="CR400AF"></option>
+    <option value="CR400BF"></option>
+    <option value="CRH380A"></option>
+    <option value="CRH380B"></option>
+    <option value="CRH6A"></option>
+    <option value="宇通客车"></option>
+    <option value="比亚迪 K9"></option>
+  </datalist>
+
+  <!-- 打印 / 另存为 PDF 的 A4 记录表 -->
+  <div id="rec-print-view" hidden></div>
+
+  <div class="toast" id="rec-toast" hidden></div>
+
+  <script src="js/drafts.js"></script>
+  <script src="js/record.js"></script>
+</body>
+
+</html>

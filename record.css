@@ -1,0 +1,200 @@
+/* 运转记录模式：列表卡片、侧栏概览与 A4 打印表 */
+
+.record-body {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+}
+
+.record-topbar input#rec-title { width: 190px; }
+
+.record-main {
+  flex: 1 1 auto;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 330px;
+  gap: 14px;
+  padding: 14px;
+  align-items: start;
+}
+
+.record-list-panel { min-height: 240px; }
+.record-side {
+  position: sticky;
+  top: calc(var(--strip-h) + 68px);
+  max-height: calc(100vh - 90px - var(--strip-h));
+  overflow: auto;
+}
+.record-side textarea { width: 100%; resize: vertical; }
+.record-side h2 .ghost { font-weight: 400; }
+
+/* ---------- 记录卡片 ---------- */
+.rec-card {
+  position: relative;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: #fff;
+  overflow: hidden;
+  margin-bottom: 10px;
+}
+.rec-ribbon { height: 5px; }
+.rec-card .body { padding: 10px 12px; }
+
+.rec-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.rec-seq {
+  font-family: ui-monospace, Consolas, monospace;
+  font-size: 12px;
+  color: var(--ink-3);
+}
+.rec-type {
+  font-size: 11px;
+  font-weight: 700;
+  color: #fff;
+  border-radius: 99px;
+  padding: 1px 8px;
+  white-space: nowrap;
+}
+.rec-line { font-weight: 700; font-size: 15px; }
+.rec-train {
+  font-size: 11.5px;
+  color: var(--ink-2);
+  background: #eef1f6;
+  border-radius: 99px;
+  padding: 1px 7px;
+}
+.rec-actions { margin-left: auto; display: flex; gap: 2px; }
+
+.rec-route { display: flex; align-items: center; gap: 10px; margin-top: 8px; }
+.rec-end { min-width: 76px; }
+.rec-end.right { text-align: right; }
+.rec-end .t {
+  font-size: 18px;
+  font-weight: 700;
+  line-height: 1.25;
+  font-variant-numeric: tabular-nums;
+}
+.rec-end .s { font-size: 13px; color: var(--ink-2); }
+.rec-arrow {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  font-size: 11.5px;
+  color: var(--ink-3);
+}
+.rec-arrow .bar { width: 100%; height: 4px; border-radius: 99px; }
+.rec-arrow .line {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--ink-2);
+  font-weight: 600;
+}
+
+.rec-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+  margin-top: 8px;
+  font-size: 12px;
+  color: var(--ink-2);
+}
+.rec-price { color: var(--ok); font-weight: 700; }
+.rec-chip {
+  background: #f4f6fa;
+  border: 1px solid var(--line);
+  border-radius: 99px;
+  padding: 1px 7px;
+}
+
+.rec-empty {
+  border: 1px dashed var(--line);
+  border-radius: var(--radius);
+  padding: 18px 16px;
+  background: #fbfcff;
+  color: var(--ink-2);
+  text-align: center;
+}
+.rec-empty p { margin: 0 0 6px; }
+.rec-empty p:last-child { margin-bottom: 0; }
+
+/* ---------- 自定义字段 ---------- */
+.extra-row {
+  display: grid;
+  grid-template-columns: 118px minmax(0, 1fr) 32px;
+  gap: 6px;
+  align-items: center;
+  margin-bottom: 6px;
+}
+.extra-row input { width: 100%; }
+.extra-list { margin-bottom: 4px; }
+
+.seg-duration {
+  margin-top: 8px;
+  padding: 6px 9px;
+  font-size: 12.5px;
+  color: var(--brand);
+  background: #eef4ff;
+  border: 1px dashed #c3d5fb;
+  border-radius: 8px;
+}
+
+/* ---------- 打印 / 另存为 PDF ---------- */
+#rec-print-view { display: none; }
+#rec-print-view .rec-sheet { color: #111; }
+#rec-print-view h1 { font-size: 20px; margin: 0 0 2px; }
+#rec-print-view .rec-sub { color: #555; font-size: 12.5px; margin-bottom: 8px; }
+#rec-print-view .rec-sum { font-size: 12.5px; margin-bottom: 8px; }
+#rec-print-view .rec-fields-print {
+  font-size: 12px;
+  color: #333;
+  margin-bottom: 8px;
+  padding: 5px 8px;
+  border: 1px dashed #bbb;
+  border-radius: 5px;
+}
+#rec-print-view .rec-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 11px;
+}
+#rec-print-view .rec-table th,
+#rec-print-view .rec-table td {
+  border: 1px solid #999;
+  padding: 3px 5px;
+  text-align: left;
+  vertical-align: top;
+}
+#rec-print-view .rec-table th { background: #eef1f6; font-weight: 700; }
+#rec-print-view .rec-note-print {
+  margin-top: 8px;
+  font-size: 12px;
+  border-top: 1px dashed #bbb;
+  padding-top: 6px;
+}
+#rec-print-view .rec-foot { margin-top: 10px; font-size: 11px; color: #666; }
+
+@media print {
+  body.record-body { background: #fff; }
+  body.record-body > * { display: none !important; }
+  body.record-body > #rec-print-view {
+    display: block !important;
+    print-color-adjust: exact;
+    -webkit-print-color-adjust: exact;
+  }
+}
+
+@media (max-width: 1100px) {
+  .record-main { grid-template-columns: 1fr; }
+  .record-side { position: static; max-height: none; }
+}
+
+@media (max-width: 560px) {
+  .record-topbar input#rec-title { width: 100%; }
+  .rec-route { gap: 6px; }
+  .rec-end { min-width: 62px; }
+  .rec-end .t { font-size: 16px; }
+  .extra-row { grid-template-columns: 96px minmax(0, 1fr) 32px; }
+}

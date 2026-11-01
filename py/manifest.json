@@ -7,8 +7,7 @@
     "transit_planner/core/__init__.py",
     "transit_planner/core/engine.py",
     "transit_planner/core/models.py",
-    "transit_planner/core/railway.py",
-    "transit_planner/core/settings.py"
+    "transit_planner/core/railway.py"
   ],
   "dataFiles": [
     "上海.json",

@@ -114,6 +114,7 @@ def main() -> int:
     print(f"[√] 容错：第 {bad['failedStep'] + 1} 段失败并返回原因 → {bad['error']}")
 
     hints = call("api_transfer_hints", b, line["id"])["hints"]
+    assert hints and all(h.get("boardStation") for h in hints), "换乘提示应附带实际可上车站名 boardStation"
     print(f"[√] {b} 可换乘 {len(hints)} 条线路"
           + (f"，例如 {hints[1]['name']} {hints[1]['directions']}" if len(hints) > 1 else ""))
 

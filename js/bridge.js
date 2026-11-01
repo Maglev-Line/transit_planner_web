@@ -1,10 +1,10 @@
 /* Pyodide 桥接层
  *
- * 职责：把桌面版内核（py/transit_planner/**，由 tools/sync_core.py 同步）与城市数据
+ * 职责：把共享规划内核（py/transit_planner/**，由 tools/sync_core.py 同步）与城市数据
  * 加载进浏览器版 Python 运行时，并把 web_api 的 JSON 接口转发给界面层。
  *
  * 注意：这里**不实现任何业务规则**。分段时长、经停站、换乘判定、付费区分组、票价合计
- * 全部由 Python 侧 `transit_planner.core.engine` 计算（与桌面版共用同一份实现）。
+ * 全部由 Python 侧 `transit_planner.core.engine` 计算。
  */
 (() => {
   "use strict";

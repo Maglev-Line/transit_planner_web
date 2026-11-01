@@ -1,9 +1,9 @@
 # -*- coding: utf-8 -*-
-"""浏览器端（Pyodide）调用入口：把桌面版内核的纯函数包装成 JSON 接口。
+"""浏览器端（Pyodide）调用入口：把共享规划内核的纯函数包装成 JSON 接口。
 
 约定：
 - 本文件属于 Web 项目，**不要**把业务规则写在这里；所有计算都必须经 `transit_planner.core.engine`
-  （与桌面版共用同一份权威实现，避免两套逻辑漂移）。
+  （与规划内核共用同一份权威实现，避免两套逻辑漂移）。
 - 每个 api_* 函数都返回 JSON 字符串（成功 `{"ok": true, ...}`，失败 `{"ok": false, "error": "..."}`），
   这样 JS 侧永远拿到结构化结果，不会因异常中断。
 """
@@ -446,6 +446,7 @@ def api_transfer_hints(station: str, exclude_line_id: str = "") -> str:
                     "directions": [d.label for d in ln.directions],
                     "current": ln.id == exclude_line_id,
                     "transfer": False,
+                    "boardStation": name,
                     "transferStation": "",
                 })
         for grp in city.transfers:
@@ -463,6 +464,7 @@ def api_transfer_hints(station: str, exclude_line_id: str = "") -> str:
                         "directions": [d.label for d in ln.directions],
                         "current": ln.id == exclude_line_id,
                         "transfer": True,
+                        "boardStation": name,
                         "transferStation": name,
                     })
         hints.sort(key=lambda h: h["transfer"])  # 先站内换乘，再出闸转乘（稳定排序，各自保持库中顺序）

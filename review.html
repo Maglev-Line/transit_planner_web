@@ -12,7 +12,7 @@
 
 <body class="rv-body">
   <header class="rv-header">
-    <a class="ed-back" href="index.html" title="返回运转计划器">← 规划器</a>
+    <a class="ed-back" href="plan.html" title="返回运转计划器">← 规划器</a>
     <div class="rv-brand">数据审核台</div>
     <span class="hint">所有提交与差异公开可查</span>
     <div class="spacer"></div>
@@ -37,6 +37,8 @@
       <button type="button" data-tab="all">全部提交</button>
       <button type="button" data-tab="published">已发布数据</button>
       <button type="button" data-tab="rollbacks">回滚记录</button>
+      <button type="button" data-tab="bans" id="tab-bans" hidden>封禁名单 <span class="count" id="count-bans"></span></button>
+      <button type="button" data-tab="announcements" id="tab-announcements" hidden>公告管理</button>
     </nav>
 
     <div class="rv-list" id="list">
@@ -50,6 +52,8 @@
         <li>提交说明、完整数据、差异对比与审核结果对所有访客公开；<b>联系方式仅管理员可见</b>。</li>
         <li>管理员通过后，覆盖数据立即对全站生效（优先于内置数据），所有访客刷新页面即可使用。</li>
         <li>管理员可随时回滚到内置数据或任意历史版本；每次回滚同样记录在本页。</li>
+        <li>管理员可按匿名提交的 IP 指纹封禁恶意提交者，时长从数天到永久不等；封禁只阻止其继续匿名提交。</li>
+        <li>管理员可在「公告管理」发布公告；首页右上角的公告图标会显示未读数量。</li>
       </ul>
     </section>
   </main>
@@ -92,6 +96,36 @@
         <div class="spacer"></div>
         <button type="button" id="btn-login-cancel">取消</button>
         <button type="button" class="primary" id="btn-login-ok">登录</button>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- 封禁匿名提交者 -->
+  <dialog id="ban-dialog" class="notice">
+    <form method="dialog">
+      <div class="modal-head">
+        <h3>封禁匿名提交者</h3>
+        <div class="spacer"></div>
+        <button type="button" class="ghost" id="btn-ban-close">✕</button>
+      </div>
+      <div class="modal-body">
+        <p class="hint" id="ban-target"></p>
+        <div class="field">
+          <span>封禁时长（天）</span>
+          <input id="ban-days" type="number" min="1" max="3650" step="1" value="7">
+        </div>
+        <label class="check"><input type="checkbox" id="ban-permanent"> 永久封禁（忽略天数）</label>
+        <div class="field" style="margin-top:8px">
+          <span>封禁原因（仅管理员可见，建议记录恶意行为）</span>
+          <input id="ban-reason" type="text" maxlength="300" placeholder="如：多次提交明显破坏数据的内容">
+        </div>
+        <div class="err" id="ban-error" hidden></div>
+      </div>
+      <div class="modal-foot">
+        <span class="hint">按 IP 指纹生效，同一网络下的其他用户也会受影响。</span>
+        <div class="spacer"></div>
+        <button type="button" id="btn-ban-cancel">取消</button>
+        <button type="button" class="danger" id="btn-ban-ok">确认封禁</button>
       </div>
     </form>
   </dialog>

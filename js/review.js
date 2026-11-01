@@ -1,7 +1,7 @@
 /* 数据审核台（公开读取 + 管理员操作）
  *
  * 公开：提交记录、完整数据、差异、审核结果、已发布数据、回滚记录。
- * 管理员（ADMIN_TOKEN）：通过 / 驳回 / 隐藏 / 回滚。
+ * 管理员（ADMIN_TOKEN）：通过 / 驳回 / 隐藏 / 回滚 / 封禁匿名 IP 指纹。
  */
 (() => {
   "use strict";
@@ -29,7 +29,10 @@
     submissions: [],
     published: [],
     rollbacks: [],
+    bans: [],
+    announcements: [],
     details: new Map(),
+    banTarget: null,
     admin: false,
     backend: false,
     adminConfigured: false,
@@ -78,6 +81,7 @@
       else DataApi.setToken("");
     }
     updateAdminUI();
+    if (state.admin) await refreshBanState();
 
     state.focusId = new URLSearchParams(location.search).get("submission") || "";
     await loadTab(state.focusId ? "all" : "pending");
@@ -115,11 +119,22 @@
 
     $("btn-logout").hidden = !state.admin;
     $("btn-login").hidden = state.admin;
+    $("tab-bans").hidden = !state.admin;
+    $("tab-announcements").hidden = !state.admin;
     // 始终允许点击：未配置时打开弹窗给出具体排查步骤，而不是变成无法点击的灰按钮
     $("btn-login").disabled = false;
     $("btn-login").title = blocked
       ? "服务端未读取到 ADMIN_TOKEN，点击查看配置步骤"
       : "输入 ADMIN_TOKEN 后可执行审核与回滚";
+  }
+
+  async function refreshBanState() {
+    if (!state.admin) {
+      state.bans = [];
+      return;
+    }
+    const res = await DataApi.bans();
+    if (res.ok) state.bans = res.bans || [];
   }
 
   // ---------------- 数据加载 ----------------
@@ -132,6 +147,36 @@
       return;
     }
     $("list").innerHTML = `<p class="hint">正在加载…</p>`;
+
+    if (tab === "bans") {
+      if (!state.admin) {
+        toast("请先登录管理员");
+        return loadTab("pending");
+      }
+      const [bans, counts] = await Promise.all([DataApi.bans(), DataApi.submissions("all")]);
+      if (!bans.ok) return showError(bans);
+      state.bans = bans.bans || [];
+      if (counts.ok) state.counts = { ...state.counts, ...counts.counts };
+      renderSummary();
+      renderTabs();
+      renderList();
+      return;
+    }
+
+    if (tab === "announcements") {
+      if (!state.admin) {
+        toast("请先登录管理员");
+        return loadTab("pending");
+      }
+      const [anns, counts] = await Promise.all([DataApi.announcements(), DataApi.submissions("all")]);
+      if (!anns.ok) return showError(anns);
+      state.announcements = anns.announcements || [];
+      if (counts.ok) state.counts = { ...state.counts, ...counts.counts };
+      renderSummary();
+      renderTabs();
+      renderList();
+      return;
+    }
 
     if (tab === "published") {
       const [pub, counts] = await Promise.all([DataApi.published(), DataApi.submissions("all")]);
@@ -188,12 +233,14 @@
 
   function renderSummary() {
     const counts = state.counts || {};
+    const activeBans = state.bans.filter((ban) => ban.active).length;
     const cards = [
       ["待审核", counts.pending ?? 0, "条"],
       ["已通过", counts.approved ?? 0, "条"],
       ["已驳回", counts.rejected ?? 0, "条"],
       ["已回滚", counts.reverted ?? 0, "条"],
       ["已发布城市", state.publishedCount ?? 0, "座"],
+      ...(state.admin ? [["生效封禁", activeBans, "个"]] : []),
     ];
     $("summary").innerHTML = cards.map(([label, value, unit]) => `
       <div class="rv-stat"><div class="k">${label}</div><div class="v">${value}<small>${unit}</small></div></div>`).join("");
@@ -207,11 +254,14 @@
     $("count-approved").textContent = state.counts.approved || "";
     $("count-rejected").textContent = state.counts.rejected || "";
     $("count-reverted").textContent = state.counts.reverted || "";
+    $("count-bans").textContent = state.bans.filter((ban) => ban.active).length || "";
   }
 
   function renderList() {
     if (state.tab === "published") return renderPublishedList();
     if (state.tab === "rollbacks") return renderRollbackList();
+    if (state.tab === "bans") return renderBanList();
+    if (state.tab === "announcements") return renderAnnouncementAdminList();
     return renderSubmissionList();
   }
 
@@ -245,6 +295,9 @@
       <div class="rv-facts">
         <span>${stats.lines ?? "?"} 条线路 · ${stats.stations ?? "?"} 站</span>
         <span>提交者：匿名用户</span>
+        ${state.admin && item.ipHash ? `<span>IP 指纹：<code>${esc(item.ipHash)}</code></span>` : ""}
+        ${state.admin && item.ipSubmissionCount > 1 ? `<span>该 IP 共有 ${item.ipSubmissionCount} 条提交</span>` : ""}
+        ${item.banned ? `<span class="warn">该提交者已被封禁${item.banUntil ? `至 ${fmtTime(item.banUntil)}` : "（永久）"}${item.banReason ? `：${esc(item.banReason)}` : ""}</span>` : ""}
         ${item.reviewedAt ? `<span>审核于 ${fmtTime(item.reviewedAt)}</span>` : ""}
         ${item.revertedAt ? `<span class="warn">回滚于 ${fmtTime(item.revertedAt)}</span>` : ""}
         ${item.reason ? `<span class="warn">原因：${esc(item.reason)}</span>` : ""}
@@ -255,6 +308,7 @@
           <button type="button" class="primary" data-act="approve">通过并生效</button>
           <button type="button" data-act="reject">驳回</button>
           <button type="button" class="danger" data-act="hide" title="仅隐藏，不公开">隐藏（垃圾信息）</button>` : ""}
+        ${state.admin ? `<button type="button" class="danger" data-act="ban" ${item.ipHash ? "" : "disabled"} title="${item.ipHash ? "按 IP 指纹封禁该提交者" : "这条记录没有可用的 IP 指纹"}">${item.banned ? "调整封禁" : "封禁提交者"}</button>` : ""}
         <button type="button" data-act="download">下载 JSON</button>
         <a class="btn" href="editor.html?city=${encodeURIComponent(item.city)}">在数据工坊中打开</a>
       </div>
@@ -315,6 +369,142 @@
           <span>目标版本：${esc(rb.to || "内置数据")}</span>
         </div>
       </article>`).join("");
+  }
+
+  function renderBanList() {
+    const items = state.bans;
+    if (!items.length) {
+      $("list").innerHTML = empty("目前没有被封禁的匿名提交者。");
+      return;
+    }
+    $("list").innerHTML = items.map(banCard).join("");
+  }
+
+  function banCard(ban) {
+    const active = ban.active !== false;
+    const until = ban.until ? fmtTime(ban.until) : "永久";
+    return `<article class="rv-card" data-ban="${esc(ban.ipHash)}">
+      <div class="rv-card-head">
+        <span class="status ${active ? "status-rejected" : "status-reverted"}">${active ? "封禁中" : "已过期"}</span>
+        <b class="rv-city">IP 指纹 ${esc(ban.ipHash)}</b>
+        <span class="rv-time">${active ? `到期：${until}` : `已于 ${until} 到期`}</span>
+        <div class="spacer"></div>
+        <button type="button" class="${active ? "danger" : ""}" data-act="unban">${active ? "解除封禁" : "删除记录"}</button>
+      </div>
+      <p class="rv-desc">${esc(ban.reason || "（未填写原因）")}</p>
+      <div class="rv-facts">
+        ${ban.city ? `<span>来源城市：${esc(ban.city)}</span>` : ""}
+        ${ban.submissionId ? `<span>来源提交：<a href="?submission=${encodeURIComponent(ban.submissionId)}">${esc(ban.submissionId)}</a></span>` : ""}
+        <span>设置于 ${fmtTime(ban.createdAt)}</span>
+        <span>更新于 ${fmtTime(ban.updatedAt)}</span>
+      </div>
+    </article>`;
+  }
+
+  function announcementLevel(level) {
+    return {
+      info: { text: "普通公告", cls: "" },
+      important: { text: "重要", cls: "important" },
+      warning: { text: "提醒", cls: "warning" },
+    }[level] || { text: "普通公告", cls: "" };
+  }
+
+  function renderAnnouncementAdminList() {
+    const items = state.announcements;
+    const form = `
+      <article class="rv-card rv-ann-card">
+        <div class="rv-card-head">
+          <span class="status status-pending">发布公告</span>
+          <b class="rv-city">新公告</b>
+          <span class="rv-time">发布后立即显示在首页右上角的公告图标中</span>
+        </div>
+        <div class="rv-ann-form">
+          <label class="rv-ann-field">
+            <span>标题</span>
+            <input id="ann-title" type="text" maxlength="120" placeholder="公告标题">
+          </label>
+          <label class="rv-ann-field">
+            <span>级别</span>
+            <select id="ann-level">
+              <option value="info">普通公告</option>
+              <option value="important">重要</option>
+              <option value="warning">提醒</option>
+            </select>
+          </label>
+          <label class="rv-ann-field rv-ann-wide">
+            <span>内容</span>
+            <textarea id="ann-body" rows="4" maxlength="4000" placeholder="公告正文，支持换行"></textarea>
+          </label>
+          <div class="err" id="ann-error" hidden></div>
+          <div class="rv-card-actions">
+            <button type="button" class="primary" data-act="publish-announcement">发布公告</button>
+          </div>
+        </div>
+      </article>`;
+    const list = items.length
+      ? items.map(announcementAdminCard).join("")
+      : empty("还没有发布公告。");
+    $("list").innerHTML = form + list;
+  }
+
+  function announcementAdminCard(item) {
+    const level = announcementLevel(item.level);
+    return `<article class="rv-card" data-ann="${esc(item.id)}">
+      <div class="rv-card-head">
+        <span class="status status-approved">已发布</span>
+        <span class="badge">${esc(level.text)}</span>
+        <b class="rv-city">${esc(item.title)}</b>
+        <span class="rv-time">${fmtTime(item.publishedAt)}</span>
+        <div class="spacer"></div>
+        <button type="button" class="danger" data-act="delete-announcement">删除公告</button>
+      </div>
+      <p class="rv-desc rv-ann-body">${esc(item.body)}</p>
+      <div class="rv-facts">
+        <span>公告 ID：${esc(item.id)}</span>
+        <span>级别：${esc(level.text)}</span>
+      </div>
+    </article>`;
+  }
+
+  async function publishAnnouncement() {
+    const title = $("ann-title").value.trim();
+    const body = $("ann-body").value.trim();
+    const level = $("ann-level").value;
+    const error = $("ann-error");
+    if (title.length < 2) {
+      error.textContent = "公告标题至少需要 2 个字。";
+      error.hidden = false;
+      $("ann-title").focus();
+      return;
+    }
+    if (!body) {
+      error.textContent = "公告内容不能为空。";
+      error.hidden = false;
+      $("ann-body").focus();
+      return;
+    }
+
+    const button = document.querySelector('[data-act="publish-announcement"]');
+    if (button) button.disabled = true;
+    const res = await DataApi.createAnnouncement({ title, body, level });
+    if (button) button.disabled = false;
+    if (!res.ok) {
+      error.textContent = res.error || "发布失败";
+      error.hidden = false;
+      return;
+    }
+    toast("公告已发布");
+    await loadTab("announcements");
+  }
+
+  async function deleteAnnouncement(id) {
+    const item = state.announcements.find((row) => row.id === id);
+    if (!item) return;
+    if (!confirm(`确定删除公告「${item.title}」？首页将不再显示。`)) return;
+    const res = await DataApi.deleteAnnouncement(id);
+    if (!res.ok) return toast(res.error || "删除失败");
+    toast("公告已删除");
+    await loadTab("announcements");
   }
 
   // ---------------- 详情 / 差异 ----------------
@@ -439,6 +629,77 @@
     await rollback(name, previous.submissionId);
   }
 
+  function openBanDialog(item) {
+    if (!item?.ipHash) return toast("这条提交没有可用的 IP 指纹");
+    state.banTarget = item;
+    $("ban-target").textContent =
+      `目标：IP 指纹 ${item.ipHash}${item.city ? ` · 城市「${item.city}」` : ""}${item.banned ? "（当前已封禁，可调整时长）" : ""}`;
+
+    const existing = state.bans.find((ban) => ban.ipHash === item.ipHash);
+    if (existing && !existing.until) {
+      $("ban-permanent").checked = true;
+      $("ban-days").value = "7";
+      $("ban-days").disabled = true;
+    } else if (existing?.until) {
+      const days = Math.ceil((Date.parse(existing.until) - Date.now()) / 86400000);
+      $("ban-days").value = String(Math.min(Math.max(days || 1, 1), 3650));
+      $("ban-days").disabled = false;
+      $("ban-permanent").checked = false;
+    } else {
+      $("ban-days").value = "7";
+      $("ban-days").disabled = false;
+      $("ban-permanent").checked = false;
+    }
+    $("ban-reason").value = "";
+    $("ban-error").hidden = true;
+    $("ban-dialog").showModal();
+    requestAnimationFrame(() => $("ban-days").focus());
+  }
+
+  async function submitBan() {
+    const item = state.banTarget;
+    if (!item?.ipHash) return;
+    const permanent = $("ban-permanent").checked;
+    const days = Number($("ban-days").value);
+    const error = $("ban-error");
+    if (!permanent && (!Number.isInteger(days) || days < 1 || days > 3650)) {
+      error.textContent = "封禁时长必须是 1 到 3650 天的整数，或勾选永久封禁。";
+      error.hidden = false;
+      return;
+    }
+
+    const button = $("btn-ban-ok");
+    button.disabled = true;
+    const res = await DataApi.ban(item.ipHash, {
+      durationDays: permanent ? null : days,
+      reason: $("ban-reason").value.trim(),
+      submissionId: item.id || "",
+      city: item.city || "",
+    });
+    button.disabled = false;
+    if (!res.ok) {
+      error.textContent = res.error || "封禁失败";
+      error.hidden = false;
+      return;
+    }
+
+    $("ban-dialog").close();
+    state.banTarget = null;
+    toast(permanent ? "已永久封禁该提交者" : `已封禁该提交者 ${days} 天`);
+    await refreshBanState();
+    await refresh();
+  }
+
+  async function unban(ban) {
+    if (!ban?.ipHash) return;
+    if (!confirm(`解除对 IP 指纹 ${ban.ipHash} 的封禁？`)) return;
+    const res = await DataApi.unban(ban.ipHash);
+    if (!res.ok) return toast(res.error || "解除封禁失败");
+    toast("已解除封禁");
+    await refreshBanState();
+    await refresh();
+  }
+
   // ---------------- 事件 ----------------
 
   function bindEvents() {
@@ -455,6 +716,18 @@
       if (!card) return;
       const act = btn.dataset.act;
 
+      if (card.dataset.ban) {
+        const ban = state.bans.find((row) => row.ipHash === card.dataset.ban);
+        if (ban && act === "unban") await unban(ban);
+        return;
+      }
+
+      if (act === "publish-announcement") return publishAnnouncement();
+      const announcementCard = btn.closest("[data-ann]");
+      if (announcementCard && act === "delete-announcement") {
+        return deleteAnnouncement(announcementCard.dataset.ann);
+      }
+
       if (card.dataset.published) {
         const name = card.dataset.published;
         if (act === "toggle") return toggleDetail(card);
@@ -469,6 +742,7 @@
       if (act === "toggle") return toggleDetail(card);
       if (act === "download") return downloadSubmission(item);
       if (!state.admin) return;
+      if (act === "ban") return openBanDialog(item);
       if (act === "approve") return approve(item);
       if (act === "reject") return reject(item);
       if (act === "hide") return hide(item);
@@ -489,12 +763,26 @@
       ev.preventDefault();
       login();
     });
+    $("btn-ban-close").addEventListener("click", () => $("ban-dialog").close());
+    $("btn-ban-cancel").addEventListener("click", () => $("ban-dialog").close());
+    $("btn-ban-ok").addEventListener("click", submitBan);
+    $("ban-permanent").addEventListener("change", (ev) => {
+      $("ban-days").disabled = ev.target.checked;
+    });
+    document.querySelector("#ban-dialog form")?.addEventListener("submit", (ev) => {
+      ev.preventDefault();
+      submitBan();
+    });
+    $("ban-dialog").addEventListener("close", () => { state.banTarget = null; });
+
     $("btn-logout").addEventListener("click", () => {
       DataApi.setToken("");
       state.admin = false;
+      state.bans = [];
+      state.announcements = [];
       updateAdminUI();
       toast("已退出管理员登录");
-      refresh();
+      loadTab(state.tab === "bans" || state.tab === "announcements" ? "pending" : state.tab);
     });
   }
 
@@ -556,6 +844,7 @@
     state.admin = true;
     $("login-dialog").close();
     updateAdminUI();
+    await refreshBanState();
     toast("管理员已登录");
     await refresh();
   }

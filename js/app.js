@@ -1,7 +1,7 @@
 /* 运转计划助手 · Web —— 界面层
  *
  * 所有业务计算（分段时长、经停站、换乘判定、付费区、票价合计）都委托 Python 内核：
- *   js/bridge.js  →  web_api  →  transit_planner.core.engine（与桌面版同一份实现）
+ *   js/bridge.js  →  web_api  →  transit_planner.core.engine（浏览器内运行同一份规划内核）
  * 本文件只负责状态、渲染与交互。
  */
 (() => {
@@ -17,8 +17,7 @@
   // 双色线路的「上下各半」写法（用于彩色时间轴：上=主色、下=副色）
   const swatchV = (c1, c2) => (c2 ? `linear-gradient(180deg, ${c1} 0 50%, ${c2} 50% 100%)` : (c1 || "#888888"));
   const debounce = (fn, ms = 280) => { let t; return (...a) => { clearTimeout(t); t = setTimeout(() => fn(...a), ms); }; };
-  const STORAGE_KEY = "transit-planner-web.v1";
-  const WELCOME_KEY = "transit-planner-web.welcome.v1";
+  const D = window.TPDrafts;
 
   // ---------------- 状态 ----------------
 
@@ -33,6 +32,7 @@
     lineDetail: new Map(),
     selectedLine: "",
     result: null,
+    draftId: "",
     trip: {
       name: "我的运转方案",
       date: "",
@@ -66,22 +66,21 @@
       fillCitySelect();
       fillTypeSelect();
 
-      const saved = loadLocal();
-      const city = saved?.city || state.cities[0] || "";
-      if (saved?.trip) state.trip = { ...state.trip, ...saved.trip, steps: saved.trip.steps || [] };
+      loadDraft();
       syncTopbar();
+      const city = state.city || state.cities[0] || "";
       await setCity(city, { silent: true });
 
       $("boot").hidden = true;
       $("app").hidden = false;
       renderAll();
-      maybeShowWelcome();
+      flushDraft();
     } catch (err) {
       document.body.classList.add("err");
       $("boot").classList.add("error");
       $("boot-msg").textContent =
         `启动失败：${err.message}。请确认网络可访问 cdn.jsdelivr.net（Pyodide 运行时），` +
-        `并通过 http(s) 访问本页面（直接双击 index.html 时浏览器会禁止读取内核文件）。`;
+        `并通过 http(s) 访问本页面（直接双击 plan.html 时浏览器会禁止读取内核文件）。`;
     }
   }
 
@@ -108,19 +107,61 @@
     $("walk-default").value = state.trip.transfer_walk_default ?? 5;
   }
 
-  function persist() {
-    try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify({ city: state.city, trip: state.trip }));
-    } catch { /* 隐私模式下忽略 */ }
+  /** 读取 ?id= 指定的草稿；没有则打开最近一份，仍没有就新建。 */
+  function loadDraft() {
+    const requestedId = new URLSearchParams(location.search).get("id") || "";
+    let draft = requestedId ? D.get("plan", requestedId) : null;
+    if (!draft) {
+      D.migrateLegacy();
+      draft = D.list("plan")[0] || null;
+    }
+    if (!draft) {
+      const data = D.empty("plan");
+      data.city = state.cities[0] || "";
+      draft = D.create("plan", {
+        title: data.name,
+        city: data.city,
+        summary: D.summarize("plan", data),
+        data,
+      });
+    }
+
+    state.draftId = draft.id;
+    state.city = draft.city || draft.data?.city || "";
+    if (draft.data && typeof draft.data === "object") {
+      state.trip = {
+        ...state.trip,
+        ...draft.data,
+        steps: Array.isArray(draft.data.steps) ? draft.data.steps : [],
+      };
+    }
+    markDraftSaved(draft.updatedAt);
   }
 
-  function loadLocal() {
-    try {
-      return JSON.parse(localStorage.getItem(STORAGE_KEY) || "null");
-    } catch {
-      return null;
-    }
+  function flushDraft() {
+    if (!state.draftId) return;
+    const saved = D.save("plan", {
+      id: state.draftId,
+      title: (state.trip.name || "").trim() || "我的运转方案",
+      city: state.city || "",
+      summary: D.summarize("plan", state.trip),
+      data: state.trip,
+    });
+    markDraftSaved(saved.updatedAt);
   }
+
+  function markDraftSaved(iso) {
+    const el = $("draft-chip");
+    if (!el) return;
+    const d = iso ? new Date(iso) : new Date();
+    if (!Number.isNaN(d.getTime())) {
+      const hm = `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+      el.textContent = `已自动保存 ${hm}`;
+    }
+    document.title = `${(state.trip.name || "").trim() || "我的运转方案"} · 规划 · 运转计划助手`;
+  }
+
+  const persist = debounce(flushDraft, 350);
 
   // ---------------- 城市与线路库 ----------------
 
@@ -186,18 +227,6 @@
     $("notice-title").textContent = title;
     $("notice-msg").textContent = message;
     const dlg = $("notice-dialog");
-    if (!dlg.open) dlg.showModal();
-  }
-
-  // ---------------- 首次使用欢迎语 ----------------
-
-  /** 首次打开（本浏览器从未看过欢迎语）时弹出；调试可用 index.html?welcome=1 强制显示。 */
-  function maybeShowWelcome() {
-    let seen = false;
-    try { seen = localStorage.getItem(WELCOME_KEY) === "1"; } catch { /* 隐私模式下忽略 */ }
-    const force = new URLSearchParams(location.search).has("welcome");
-    if (seen && !force) return;
-    const dlg = $("welcome-dialog");
     if (!dlg.open) dlg.showModal();
   }
 
@@ -570,9 +599,15 @@
     $("zones").innerHTML = rows.join("");
   }
 
+  /** 当前所在站：最后一段行程的到达站。 */
+  function currentStation() {
+    const steps = state.trip.steps;
+    return steps.length ? steps[steps.length - 1].to_station || "" : "";
+  }
+
   async function renderHints() {
     const steps = state.trip.steps;
-    const station = steps.length ? steps[steps.length - 1].to_station : "";
+    const station = currentStation();
     if (!state.city || !station) {
       $("hints").innerHTML = '<p class="hint">加载线路库并添加行程后，这里显示本站可换乘的线路。</p>';
       return;
@@ -587,14 +622,18 @@
     }
     const inZone = others.filter((h) => !h.transfer);   // 站内换乘（同付费区）
     const crossZone = others.filter((h) => h.transfer); // 出闸转乘（跨付费区，如地铁↔国铁）
-    const row = (h) => `
-        <div class="hint-item">
+    const row = (h) => {
+      const board = h.boardStation || h.transferStation || station;
+      return `
+        <div class="hint-item" data-line="${esc(h.id)}" data-from="${esc(board)}" role="button" tabindex="0"
+             title="双击添加「${esc(h.name)}」，起点填为「${esc(board)}」">
           <i class="dot" style="background:${swatch(h.color, h.color2)}"></i>
           <span>${esc(h.name)}</span>
           <span class="tag">${esc(h.typeLabel)}</span>
           ${h.transfer ? '<span class="badge-transfer">出闸转乘</span>' : ""}
           <span class="dirs" title="${esc(h.directions.join(" / "))}">${esc(h.directions.join(" / "))}</span>
         </div>`;
+    };
     const parts = [];
     if (inZone.length) {
       parts.push(`<p class="hint" style="margin:0">在「${esc(station)}」可换乘：</p>`, ...inZone.map(row));
@@ -606,8 +645,29 @@
         ...crossZone.map(row),
       );
     }
+    parts.push('<p class="hint" style="margin:4px 0 0">双击线路可添加为下一段，起点自动填为当前站。</p>');
     $("hints").innerHTML = parts.join("");
   }
+
+  /** 双击（或键盘 Enter）换乘提示中的线路，直接添加下一段。 */
+  function addStepFromHint(item) {
+    if (!item) return;
+    addStepWithLine(item.dataset.line, item.dataset.from || "");
+  }
+
+  $("hints").addEventListener("dblclick", (ev) => {
+    const item = ev.target.closest("[data-line]");
+    if (!item) return;
+    ev.preventDefault();
+    addStepFromHint(item);
+  });
+  $("hints").addEventListener("keydown", (ev) => {
+    if (ev.key !== "Enter" && ev.key !== " ") return;
+    const item = ev.target.closest("[data-line]");
+    if (!item) return;
+    ev.preventDefault();
+    addStepFromHint(item);
+  });
 
   // ---------------- 行程卡片交互 ----------------
 
@@ -659,10 +719,10 @@
     else await showLineDetail(id);
   });
 
-  /** 打开「添加行程」弹窗并预填指定数据库线路。 */
-  async function addStepWithLine(lineId) {
+  /** 打开「添加行程」弹窗并预填指定数据库线路；prefillFrom 默认当前站。 */
+  async function addStepWithLine(lineId, prefillFrom = "") {
     try {
-      await openStepDialog(null);
+      await openStepDialog(null, { prefillFrom: prefillFrom || currentStation() });
       await setDialogLine(lineId);
     } catch (err) {
       setStatus(`打开添加行程失败：${err.message}`, true);
@@ -709,12 +769,18 @@
     const file = ev.target.files?.[0];
     if (!file) return;
     try {
-      const data = JSON.parse(await file.text());
-      state.trip = { ...state.trip, ...data, steps: data.steps || [] };
+      const raw = JSON.parse(await file.text());
+      const data = raw && Array.isArray(raw.steps) ? raw : raw?.trip;
+      if (!data || typeof data !== "object" || !Array.isArray(data.steps)) {
+        throw new Error("文件中没有找到 steps 数组，可能不是规划方案 JSON");
+      }
+      state.trip = { ...state.trip, ...data, steps: data.steps };
       syncTopbar();
       if (state.trip.city && state.trip.city !== state.city) await setCity(state.trip.city, { silent: true });
       renderAll();
       await evaluate();
+      flushDraft();
+      toast("已导入规划方案");
     } catch (err) {
       setStatus(`导入失败：${err.message}`, true);
     } finally {
@@ -722,7 +788,7 @@
     }
   });
 
-  // ---------------- 顶部操作条：下载客户端 / 联系作者 ----------------
+  // ---------------- 顶部操作条：联系作者 ----------------
 
   const contact = $("contact");
 
@@ -757,7 +823,7 @@
     }
   }
 
-  // 触屏 / 键盘：点击「联系作者」切换卡片（桌面端悬停即可展开）
+  // 触屏 / 键盘：点击「联系作者」切换卡片（鼠标悬停即可展开）
   $("btn-contact").addEventListener("click", (ev) => {
     ev.stopPropagation();
     const open = contact.classList.toggle("open");
@@ -786,11 +852,9 @@
     }, 2000);
   });
 
-  $("btn-download").addEventListener("click", () => toast("正在打开 GitHub Releases 下载页…"));
-
   // ---------------- 行程弹窗 ----------------
 
-  const dlg = { index: null, mode: "db", lineId: "", line: null };
+  const dlg = { index: null, mode: "db", lineId: "", line: null, prefillFrom: "" };
 
   function setDialogError(msg) {
     $("dlg-error").hidden = !msg;
@@ -805,10 +869,11 @@
     $("manual-fields").hidden = mode !== "manual";
   }
 
-  async function openStepDialog(index) {
+  async function openStepDialog(index, { prefillFrom = currentStation() } = {}) {
     dlg.index = index;
     dlg.lineId = "";
     dlg.line = null;
+    dlg.prefillFrom = index == null ? (prefillFrom || "") : "";
     const step = index == null ? null : state.trip.steps[index];
     $("dlg-title").textContent = index == null ? "添加行程" : `编辑第 ${index + 1} 段行程`;
     $("dlg-subtitle").textContent = state.cityInfo ? state.cityInfo.name : "纯手动模式";
@@ -828,7 +893,7 @@
     $("db-run").textContent = "选择起点与到达站后自动计算";
     $("m-line-name").value = "";
     $("m-direction").value = "";
-    $("m-from").value = "";
+    $("m-from").value = dlg.prefillFrom;
     $("m-to").value = "";
     $("m-run").value = "";
     $("m-stops").value = "";
@@ -893,9 +958,12 @@
        ${esc(line.name)} · ${esc(line.typeLabel)} · ${esc(line.headwayText)}`;
     $("from-station").innerHTML = line.stations.map((s) => `<option value="${esc(s)}">${esc(s)}</option>`).join("");
     $("direction").innerHTML = line.directions.map((d) => `<option value="${esc(d)}">${esc(d)}</option>`).join("");
-    if (step) {
-      $("from-station").value = step.from_station;
-      if (line.directions.includes(step.direction_label)) $("direction").value = step.direction_label;
+    const preferredFrom = step ? step.from_station : dlg.prefillFrom;
+    if (preferredFrom && line.stations.includes(preferredFrom)) {
+      $("from-station").value = preferredFrom;
+    }
+    if (step && line.directions.includes(step.direction_label)) {
+      $("direction").value = step.direction_label;
     }
     await refreshToStations(step ? step.to_station : "");
     if (step) await refreshRunHint();       // 编辑：保留原方向
@@ -1044,12 +1112,6 @@
   // 数据提示弹窗
   $("btn-notice-ok").addEventListener("click", () => $("notice-dialog").close());
   $("btn-notice-close").addEventListener("click", () => $("notice-dialog").close());
-
-  // 欢迎弹窗：关闭（含 Esc）即记下已看过
-  $("btn-welcome-ok").addEventListener("click", () => $("welcome-dialog").close());
-  $("welcome-dialog").addEventListener("close", () => {
-    try { localStorage.setItem(WELCOME_KEY, "1"); } catch { /* 隐私模式下忽略 */ }
-  });
 
   async function saveStep() {
     const walkMinutes = numOrNull($("walk-minutes").value);
@@ -1210,6 +1272,11 @@
   }
 
   // ---------------- 启动 ----------------
+
+  window.addEventListener("pagehide", flushDraft);
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "hidden") flushDraft();
+  });
 
   boot();
 })();

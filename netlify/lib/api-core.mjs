@@ -11,6 +11,8 @@
  *   versions/<name>     历史版本（用于回滚到任意旧版本）
  *   rb/<id>             回滚记录
  *   ip/<hash>           匿名提交限流
+ *   ban/<hash>          匿名 IP 指纹封禁
+ *   ann/<id>            管理员公告
  */
 import { createHash, timingSafeEqual } from "node:crypto";
 
@@ -21,11 +23,18 @@ const STORE_SUBMISSIONS = "transit-planner-submissions";
 const STORE_VERSIONS = "transit-planner-versions";
 const STORE_ROLLBACKS = "transit-planner-rollbacks";
 const STORE_THROTTLE = "transit-planner-throttle";
+const STORE_BANS = "transit-planner-bans";
+const STORE_ANNOUNCEMENTS = "transit-planner-announcements";
 
 const MAX_SUBMISSIONS = 1200;
 const MAX_LIST = 200;
 const MAX_ROLLBACKS = 200;
 const MAX_VERSIONS = 15;
+const MAX_BANS = 500;
+const MAX_BAN_DAYS = 3650;
+const MAX_ANNOUNCEMENTS = 50;
+const MAX_ANNOUNCEMENT_TITLE = 120;
+const MAX_ANNOUNCEMENT_BODY = 4000;
 const SUBMIT_LIMIT = 8;
 const SUBMIT_WINDOW_MS = 10 * 60 * 1000;
 const MAX_SUMMARY = 500;
@@ -148,7 +157,7 @@ export function createApi({ getStore, adminToken = () => process.env.ADMIN_TOKEN
     return records;
   }
 
-  function serializeSubmission(record, admin) {
+  function serializeSubmission(record, admin, ban = null, ipSubmissionCount = 0) {
     const base = {
       id: record.id,
       kind: record.kind,
@@ -170,6 +179,10 @@ export function createApi({ getStore, adminToken = () => process.env.ADMIN_TOKEN
       contact: record.contact || "",
       ipHash: record.ipHash || "",
       docBytes: record.docBytes || 0,
+      ipSubmissionCount,
+      banned: Boolean(ban),
+      banUntil: ban?.until || "",
+      banReason: ban?.reason || "",
     };
   }
 
@@ -218,11 +231,71 @@ export function createApi({ getStore, adminToken = () => process.env.ADMIN_TOKEN
     await s.setJSON(`sub/${id}`, { ...record, ...patch, updatedAt: nowIso() });
   }
 
+  // ---------------- 匿名指纹与封禁 ----------------
+
+  /** 稳定 IP 指纹：只存哈希，不保存原始 IP。 */
+  function hashIp(ip, length = 16) {
+    if (!ip || ip === "unknown") return "";
+    return createHash("sha256").update(`transit-planner:${ip}`).digest("hex").slice(0, length);
+  }
+
+  function isBanActive(ban, at = clock().getTime()) {
+    if (!ban) return false;
+    if (!ban.until) return true; // 空 until = 永久
+    const until = Date.parse(ban.until);
+    return Number.isFinite(until) ? until > at : true;
+  }
+
+  async function getBan(ipHash) {
+    if (!ipHash) return null;
+    return store(STORE_BANS).get(`ban/${ipHash}`, { type: "json" });
+  }
+
+  async function getActiveBan(ipHash) {
+    const ban = await getBan(ipHash);
+    return isBanActive(ban) ? ban : null;
+  }
+
+  async function listBanRecords() {
+    const s = store(STORE_BANS);
+    const { blobs } = await s.list({ prefix: "ban/" });
+    const records = [];
+    for (const { key } of blobs) {
+      const record = await s.get(key, { type: "json" });
+      if (record?.ipHash) records.push(record);
+    }
+    records.sort((a, b) => String(b.updatedAt || "").localeCompare(String(a.updatedAt || "")));
+    return records.slice(0, MAX_BANS);
+  }
+
+  async function listAnnouncementRecords() {
+    const s = store(STORE_ANNOUNCEMENTS);
+    const { blobs } = await s.list({ prefix: "ann/" });
+    const records = [];
+    for (const { key } of blobs) {
+      const record = await s.get(key, { type: "json" });
+      if (record?.id) records.push(record);
+    }
+    records.sort((a, b) => String(b.publishedAt || "").localeCompare(String(a.publishedAt || "")));
+    return records.slice(0, MAX_ANNOUNCEMENTS);
+  }
+
+  function serializeAnnouncement(record) {
+    return {
+      id: record.id,
+      title: record.title,
+      body: record.body,
+      level: record.level || "info",
+      publishedAt: record.publishedAt || record.createdAt || "",
+      updatedAt: record.updatedAt || record.publishedAt || "",
+    };
+  }
+
   async function checkThrottle(ip) {
     if (!ip || ip === "unknown") return { ok: true }; // 拿不到来源 IP 时不做全局限流
     try {
       const s = store(STORE_THROTTLE);
-      const key = `ip/${createHash("sha256").update(`transit-planner:${ip}`).digest("hex").slice(0, 32)}`;
+      const key = `ip/${hashIp(ip, 32)}`;
       const now = clock().getTime();
       const record = await s.get(key, { type: "json" });
       if (!record || typeof record.resetAt !== "number" || now >= record.resetAt) {
@@ -271,17 +344,75 @@ export function createApi({ getStore, adminToken = () => process.env.ADMIN_TOKEN
       return ok({ cities, updatedAt, count: records.length });
     }
 
+    if (path === "/announcements") {
+      if (method === "GET") {
+        const records = await listAnnouncementRecords();
+        return ok({ announcements: records.map(serializeAnnouncement), count: records.length });
+      }
+      if (method === "POST") {
+        const denied = requireAdmin(req);
+        if (denied) return denied;
+        const body = await readJson(req);
+        const title = String(body.title ?? "").trim().slice(0, MAX_ANNOUNCEMENT_TITLE);
+        const content = String(body.body ?? "").trim().slice(0, MAX_ANNOUNCEMENT_BODY);
+        if (title.length < 2) throw new HttpError(400, "公告标题至少需要 2 个字。");
+        if (!content) throw new HttpError(400, "公告内容不能为空。");
+        const level = ["info", "important", "warning"].includes(body.level) ? body.level : "info";
+        const at = nowIso();
+        const record = {
+          id: newId("ann"),
+          title,
+          body: content,
+          level,
+          publishedAt: at,
+          createdAt: at,
+          updatedAt: at,
+          schema: 1,
+        };
+        await store(STORE_ANNOUNCEMENTS).setJSON(`ann/${record.id}`, record);
+        return jsonResponse(201, { ok: true, announcement: serializeAnnouncement(record) });
+      }
+      return fail(405, "不支持的方法");
+    }
+
+    const announcementMatch = path.match(/^\/announcements\/([A-Za-z0-9_-]{1,80})$/);
+    if (announcementMatch) {
+      const denied = requireAdmin(req);
+      if (denied) return denied;
+      const id = announcementMatch[1];
+      if (method !== "DELETE") return fail(405, "不支持的方法");
+      const s = store(STORE_ANNOUNCEMENTS);
+      const existing = await s.get(`ann/${id}`, { type: "json" });
+      if (!existing) return fail(404, "没有找到这条公告。");
+      await s.delete(`ann/${id}`);
+      return ok({ removed: true, id });
+    }
+
     if (path === "/submissions") {
       if (method === "GET") {
         const url = new URL(req.url);
         const status = (url.searchParams.get("status") || "all").toLowerCase();
         const admin = isAdmin(req);
         const records = await listSubmissionRecords();
+        const activeBans = admin
+          ? new Map((await listBanRecords()).filter((ban) => isBanActive(ban)).map((ban) => [ban.ipHash, ban]))
+          : new Map();
+        const ipCounts = new Map();
+        if (admin) {
+          for (const record of records) {
+            if (record.ipHash) ipCounts.set(record.ipHash, (ipCounts.get(record.ipHash) || 0) + 1);
+          }
+        }
         const items = records
           .filter((record) => admin || record.status !== "hidden")
           .filter((record) => (status === "all" ? true : record.status === status))
           .slice(0, MAX_LIST)
-          .map((record) => serializeSubmission(record, admin));
+          .map((record) => serializeSubmission(
+            record,
+            admin,
+            activeBans.get(record.ipHash),
+            ipCounts.get(record.ipHash) || 0,
+          ));
         const counts = { all: 0, pending: 0, approved: 0, rejected: 0, reverted: 0 };
         for (const record of records) {
           if (record.status === "hidden") continue;
@@ -296,6 +427,20 @@ export function createApi({ getStore, adminToken = () => process.env.ADMIN_TOKEN
           req.headers.get("x-nf-client-connection-ip") ||
           req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ||
           "unknown";
+        const ipHash = hashIp(ip);
+
+        if (ipHash && !isAdmin(req)) {
+          const ban = await getActiveBan(ipHash);
+          if (ban) {
+            const until = ban.until ? `至 ${ban.until.slice(0, 10)}` : "（永久）";
+            throw new HttpError(
+              403,
+              `该网络地址已被封禁${until}，暂时无法提交修改。如有疑问请联系管理员。`,
+              "BANNED",
+            );
+          }
+        }
+
         const throttle = await checkThrottle(ip);
         if (!throttle.ok) throw new HttpError(429, throttle.error);
 
@@ -346,7 +491,7 @@ export function createApi({ getStore, adminToken = () => process.env.ADMIN_TOKEN
           reviewedAt: "",
           revertedAt: "",
           reason: "",
-          ipHash: createHash("sha256").update(`transit-planner:${ip}`).digest("hex").slice(0, 16),
+          ipHash,
           cityVersion: String(body.doc.version || ""),
           hasBase: Boolean(base),
           docBytes: JSON.stringify(body.doc).length,
@@ -374,8 +519,9 @@ export function createApi({ getStore, adminToken = () => process.env.ADMIN_TOKEN
         if (!record || (record.status === "hidden" && !admin)) return fail(404, "没有找到这条提交记录。");
         const payload = await getSubmissionPayload(id);
         if (!payload?.doc) return fail(409, "这条提交的数据已不存在。");
+        const ban = admin ? await getActiveBan(record.ipHash) : null;
         return ok({
-          submission: serializeSubmission(record, admin),
+          submission: serializeSubmission(record, admin, ban),
           doc: payload.doc,
           base: payload.base ?? null,
           admin,
@@ -547,6 +693,76 @@ export function createApi({ getStore, adminToken = () => process.env.ADMIN_TOKEN
       }
       records.sort((a, b) => String(b.at).localeCompare(String(a.at)));
       return ok({ rollbacks: records.slice(0, MAX_ROLLBACKS) });
+    }
+
+    // 管理员：查看 / 设置 / 解除匿名 IP 指纹封禁
+    if (path === "/bans" && method === "GET") {
+      const denied = requireAdmin(req);
+      if (denied) return denied;
+      const bans = await listBanRecords();
+      const at = clock().getTime();
+      const items = bans.map((ban) => ({ ...ban, active: isBanActive(ban, at) }));
+      return ok({
+        bans: items,
+        count: items.length,
+        activeCount: items.filter((ban) => ban.active).length,
+      });
+    }
+
+    const banMatch = path.match(/^\/bans\/([a-fA-F0-9]{16})$/);
+    if (banMatch) {
+      const denied = requireAdmin(req);
+      if (denied) return denied;
+      const ipHash = banMatch[1].toLowerCase();
+
+      if (method === "POST") {
+        const body = await readJson(req);
+        const rawDuration = body.durationDays;
+        const permanent = body.permanent === true
+          || rawDuration === null
+          || rawDuration === undefined
+          || rawDuration === ""
+          || rawDuration === "permanent";
+        let durationDays = null;
+        let until = "";
+        if (!permanent) {
+          const days = Number(rawDuration);
+          if (!Number.isFinite(days) || days < 1 || Math.floor(days) !== days) {
+            throw new HttpError(400, "封禁时长必须是 1 天以上的整数，或选择永久封禁。");
+          }
+          if (days > MAX_BAN_DAYS) {
+            throw new HttpError(400, `封禁时长不能超过 ${MAX_BAN_DAYS} 天。`);
+          }
+          durationDays = days;
+          until = new Date(clock().getTime() + days * 86400000).toISOString();
+        }
+
+        const reason = String(body.reason ?? "").trim().slice(0, 300);
+        const city = String(body.city ?? "").trim().slice(0, 60);
+        const submissionId = String(body.submissionId ?? "").trim().slice(0, 80);
+        const previous = await getBan(ipHash);
+        const at = nowIso();
+        const ban = {
+          ipHash,
+          until,
+          durationDays,
+          reason,
+          city,
+          submissionId,
+          createdAt: previous?.createdAt || at,
+          updatedAt: at,
+          schema: 1,
+        };
+        await store(STORE_BANS).setJSON(`ban/${ipHash}`, ban);
+        return ok({ ban: { ...ban, active: true } });
+      }
+
+      if (method === "DELETE") {
+        await store(STORE_BANS).delete(`ban/${ipHash}`);
+        return ok({ removed: true, ipHash });
+      }
+
+      return fail(405, "不支持的方法");
     }
 
     return fail(404, `未知接口：${path}`);

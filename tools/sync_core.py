@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
-"""把桌面版《运转计划助手》的纯逻辑内核与城市数据同步到本 Web 项目。
+"""把内核源工程的纯逻辑规划内核与城市数据同步到本 Web 项目。
 
-只读源项目、只写本项目目录，不改动桌面版任何文件。
+只读源工程、只写本项目目录，不改动源工程任何文件。
 
 用法：
     python tools/sync_core.py                      # 自动寻找同级的「运转计划生成器」
@@ -24,13 +24,20 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent            # 本 Web 项目根目录
-DEFAULT_SRC = ROOT.parent / "运转计划生成器"              # 桌面版项目（默认同级目录）
+DEFAULT_SRC = ROOT.parent / "运转计划生成器"              # 内核源工程（默认同级目录）
+WEB_CORE_SKIP = {"settings.py"}                          # Web 端设置使用 localStorage，不同步该设置模块
 
 
-def _copy_dir(src_dir: Path, dst_dir: Path, pattern: str) -> tuple[list[str], list[str]]:
+def _copy_dir(
+    src_dir: Path,
+    dst_dir: Path,
+    pattern: str,
+    exclude: set[str] | frozenset[str] = frozenset(),
+) -> tuple[list[str], list[str]]:
     """按 pattern 复制目录内容到目标目录，返回（写入的文件, 清理的旧文件）。"""
     dst_dir.mkdir(parents=True, exist_ok=True)
-    names = sorted(p.name for p in src_dir.glob(pattern) if p.is_file())
+    skip = set(exclude)
+    names = sorted(p.name for p in src_dir.glob(pattern) if p.is_file() and p.name not in skip)
     written: list[str] = []
     removed: list[str] = []
     for name in names:
@@ -55,19 +62,21 @@ def _source_version(init_py: Path) -> str:
 
 
 def main() -> int:
-    ap = argparse.ArgumentParser(description="同步桌面版 core 与 data 到本项目")
-    ap.add_argument("--src", type=Path, default=DEFAULT_SRC, help="《运转计划生成器》目录")
+    ap = argparse.ArgumentParser(description="同步内核源工程的 core 与 data 到本项目")
+    ap.add_argument("--src", type=Path, default=DEFAULT_SRC, help="内核源工程目录")
     args = ap.parse_args()
 
     src = args.src.resolve()
     pkg = src / "transit_planner"
     if not (pkg / "core" / "engine.py").is_file():
-        print(f"[×] 未找到桌面版内核：{pkg / 'core' / 'engine.py'}", file=sys.stderr)
-        print("    请用 --src 指定《运转计划生成器》目录", file=sys.stderr)
+        print(f"[×] 未找到内核源工程：{pkg / 'core' / 'engine.py'}", file=sys.stderr)
+        print("    请用 --src 指定内核源工程目录", file=sys.stderr)
         return 1
 
     py_dir = ROOT / "py"
-    core_written, core_removed = _copy_dir(pkg / "core", py_dir / "transit_planner" / "core", "*.py")
+    core_written, core_removed = _copy_dir(
+        pkg / "core", py_dir / "transit_planner" / "core", "*.py", WEB_CORE_SKIP
+    )
     data_written, data_removed = _copy_dir(pkg / "data", py_dir / "data", "*.json")
 
     (py_dir / "transit_planner").mkdir(parents=True, exist_ok=True)

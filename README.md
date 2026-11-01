@@ -1,11 +1,17 @@
 # 运转计划助手 · Web
 
-交通迷绕路运转行程规划工具的**浏览器版**：链条式手动规划（起点站 → 线路 → 方向 → 到达站），自动计算分段时长、经停站、换乘步行与付费区票价，并可导出 A4 运转图纸。
+交通迷绕路运转行程规划工具的**浏览器版**：首页分为「规划」与「记录」两种模式——
+
+- **规划**：链条式手动规划（起点站 → 线路 → 方向 → 到达站），自动计算分段时长、经停站、换乘步行与付费区票价，并可导出 A4 运转图纸。
+- **记录**：按时间记录一次真实运转，交通类型、线路、起止站与时间、车型等字段均可自定义，自动统计用时，导出 JSON 或 PDF。
+- **公告**：管理员可在审核台发布公告，首页右上角的公告图标会显示未读数量。
+
+两种模式的草稿都会自动保存在浏览器 `localStorage`，可在首页弹窗的「最近」中继续编辑。
 
 本项目网页版已公开，网址：https://metro-transit-planner.netlify.app/
 
-与桌面版《运转计划助手》**共用同一份 Python 规划内核**——浏览器里通过 [Pyodide](https://pyodide.org/) 运行 `transit_planner.core`（`engine.py` / `models.py`），
-因此换乘判定、经停站、付费区计费等规则与桌面版**逐字节一致**，不存在“两套逻辑各写一遍、慢慢跑偏”的问题。
+规划规则由同一份 Python 规划内核计算——浏览器里通过 [Pyodide](https://pyodide.org/) 运行 `transit_planner.core`（`engine.py` / `models.py`），
+因此换乘判定、经停站、付费区计费等规则只有一处实现，不会出现“两套逻辑各写一遍、慢慢跑偏”的问题。
 
 ## 新增：线路数据工坊 + 公开审核台
 
@@ -38,37 +44,43 @@
 - **可回滚**：每次通过都会保留上一版本（最多 15 个），可回滚到任意历史版本或直接回到内置数据。
 - **公开透明**：提交说明、完整 JSON、差异对比、审核结果、回滚记录全部公开；联系方式与 IP 指纹不公开。
 
-## 与桌面版的关系
+## 规划内核与数据
 
 | 部分 | 处理方式 |
 | --- | --- |
 | `core/engine.py`、`core/models.py`、`core/railway.py` | **直接复用**（纯标准库，由 `tools/sync_core.py` 同步到 `py/`） |
-| `data/*.json`（含同城组合） | **直接复用**，与桌面版同源 |
-| `ui/`（PySide6 界面） | 重写为 HTML/CSS/JS（本项目 `index.html` + `js/`） |
-| `pdf/exporter.py` | 改为「A4 打印 / 另存为 PDF」（浏览器排版，中文字体用系统字体，无乱码风险） |
-| 设置（QSettings） | 改为 `localStorage` |
+| `data/*.json`（含同城组合） | **直接复用** |
+| 界面 | HTML/CSS/JS（本项目首页 + `plan.html` / `record.html` + `js/`） |
+| 导出 | 「A4 打印 / 另存为 PDF」（浏览器排版，中文字体用系统字体，无乱码风险） |
+| 设置 | `localStorage` |
 | 线路库数据编辑器 | **已实现**：`editor.html`（线路图风格，支持导出 / 上传 / 提交审核） |
 | 在线地图 API、12306 查询 | 暂无（浏览器直连会被 CORS 拦，需要一层 serverless 代理） |
 
-行程方案的 **JSON 格式与桌面版完全互通**：桌面版导出的方案可以直接「导入方案」，反之亦然。
+规划方案与运转记录都支持导出 **JSON**，并可在本站重新导入继续编辑。
 
 ## 目录结构
 
 ```
-index.html             规划器页面
+index.html             首页：欢迎语、规划 / 记录入口、友情链接
+plan.html              规划器页面（含 Pyodide 启动遮罩与草稿自动保存）
+record.html            运转记录页面（自定义字段、导出 JSON / PDF）
 editor.html            线路数据工坊（线路图风格编辑器）
 review.html            公开审核台 / 管理员审核与回滚
-styles.css             规划器样式（含 A4 打印、差异对比公用样式）
+styles.css             全站公共样式 + 首页 + 规划器样式（含 A4 打印）
+record.css             运转记录样式与 A4 记录表打印样式
 editor.css             数据工坊样式
 review.css             审核台样式
+js/drafts.js           草稿仓库：localStorage 多草稿读写、旧版单草稿迁移
+js/home.js             首页交互：新建 / 最近 / 导入
+js/record.js           运转记录界面层：字段编辑、用时统计、JSON / PDF 导出
 js/bridge.js           Pyodide 桥接：加载内核与数据、叠加审核通过的覆盖数据、暴露 TP.* 接口
 js/app.js              规划器界面层（不含业务规则）
-js/data-api.js         审核服务客户端（/api/*）
+js/data-api.js         审核接口请求封装（/api/*）
 js/city-diff.js        城市数据差异对比（审核台与提交预览共用）
 js/editor.js           数据工坊界面层
 js/review.js           审核台界面层
 py/web_api.py          内核包装层：把 engine 的纯函数暴露为 JSON 接口（本项目维护）
-py/transit_planner/    ← 由 tools/sync_core.py 从桌面版同步（勿手改）
+py/transit_planner/    ← 由 tools/sync_core.py 从内核源工程同步（勿手改）
 py/data/*.json         ← 同上
 py/manifest.json       同步清单（浏览器按它加载文件）
 netlify/functions/api.mjs   Netlify Function 入口（/api/*）
@@ -92,7 +104,8 @@ python -m http.server 8010
 
 编辑器仍可正常使用，可编辑与**导出 JSON**；「提交审核」会提示审核服务未启用。
 
-> 不能直接双击 `index.html`：浏览器禁止 `file://` 页面读取内核文件，必须通过 http 访问。
+> 不能直接双击 `plan.html`：浏览器禁止 `file://` 页面读取内核文件，必须通过 http 访问。
+> 首页 `index.html` 与记录页 `record.html` 不依赖 Pyodide，但也建议通过本地 HTTP 服务访问，避免浏览器对 `localStorage` / 文件的限制。
 
 ### 完整本地环境（含 Netlify Functions + Blobs）
 
@@ -147,6 +160,9 @@ npx netlify-cli dev
 
 - **待审核**：通过并生效 / 驳回（原因公开）/ 隐藏（仅管理员可见，用于垃圾提交）
 - **已通过 / 已驳回 / 已回滚 / 全部提交**：每条都能展开查看**字段级差异**与完整 JSON，可下载 JSON
+- **封禁提交者**：管理员可看到每条提交的 IP 指纹，并按 1～3650 天或永久封禁；被封禁的 IP 无法继续匿名提交
+- **封禁名单**：查看生效中 / 已过期的封禁记录，可随时解除封禁或删除记录
+- **公告管理**：发布 / 删除公告，支持普通、重要、提醒三级；发布后首页右上角公告图标即时显示
 - **已发布数据**：当前生效的覆盖数据、来源提交、可回滚版本数；可导出 JSON、回滚到上一版或内置数据
 - **回滚记录**：每次回滚的时间、原版本、目标版本与公开说明
 
@@ -170,16 +186,24 @@ npx netlify-cli dev
 | GET | `/api/published/:name` | 公开 | 当前生效数据 + 历史版本元信息 |
 | POST | `/api/published/:name/revert` | 管理员 | 回滚（`to: "builtin"` 或历史版本 `submissionId`） |
 | GET | `/api/rollbacks` | 公开 | 回滚记录 |
+| GET | `/api/bans` | 管理员 | 封禁名单（含生效 / 过期状态） |
+| POST | `/api/bans/:ipHash` | 管理员 | 封禁 IP 指纹（`durationDays` 为天数，`null` 表示永久） |
+| DELETE | `/api/bans/:ipHash` | 管理员 | 解除封禁 / 删除封禁记录 |
+| GET | `/api/announcements` | 公开 | 公告列表（首页公告图标使用） |
+| POST | `/api/announcements` | 管理员 | 发布公告（标题、正文、级别） |
+| DELETE | `/api/announcements/:id` | 管理员 | 删除公告 |
 | GET | `/api/admin/check` | 管理员 | 校验口令 |
 
 管理员请求头：`x-admin-token: <ADMIN_TOKEN>`。
 
+匿名提交只保存来源 IP 的哈希指纹（不保存原始 IP），用于限流与恶意提交封禁；管理员可在审核台查看指纹并设置封禁时长。
+
 ## 开发流程
 
 ```bash
-# 1. 桌面版改了 core 或 data 之后，同步到本项目
+# 1. 内核源工程改了 core 或 data 之后，同步到本项目
 python tools/sync_core.py
-python tools/sync_core.py --src "Z:/3_张峻恺/运转计划生成器"   # 或显式指定桌面版目录
+python tools/sync_core.py --src "Z:/3_张峻恺/运转计划生成器"   # 或显式指定内核源工程目录
 
 # 2. 不开浏览器，先验证内核接线与数据工坊接口
 python tools/smoke_test.py

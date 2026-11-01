@@ -247,6 +247,138 @@ ok(res.body.submissions.some((item) => item.id === sub4), "管理员仍能看到
 res = await call(`/api/submissions/${sub4}`);
 ok(res.status === 404, "隐藏的提交对匿名访问返回 404");
 
+// 匿名 IP 指纹封禁
+res = await call("/api/submissions", {
+  method: "POST",
+  ip: "10.0.0.7",
+  body: { city: "封禁城", kind: "new", summary: "封禁测试提交", doc: cityDoc("封禁城") },
+});
+ok(res.status === 201, "封禁测试提交创建成功");
+const subBan = res.body.id;
+
+res = await call(`/api/submissions/${subBan}`);
+ok(res.body.submission.ipHash === undefined, "匿名访问看不到 IP 指纹");
+
+res = await call(`/api/submissions/${subBan}`, { token: ADMIN_TOKEN });
+const banIpHashes = res.body.submission.ipHash;
+ok(/^[a-f0-9]{16}$/.test(banIpHashes), "管理员能看到 IP 指纹");
+
+res = await call("/api/bans");
+ok(res.status === 401, "匿名访问封禁名单被拒绝");
+
+res = await call(`/api/bans/${banIpHashes}`, {
+  method: "POST",
+  token: ADMIN_TOKEN,
+  body: { durationDays: 3, reason: "恶意修改测试", city: "封禁城", submissionId: subBan },
+});
+ok(res.status === 200 && res.body.ban?.until, "管理员可按天数封禁 IP 指纹");
+
+res = await call("/api/submissions", {
+  method: "POST",
+  ip: "10.0.0.7",
+  body: { city: "封禁城", kind: "new", summary: "封禁后仍尝试提交", doc: cityDoc("封禁城") },
+});
+ok(res.status === 403 && res.body.code === "BANNED", "被封禁的 IP 无法继续提交");
+
+res = await call("/api/submissions", {
+  method: "POST",
+  ip: "10.0.0.8",
+  body: { city: "正常城", kind: "new", summary: "其他 IP 正常提交", doc: cityDoc("正常城") },
+});
+ok(res.status === 201, "封禁不会影响其他 IP");
+const subNormal = res.body.id;
+
+res = await call("/api/bans", { token: ADMIN_TOKEN });
+ok(res.status === 200 && res.body.bans.some((ban) => ban.ipHash === banIpHashes && ban.active), "管理员可查看生效中的封禁");
+
+res = await call("/api/submissions?status=all", { token: ADMIN_TOKEN });
+const bannedItem = res.body.submissions.find((item) => item.id === subBan);
+ok(bannedItem?.banned === true && bannedItem.banReason === "恶意修改测试", "提交列表标记被封禁的匿名用户");
+
+res = await call(`/api/bans/${banIpHashes}`, {
+  method: "POST",
+  token: ADMIN_TOKEN,
+  body: { durationDays: -1 },
+});
+ok(res.status === 400, "非法封禁时长会被拒绝");
+
+res = await call(`/api/bans/${banIpHashes}`, { method: "DELETE", token: ADMIN_TOKEN });
+ok(res.status === 200 && res.body.removed, "管理员可解除封禁");
+
+res = await call("/api/submissions", {
+  method: "POST",
+  ip: "10.0.0.7",
+  body: { city: "封禁城", kind: "new", summary: "解除后恢复提交", doc: cityDoc("封禁城") },
+});
+ok(res.status === 201, "解除封禁后可恢复提交");
+
+res = await call("/api/submissions?status=all", { token: ADMIN_TOKEN });
+const repeatedIp = res.body.submissions.filter((item) => item.ipHash === banIpHashes);
+ok(repeatedIp.length >= 2 && repeatedIp.every((item) => item.ipSubmissionCount === repeatedIp.length), "管理员可看到同一 IP 的累计提交次数");
+
+res = await call(`/api/submissions/${subNormal}`, { token: ADMIN_TOKEN });
+const normalIpHashes = res.body.submission.ipHash;
+res = await call(`/api/bans/${normalIpHashes}`, {
+  method: "POST",
+  token: ADMIN_TOKEN,
+  body: { durationDays: null, reason: "永久封禁测试", city: "正常城", submissionId: subNormal },
+});
+ok(res.status === 200 && res.body.ban?.until === "", "管理员可设置永久封禁");
+
+res = await call("/api/submissions", {
+  method: "POST",
+  ip: "10.0.0.8",
+  body: { city: "正常城", kind: "new", summary: "永久封禁后提交", doc: cityDoc("正常城") },
+});
+ok(res.status === 403 && res.body.code === "BANNED", "永久封禁同样阻止提交");
+
+res = await call(`/api/bans/${normalIpHashes}`, { method: "DELETE", token: ADMIN_TOKEN });
+ok(res.status === 200, "永久封禁也可解除");
+
+// 管理员公告
+res = await call("/api/announcements");
+ok(res.status === 200 && res.body.announcements.length === 0, "公告列表初始为空且公开可读");
+
+res = await call("/api/announcements", {
+  method: "POST",
+  body: { title: "匿名公告", body: "不应成功" },
+});
+ok(res.status === 401, "匿名用户不能发布公告");
+
+res = await call("/api/announcements", {
+  method: "POST",
+  token: ADMIN_TOKEN,
+  body: { title: "", body: "" },
+});
+ok(res.status === 400, "空公告会被拒绝");
+
+res = await call("/api/announcements", {
+  method: "POST",
+  token: ADMIN_TOKEN,
+  body: { title: "测试公告", body: "这是一条测试公告。\n第二行内容。", level: "important" },
+});
+ok(res.status === 201 && res.body.announcement?.id, "管理员可发布公告");
+const announcementId = res.body.announcement.id;
+
+res = await call("/api/announcements");
+ok(
+  res.status === 200
+    && res.body.announcements.some((item) => item.id === announcementId && item.title === "测试公告" && item.level === "important"),
+  "公告公开可读且保留级别",
+);
+
+res = await call(`/api/announcements/${announcementId}`, { method: "DELETE" });
+ok(res.status === 401, "匿名用户不能删除公告");
+
+res = await call(`/api/announcements/${announcementId}`, { method: "DELETE", token: ADMIN_TOKEN });
+ok(res.status === 200 && res.body.removed, "管理员可删除公告");
+
+res = await call("/api/announcements");
+ok(res.body.announcements.length === 0, "删除后公告列表清空");
+
+res = await call(`/api/announcements/${announcementId}`, { method: "DELETE", token: ADMIN_TOKEN });
+ok(res.status === 404, "删除不存在的公告返回 404");
+
 let lastStatus = 0;
 for (let i = 0; i < 9; i += 1) {
   const attempt = await call("/api/submissions", {

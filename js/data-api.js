@@ -1,4 +1,4 @@
-/* 审核服务客户端（浏览器）。
+/* 审核服务请求封装（浏览器）。
  *
  * 所有接口都是同源 /api/*（由 netlify.toml 重写到 Netlify Function）；
  * 未部署 Functions 的纯静态环境会被识别为 offline，此时编辑器仍可本地编辑与导出 JSON。
@@ -90,5 +90,15 @@
       request(`/published/${encodeURIComponent(name)}/revert`, { method: "POST", body: { to, note } }),
 
     rollbacks: () => request("/rollbacks"),
+
+    announcements: () => request("/announcements"),
+    createAnnouncement: (payload) => request("/announcements", { method: "POST", body: payload }),
+    deleteAnnouncement: (id) =>
+      request(`/announcements/${encodeURIComponent(id)}`, { method: "DELETE" }),
+
+    bans: () => request("/bans"),
+    ban: (ipHash, payload) =>
+      request(`/bans/${encodeURIComponent(ipHash)}`, { method: "POST", body: payload }),
+    unban: (ipHash) => request(`/bans/${encodeURIComponent(ipHash)}`, { method: "DELETE" }),
   };
 })();

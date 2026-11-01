@@ -11,7 +11,7 @@ import urllib.parse
 import urllib.request
 
 _STATION_NAME_URL = "https://kyfw.12306.cn/otn/resources/js/framework/station_name.js"
-_UA = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) 运转计划助手/1.1"}
+_UA = {"User-Agent": "Mozilla/5.0 (compatible; 运转计划助手/1.1)"}
 _codes_cache: dict[str, str] | None = None
 
 

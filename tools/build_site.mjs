@@ -13,7 +13,17 @@ import { fileURLToPath } from "node:url";
 const ROOT = fileURLToPath(new URL("..", import.meta.url));
 const DIST = join(ROOT, "dist");
 
-const FILES = ["index.html", "editor.html", "review.html", "styles.css", "editor.css", "review.css"];
+const FILES = [
+  "index.html",
+  "plan.html",
+  "record.html",
+  "editor.html",
+  "review.html",
+  "styles.css",
+  "record.css",
+  "editor.css",
+  "review.css",
+];
 const DIRS = ["js", "py", "assets"];
 
 async function exists(path) {

@@ -28,7 +28,7 @@
 [[headers]]
   for = "/py/*"
   [headers.values]
-    # Python 源码与城市数据随桌面版同步，改动频繁：只做短缓存，避免更新后仍加载旧内核
+    # Python 源码与城市数据随内核源工程同步，改动频繁：只做短缓存，避免更新后仍加载旧内核
     Cache-Control = "public, max-age=300"
 
 [[headers]]
