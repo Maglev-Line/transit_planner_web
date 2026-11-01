@@ -175,6 +175,17 @@
       first_train: String(line.first_train ?? ""),
       last_train: String(line.last_train ?? ""),
       ring: Boolean(line.ring),
+      express: Array.isArray(line.express)
+        ? line.express.map((svc, i) => ({
+          ...svc,
+          id: String(svc?.id || `express${i + 1}`),
+          name: String(svc?.name || "快车"),
+          stops: Array.isArray(svc?.stops) ? svc.stops.map(String) : [],
+          section_minutes: Array.isArray(svc?.section_minutes) ? svc.section_minutes.map((v) => toNumber(v)) : [],
+          skip_minutes: Number.isFinite(Number(svc?.skip_minutes)) ? Number(svc.skip_minutes) : 0.4,
+          headway_text: String(svc?.headway_text ?? ""),
+        }))
+        : [],
       directions: Array.isArray(line.directions)
         ? line.directions.map((d) => ({
           ...d,
@@ -796,7 +807,92 @@
           <div class="chips">${(line.directions || []).map((d) => `<span class="chip">${esc(d.label || "—")}</span>`).join("") || "<span class='hint'>尚未生成</span>"}</div>
           <button type="button" id="btn-rebuild-dirs">按站表重建方向</button>
         </div>
+        ${renderExpressEditor(line)}
       </div>`;
+  }
+
+  /** 快车 / 大站车服务编辑：只停部分车站的列车，规划与记录均可选用。 */
+  function renderExpressEditor(line) {
+    const services = Array.isArray(line.express) ? line.express : [];
+    const rows = services.map((svc, i) => {
+      const stops = new Set(Array.isArray(svc.stops) ? svc.stops : []);
+      const options = (line.stations || [])
+        .map((s) => `<option value="${esc(s)}" ${stops.has(s) ? "selected" : ""}>${esc(s)}</option>`)
+        .join("");
+      return `
+        <div class="ed-express-item" data-express="${i}">
+          <div class="grid3">
+            <div class="field"><span>名称</span><input data-express-field="name" data-i="${i}" type="text" value="${esc(svc.name || "")}" placeholder="如：大站车"></div>
+            <div class="field"><span>服务 ID</span><input data-express-field="id" data-i="${i}" type="text" value="${esc(svc.id || "")}" placeholder="如：rapid"></div>
+            <div class="field"><span>班次文字（选填）</span><input data-express-field="headway_text" data-i="${i}" type="text" value="${esc(svc.headway_text || "")}" placeholder="如：高峰 20 分钟一班"></div>
+          </div>
+          <div class="field">
+            <span>停靠站（按住 Ctrl / ⌘ 多选，按站表顺序勾选）</span>
+            <select multiple size="6" data-express-stops="${i}">${options}</select>
+          </div>
+          <div class="ed-express-foot">
+            <span class="hint" data-express-hint="${i}">已停 ${(svc.stops || []).length} / ${(line.stations || []).length} 站；未填区间时长时按「每跳过 1 站节省 ${esc(svc.skip_minutes ?? 0.4)} 分钟」估算。</span>
+            <button type="button" class="danger" data-express-del="${i}">删除该车种</button>
+          </div>
+        </div>`;
+    }).join("");
+    return `
+      <div class="ed-express" id="ed-express">
+        <b>快车 / 大站车</b>
+        <span class="hint">定义只停部分车站的列车服务：规划器与运转记录都能选用，运行时按停靠站计算。</span>
+        ${rows || '<p class="hint" style="margin:6px 0">该线路暂无快车服务。</p>'}
+        <button type="button" id="btn-add-express">＋ 添加快车服务</button>
+      </div>`;
+  }
+
+  /** 新建一个快车服务：默认停靠首末站，用户再勾选中间站。 */
+  function addExpressService() {
+    const line = selectedLine();
+    if (!line) return;
+    if (!Array.isArray(line.express)) line.express = [];
+    const stations = line.stations || [];
+    const existing = new Set(line.express.map((svc) => svc.id));
+    let n = line.express.length + 1;
+    while (existing.has(`express${n}`)) n += 1;
+    line.express.push({
+      id: `express${n}`,
+      name: n === 1 ? "快车" : `快车 ${n}`,
+      stops: stations.length >= 2 ? [stations[0], stations[stations.length - 1]] : [...stations],
+      section_minutes: [],
+      skip_minutes: 0.4,
+      headway_text: "",
+    });
+    touch();
+    renderProps();
+  }
+
+  /** 只刷新快车停靠站统计文字，避免重绘整块面板导致输入框失去焦点。 */
+  function renderExpressOnly() {
+    const line = selectedLine();
+    const total = (line?.stations || []).length;
+    document.querySelectorAll("[data-express-hint]").forEach((el) => {
+      const svc = line?.express?.[Number(el.dataset.expressHint)];
+      if (!svc) return;
+      el.textContent =
+        `已停 ${(svc.stops || []).length} / ${total} 站；未填区间时长时按「每跳过 1 站节省 ${svc.skip_minutes ?? 0.4} 分钟」估算。`;
+    });
+  }
+
+  function updateExpress(index, patch) {
+    const line = selectedLine();
+    const svc = line?.express?.[index];
+    if (!svc) return;
+    Object.assign(svc, patch);
+    touch();
+  }
+
+  function deleteExpress(index) {
+    const line = selectedLine();
+    if (!line?.express?.[index]) return;
+    if (!confirm(`删除快车服务「${line.express[index].name || line.express[index].id}」？`)) return;
+    line.express.splice(index, 1);
+    touch();
+    renderProps();
   }
 
   function renderCityMeta() {
@@ -1391,6 +1487,12 @@
 
     $("view-props").addEventListener("input", onPropsInput);
     $("view-props").addEventListener("change", onPropsChange);
+    $("view-props").addEventListener("click", (ev) => {
+      if (ev.target.closest("#btn-add-express")) return addExpressService();
+      const del = ev.target.closest("[data-express-del]");
+      if (del) return deleteExpress(Number(del.dataset.expressDel));
+      return undefined;
+    });
 
     $("city-meta").addEventListener("input", (ev) => {
       const el = ev.target.closest("[data-city]");
@@ -1491,6 +1593,14 @@
   }
 
   function onPropsInput(ev) {
+    const expressInput = ev.target.closest("[data-express-field]");
+    if (expressInput) {
+      const index = Number(expressInput.dataset.i);
+      const key = expressInput.dataset.expressField;
+      updateExpress(index, { [key]: expressInput.value });
+      if (key === "name" || key === "id") renderExpressOnly();
+      return;
+    }
     const el = ev.target.closest("[data-field]");
     if (!el) return;
     const field = el.dataset.field;
@@ -1504,6 +1614,17 @@
   }
 
   function onPropsChange(ev) {
+    const stopsSelect = ev.target.closest("[data-express-stops]");
+    if (stopsSelect) {
+      const index = Number(stopsSelect.dataset.expressStops);
+      // 按站表顺序保存勾选的停靠站，保证快车停靠站始终有序
+      const chosen = new Set([...stopsSelect.selectedOptions].map((opt) => opt.value));
+      const line = selectedLine();
+      const ordered = (line?.stations || []).filter((s) => chosen.has(s));
+      updateExpress(index, { stops: ordered });
+      renderExpressOnly();
+      return;
+    }
     const el = ev.target.closest("[data-field]");
     if (!el) return;
     const line = selectedLine();

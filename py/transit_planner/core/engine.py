@@ -136,8 +136,81 @@ def direction_label(line: Line, station_idx: int) -> str:
     return line.directions[0].label
 
 
-def compute_step(line: Line, direction: Direction, from_station: str, to_station: str) -> tuple[list[str], float]:
-    """计算一段行程。返回 (经停站列表[含起点终点], 运行分钟)。"""
+def _section_minutes(line: Line, a: str, b: str) -> float:
+    """线路上任意两站之间的基础运行分钟（含沿途全部中间区间）。"""
+    i, j = line.station_index(a), line.station_index(b)
+    lo, hi = min(i, j), max(i, j)
+    return sum(line.travel_minutes[k] for k in range(lo, hi))
+
+
+def express_section_minutes(line: Line, svc, a: str, b: str) -> float:
+    """快车从 a 到 b 的运行分钟。
+
+    优先使用服务自带的 section_minutes；否则按基础区间累加，并按跳过的中间站数
+    扣减停站时间（每站 skip_minutes，扣减后不少于基础时长的 35%）。
+    """
+    i = svc.stops.index(a)
+    j = svc.stops.index(b)
+    if j > i and len(svc.section_minutes) > i:
+        return float(svc.section_minutes[i])
+    if j < i and len(svc.section_minutes) > j:
+        return float(svc.section_minutes[j])
+    base = _section_minutes(line, a, b)
+    skipped = max(0, abs(line.station_index(b) - line.station_index(a)) - 1)
+    saving = max(0.0, float(svc.skip_minutes)) * skipped
+    return max(base * 0.35, base - saving)
+
+
+def _service_path(line: Line, svc, from_station: str, to_station: str) -> list[str]:
+    """快车停靠站表中，从起点到终点的停靠站序列（环线允许绕行）。"""
+    stops = svc.stops
+    m = len(stops)
+    if m < 2:
+        raise LineError(f"线路 {line.name} 的「{svc.name}」停靠站不足 2 个")
+    from_i, to_i = stops.index(from_station), stops.index(to_station)
+    if line.ring:
+        # 环线：按站表方向（升序）绕行，抵达终点即可
+        path = [stops[from_i]]
+        cur = from_i
+        while cur != to_i:
+            cur = (cur + 1) % m
+            path.append(stops[cur])
+            if len(path) > m:
+                raise LineError(f"「{svc.name}」无法从 {from_station} 到达 {to_station}")
+        return path
+    if from_i > to_i:
+        return [stops[k] for k in range(from_i, to_i - 1, -1)]
+    return [stops[k] for k in range(from_i, to_i + 1)]
+
+
+def compute_service_step(line: Line, direction: Direction, from_station: str, to_station: str,
+                         service_id: str) -> tuple[list[str], float]:
+    """按快车（大站车）停靠站表计算一段行程。"""
+    svc = line.express_service(service_id)
+    plain_stops = set(svc.stops)
+    for station in (from_station, to_station):
+        if station not in plain_stops:
+            raise LineError(f"「{svc.name}」不停靠 {station}")
+    sign = direction_sign(line, direction)
+    from_idx = line.station_index(from_station)
+    to_idx = line.station_index(to_station)
+    if sign > 0 and from_idx > to_idx:
+        raise LineError(f"{from_station} → {to_station} 与当前方向不符")
+    if sign < 0 and from_idx < to_idx:
+        raise LineError(f"{from_station} → {to_station} 与当前方向不符")
+    path = _service_path(line, svc, from_station, to_station)
+    minutes = sum(express_section_minutes(line, svc, path[k], path[k + 1]) for k in range(len(path) - 1))
+    return path, minutes
+
+
+def compute_step(line: Line, direction: Direction, from_station: str, to_station: str,
+                 service_id: str = "") -> tuple[list[str], float]:
+    """计算一段行程。返回 (经停站列表[含起点终点], 运行分钟)。
+
+    service_id 非空时按该快车服务的停靠站表计算（只停大站、运行更快）。
+    """
+    if service_id:
+        return compute_service_step(line, direction, from_station, to_station, service_id)
     from_idx = line.station_index(from_station)
     to_idx = line.station_index(to_station)
     if from_idx == to_idx:
@@ -161,6 +234,7 @@ class SegmentResult:
     manual: bool = False
     transfer: bool = False        # 跨付费区转乘（转乘）：上车前需出闸/换系统
     paid_zone_index: int = 0      # 所属付费区编号（从 0 开始）
+    service_name: str = ""        # 快车服务名（各站停为空）
 
     @property
     def segment_minutes(self) -> float:
@@ -257,10 +331,12 @@ def resolve_walk(step: Step, prev_arrival: str | None, default_walk: float,
     return _resolve_walk(step, prev_arrival, default_walk, city)
 
 
-def pick_direction(line: Line, from_station: str, to_station: str) -> Direction | None:
+def pick_direction(line: Line, from_station: str, to_station: str,
+                   service_id: str = "") -> Direction | None:
     """根据起终点自动选择可乘坐的方向（数据库线路用）。
 
     两个方向都可行（如环线）时返回第一个；无法到达返回 None。
+    service_id 非空时按快车停靠站表判断可达性。
     """
     try:
         from_idx = line.station_index(from_station)
@@ -271,7 +347,10 @@ def pick_direction(line: Line, from_station: str, to_station: str) -> Direction 
         return None
     for d in line.directions:
         try:
-            _path_indices(line, direction_sign(line, d), from_idx, to_idx)
+            if service_id:
+                compute_service_step(line, d, from_station, to_station, service_id)
+            else:
+                _path_indices(line, direction_sign(line, d), from_idx, to_idx)
             return d
         except LineError:
             continue
@@ -318,15 +397,19 @@ def evaluate_trip(city: City | None, trip: Trip) -> TripResult:
             if city is None:
                 raise LineError("未加载线路库：非手动行程段需要城市线路数据，请切换城市或使用手动自选模式。")
             line = city.line(step.line_id)
+            service_id = step.service or ""
+            if service_id:
+                line.express_service(service_id)  # 车种不存在时立即报错
             dir_idx = line.direction_index(step.direction_label)
             direction = line.directions[dir_idx]
 
-            stops, minutes = compute_step(line, direction, step.from_station, step.to_station)
+            stops, minutes = compute_step(line, direction, step.from_station, step.to_station, service_id)
             walk = _resolve_walk(step, prev_arrival, trip.transfer_walk_default, city)
             seg = SegmentResult(
                 step=step, line=line, direction=direction,
                 stops=stops, run_minutes=minutes, walk_minutes=walk,
                 stop_count=len(stops) - 1, manual=False,
+                service_name=line.express_service(service_id).name if service_id else "",
             )
         seg.transfer = transfer
         seg.paid_zone_index = zone
@@ -369,8 +452,22 @@ def transfer_hints(city: City, station: str,
     return out
 
 
-def reachable_from(city: City, line: Line, direction: Direction, from_station: str) -> list[str]:
-    """当前站、当前方向下，可以到达的后续站点列表（供界面选择）。"""
+def reachable_from(city: City, line: Line, direction: Direction, from_station: str,
+                   service_id: str = "") -> list[str]:
+    """当前站、当前方向下，可以到达的后续站点列表（供界面选择）。
+
+    service_id 非空时只返回该快车服务停靠的后续车站。
+    """
+    if service_id:
+        stops = line.express_service(service_id).stops
+        if from_station not in stops:
+            raise LineError(f"「{service_id}」不停靠 {from_station}")
+        m = len(stops)
+        i = stops.index(from_station)
+        forward = [stops[(i + k) % m] for k in range(1, m)] if line.ring else stops[i + 1:]
+        if direction_sign(line, direction) > 0:
+            return list(forward)
+        return list(reversed(forward))
     sign = direction_sign(line, direction)
     from_idx = line.station_index(from_station)
     if line.ring:

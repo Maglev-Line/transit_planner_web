@@ -221,15 +221,17 @@
       const raw = await D.readJSONFile(file);
       const detected = detectKind(raw);
       if (!detected) {
-        throw new Error("无法识别文件类型：规划方案需包含 steps 数组，运转记录需包含 segments 数组");
+        throw new Error("无法识别文件类型：方案与记录都需要包含 steps（或旧版 segments）数组");
       }
       const payload = extractPayload(detected, raw);
       if (!payload) throw new Error("文件中没有找到有效的方案或记录数据");
-      const title = importTitle(detected, payload, file.name);
-      const draft = D.create(detected, {
+      // 规划与记录结构互通：用户点了哪个入口就用哪个编辑器打开，除非文件类型不兼容
+      const target = (kind === "plan" || kind === "record") ? kind : detected;
+      const title = importTitle(target, payload, file.name);
+      const draft = D.create(target, {
         title,
-        city: detected === "plan" ? payload.city || "" : "",
-        summary: D.summarize(detected, payload),
+        city: payload.city || "",
+        summary: D.summarize(target, payload),
         data: payload,
       });
       goToDraft(draft);
@@ -240,11 +242,19 @@
     }
   });
 
-  /** 兼容规划方案（steps）、运转记录（segments）与旧版 { trip: {...} } 包装。 */
+  /**
+   * 识别 JSON 类型。规划与记录共用 steps 结构：
+   * 有 kind 时以 kind 为准；否则任一段带起止时间（start_time / start）即视为记录。
+   * 仍然兼容旧版记录的 segments 写法与 { trip: {...} } 包装。
+   */
   function detectKind(raw) {
     if (!raw || typeof raw !== "object") return null;
-    if (Array.isArray(raw.steps)) return "plan";
-    if (Array.isArray(raw.segments)) return "record";
+    if (raw.kind === "record" || raw.kind === "plan") return raw.kind;
+    const steps = Array.isArray(raw.steps) ? raw.steps : (Array.isArray(raw.segments) ? raw.segments : null);
+    if (steps) {
+      const looksLikeRecord = steps.some((s) => s && (s.start_time || s.end_time || s.start || s.end));
+      return looksLikeRecord ? "record" : "plan";
+    }
     if (raw.trip && Array.isArray(raw.trip.steps)) return "plan";
     if (raw.data && typeof raw.data === "object") return detectKind(raw.data);
     return null;
@@ -259,8 +269,9 @@
 
   function importTitle(kindName, payload, fileName) {
     const fromFile = String(fileName || "").replace(/\.json$/i, "").trim();
-    if (kindName === "plan") return payload.name || fromFile || "我的运转方案";
-    return payload.title || fromFile || "我的运转记录";
+    const own = payload.name || payload.title;
+    if (kindName === "plan") return own || fromFile || "我的运转方案";
+    return own || fromFile || "我的运转记录";
   }
 
   function goToDraft(draft) {

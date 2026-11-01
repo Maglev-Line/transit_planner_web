@@ -335,6 +335,39 @@ ok(res.status === 403 && res.body.code === "BANNED", "永久封禁同样阻止�
 res = await call(`/api/bans/${normalIpHashes}`, { method: "DELETE", token: ADMIN_TOKEN });
 ok(res.status === 200, "永久封禁也可解除");
 
+// 快车（大站快车）数据：服务端校验必须放行合法数据、拦下非法数据
+function expressDoc(stops) {
+  const doc = cityDoc("快车城");
+  doc.lines[0].express = [{ id: "rapid", name: "大站车", stops, skip_minutes: 0.4, headway_text: "高峰 20 分钟一班" }];
+  return doc;
+}
+
+res = await call("/api/submissions", {
+  method: "POST",
+  ip: "10.0.0.11",
+  body: { city: "快车城", kind: "new", summary: "新增快车服务", doc: expressDoc(["甲站", "丙站"]) },
+});
+ok(res.status === 201, "合法的快车服务数据可提交");
+
+res = await call("/api/submissions", {
+  method: "POST",
+  ip: "10.0.0.12",
+  body: { city: "快车城2", kind: "new", summary: "快车停靠站乱序", doc: expressDoc(["丙站", "甲站"]) },
+});
+ok(res.status === 400, "快车停靠站乱序会被服务端拒绝");
+
+res = await call("/api/submissions", {
+  method: "POST",
+  ip: "10.0.0.13",
+  body: {
+    city: "快车城3",
+    kind: "new",
+    summary: "快车停靠站不存在",
+    doc: (() => { const doc = cityDoc("快车城3"); doc.lines[0].express = [{ name: "快车", stops: ["甲站", "外星站"] }]; return doc; })(),
+  },
+});
+ok(res.status === 400, "快车停靠站不在站表内会被拒绝");
+
 // 管理员公告
 res = await call("/api/announcements");
 ok(res.status === 200 && res.body.announcements.length === 0, "公告列表初始为空且公开可读");

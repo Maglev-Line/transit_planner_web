@@ -147,6 +147,64 @@ export function validateCityDoc(doc) {
       }
     }
 
+    // 快车 / 大站车：只停部分车站的列车服务
+    if (line.express != null) {
+      if (!Array.isArray(line.express)) {
+        errors.push(`${label}的 express（快车服务）必须是数组`);
+      } else {
+        const order = new Map(line.stations.map((station, index) => [station, index]));
+        const seenServiceIds = new Set();
+        line.express.forEach((service, j) => {
+          const serviceLabel = `${label}第 ${j + 1} 个快车服务`;
+          if (!service || typeof service !== "object") {
+            errors.push(`${serviceLabel}必须是对象`);
+            return;
+          }
+          if (typeof service.name !== "string" || !service.name.trim()) errors.push(`${serviceLabel}缺少名称（name）`);
+          if (service.id != null && typeof service.id !== "string") errors.push(`${serviceLabel}的 id 必须是字符串`);
+          const serviceId = typeof service.id === "string" ? service.id.trim() : "";
+          if (serviceId) {
+            if (seenServiceIds.has(serviceId)) errors.push(`${label}快车服务 ID「${serviceId}」重复`);
+            seenServiceIds.add(serviceId);
+          }
+          if (!Array.isArray(service.stops)) {
+            errors.push(`${serviceLabel}缺少停靠站（stops 必须是数组）`);
+            return;
+          }
+          if (service.stops.length < 2) errors.push(`${serviceLabel}至少需要 2 个停靠站`);
+          if (service.stops.length >= line.stations.length) {
+            warnings.push(`${serviceLabel}停靠全部车站，与普通车没有区别`);
+          }
+          let previous = -1;
+          service.stops.forEach((station) => {
+            const index = order.get(station);
+            if (index === undefined) {
+              errors.push(`${serviceLabel}的停靠站「${station}」不在本站表内`);
+              return;
+            }
+            if (index <= previous) errors.push(`${serviceLabel}的停靠站需按站表顺序排列且不重复`);
+            previous = index;
+          });
+          if (service.section_minutes != null) {
+            if (!Array.isArray(service.section_minutes)) {
+              errors.push(`${serviceLabel}的 section_minutes 必须是数组`);
+            } else if (service.section_minutes.length && service.section_minutes.length !== service.stops.length - 1) {
+              errors.push(`${serviceLabel}的 section_minutes 长度应为 ${Math.max(0, service.stops.length - 1)}`);
+            } else if (service.section_minutes.some((value) => typeof value !== "number" || !Number.isFinite(value) || value < 0)) {
+              errors.push(`${serviceLabel}的 section_minutes 必须是不小于 0 的数字`);
+            }
+          }
+          if (service.skip_minutes != null
+            && (typeof service.skip_minutes !== "number" || !Number.isFinite(service.skip_minutes) || service.skip_minutes < 0)) {
+            errors.push(`${serviceLabel}的 skip_minutes 必须是不小于 0 的数字`);
+          }
+          if (service.headway_text != null && typeof service.headway_text !== "string") {
+            errors.push(`${serviceLabel}的 headway_text 必须是字符串`);
+          }
+        });
+      }
+    }
+
     stats.lines += 1;
     stats.segments += Math.max(0, line.stations.length - 1);
     stats.stations += line.stations.length;

@@ -252,6 +252,10 @@ main {
   font-size: 11px; color: #a2500a; background: #fdf1e3; border: 1px solid #f2d7b6;
   border-radius: 99px; padding: 1px 7px;
 }
+.badge-express {
+  font-size: 11px; color: #6b3fa0; background: #f3edff; border: 1px solid #d9cbf5;
+  border-radius: 99px; padding: 1px 7px;
+}
 .err-box {
   margin-top: 6px; font-size: 12.5px; color: var(--warn); background: #fdecea;
   border: 1px solid #f5c6c0; border-radius: 8px; padding: 6px 8px;

@@ -118,6 +118,93 @@ def main() -> int:
     print(f"[√] {b} 可换乘 {len(hints)} 条线路"
           + (f"，例如 {hints[1]['name']} {hints[1]['directions']}" if len(hints) > 1 else ""))
 
+    check_express()
+
+    print("\n全部检查通过。")
+    return 0
+
+
+def check_express() -> None:
+    """快车（大站快车）在数据库 JSON 中定义，规划与记录都能识别。"""
+    city = call("api_city_json", "上海")["city"]
+    target = next(ln for ln in city["lines"] if len(ln["stations"]) >= 6)
+    stations = target["stations"]
+    express_stops = [stations[0], stations[2], stations[-1]]
+    doc = json.loads(json.dumps(city, ensure_ascii=False))
+    for ln in doc["lines"]:
+        if ln["id"] == target["id"]:
+            ln["express"] = [{
+                "id": "rapid",
+                "name": "大站车",
+                "stops": express_stops,
+                "section_minutes": [],
+                "skip_minutes": 0.4,
+                "headway_text": "高峰 20 分钟一班",
+            }]
+
+    check = call("api_validate_city", json.dumps(doc, ensure_ascii=False))
+    assert check["ok"] and check["valid"], f"含快车服务的城市数据应通过校验：{check.get('errors')}"
+    print(f"[√] 快车数据校验通过：{target['name']} 的「大站车」停 {len(express_stops)} 站")
+
+    bad = json.loads(json.dumps(doc, ensure_ascii=False))
+    for ln in bad["lines"]:
+        if ln["id"] == target["id"]:
+            ln["express"][0]["stops"] = [stations[-1], stations[0]]
+    bad_check = call("api_validate_city", json.dumps(bad, ensure_ascii=False))
+    assert not bad_check["valid"], "停靠站顺序倒置应被校验拦下"
+    print("[√] 快车停靠站乱序会被校验拦下")
+
+    # 写入数据目录并重新加载城市，验证规划内核端到端识别快车
+    data_path = Path(web_api.DATA_DIR) / "上海.json"
+    original = data_path.read_text(encoding="utf-8")
+    try:
+        data_path.write_text(json.dumps(doc, ensure_ascii=False, indent=2), encoding="utf-8")
+        call("api_load_city", "上海")
+        line_id = target["id"]
+        normal = call("api_evaluate", json.dumps({
+            "name": "t", "city": "上海", "steps": [{
+                "line_id": line_id, "direction_label": target["directions"][0]["label"],
+                "from_station": stations[0], "to_station": stations[-1], "manual": False,
+            }],
+        }, ensure_ascii=False))["segments"][0]
+        rapid = call("api_evaluate", json.dumps({
+            "name": "t", "city": "上海", "steps": [{
+                "line_id": line_id, "direction_label": target["directions"][0]["label"],
+                "from_station": stations[0], "to_station": stations[-1], "manual": False, "service": "rapid",
+            }],
+        }, ensure_ascii=False))["segments"][0]
+        assert rapid["serviceName"] == "大站车", f"应返回车种名，实际 {rapid.get('serviceName')}"
+        assert rapid["stopCount"] < normal["stopCount"], "快车停站数应少于各站停"
+        assert rapid["run"] < normal["run"], "快车运行时长应短于各站停"
+        assert rapid["headway"] == "高峰 20 分钟一班", f"应使用快车自己的班次文字，实际 {rapid['headway']}"
+        assert [s for s in rapid["stops"]] == express_stops, f"快车经停站应为 {express_stops}，实际 {rapid['stops']}"
+        print(f"[√] 快车识别：{rapid['stopCount']} 站 / {rapid['run']} 分钟，"
+              f"普通车 {normal['stopCount']} 站 / {normal['run']} 分钟")
+
+        reach = call("api_reachable_any", line_id, stations[0], "rapid")["stations"]
+        assert reach and all(s in express_stops for s in reach), f"快车可达站应只在停靠站内，实际 {reach}"
+        direction = call("api_pick_direction", line_id, stations[0], stations[-1], "rapid")["direction"]
+        assert direction, "快车应能自动判定方向"
+        print(f"[√] 快车可达站与方向判定正常（{direction}）")
+
+        # 规划与记录 JSON 结构互通：记录字段（起止时间等）不影响内核计算
+        record_like = call("api_evaluate", json.dumps({
+            "kind": "record", "version": 2, "name": "记录", "city": "上海",
+            "fields": [{"label": "天气", "value": "晴"}],
+            "steps": [{
+                "line_id": line_id, "direction_label": direction,
+                "from_station": stations[0], "to_station": stations[-1], "manual": False,
+                "start_time": "07:30", "end_time": "08:00", "train_no": "1234",
+                "train_model": "A 型车", "extras": [{"label": "座位号", "value": "1-2"}],
+            }],
+        }, ensure_ascii=False))
+        assert record_like["ok"] and record_like["evaluatedSteps"] == 1, "记录格式的方案应能被内核计算"
+        assert record_like["totals"]["run"] > 0
+        print("[√] 运转记录格式（含起止时间与自定义字段）可直接被内核计算")
+    finally:
+        data_path.write_text(original, encoding="utf-8")
+        call("api_load_city", "上海")
+
     print("\n全部检查通过。")
     return 0
 

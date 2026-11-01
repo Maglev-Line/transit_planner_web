@@ -24,6 +24,10 @@
 
       <label>记录名 <input id="rec-title" type="text" size="18" placeholder="我的运转记录"></label>
       <label>日期 <input id="rec-date" type="date"></label>
+      <label>城市
+        <select id="rec-city" title="选择城市线路库；也可选「纯手动」不使用线路库"></select>
+      </label>
+      <button type="button" class="ghost" id="btn-rec-kernel" title="加载线路库后可选用数据库线路（首次约 10 MB）">加载线路库</button>
       <span class="draft-chip" id="rec-save-state">草稿已自动保存</span>
 
       <div class="spacer"></div>
@@ -92,15 +96,93 @@
       <div class="modal-body">
         <div class="grid1">
           <fieldset>
-            <legend>乘车信息</legend>
+            <legend>录入方式</legend>
+            <label class="check"><input type="radio" name="rec-mode" id="rec-mode-db" value="db" checked> 数据库线路（自动算里程与时长）</label>
+            <label class="check"><input type="radio" name="rec-mode" id="rec-mode-manual" value="manual"> 手动自选（自定义线路名 / 时长）</label>
+            <div class="hint" id="rec-mode-hint"></div>
+          </fieldset>
+
+          <fieldset id="rec-db-fields">
+            <legend>线路与车站</legend>
+            <div class="grid1">
+              <div class="field">
+                <span>线路名称（输入后从下方候选选择）</span>
+                <div class="row">
+                  <input id="seg-line-name" type="text" list="rec-line-options" placeholder="如：上海地铁1号线 / 1号线">
+                  <datalist id="rec-line-options"></datalist>
+                  <button type="button" id="btn-seg-line-clear" class="ghost" title="清除已选线路">清除</button>
+                </div>
+                <select id="rec-line-candidates" size="4" hidden></select>
+                <div class="hint" id="seg-line-picked"></div>
+              </div>
+              <div class="field" id="seg-service-field" hidden>
+                <span>车种（快车只停部分车站，运行时按停靠站计算）</span>
+                <select id="seg-service"></select>
+                <div class="hint" id="seg-service-hint"></div>
+              </div>
+              <div class="grid2">
+                <div class="field">
+                  <span>① 起始站</span>
+                  <select id="seg-from-station"></select>
+                </div>
+                <div class="field">
+                  <span>② 到达站</span>
+                  <select id="seg-to-station"></select>
+                </div>
+              </div>
+              <div class="grid2">
+                <div class="field">
+                  <span>方向（选好起终点后自动判定）</span>
+                  <select id="seg-direction"></select>
+                </div>
+                <div class="field">
+                  <span>本段运行时长</span>
+                  <div class="hint" id="seg-db-run">选择起始与到达站后自动计算</div>
+                </div>
+              </div>
+            </div>
+          </fieldset>
+
+          <fieldset id="rec-manual-fields" hidden>
+            <legend>手动信息</legend>
             <div class="grid2">
               <div class="field">
-                <span>交通类型（可直接输入自定义类型）</span>
-                <input id="seg-type" type="text" list="rec-type-options" placeholder="地铁 / 高铁 / 公交…">
+                <span>线路名称</span>
+                <input id="seg-manual-line" type="text" placeholder="如：京沪高铁 G123">
               </div>
               <div class="field">
-                <span>线路名称</span>
-                <input id="seg-line" type="text" placeholder="如：上海地铁 1 号线 / 京沪高铁">
+                <span>方向文字（选填）</span>
+                <input id="seg-manual-dir" type="text" placeholder="如：北京南方向">
+              </div>
+              <div class="field">
+                <span>起点站</span>
+                <input id="seg-manual-from" type="text" list="rec-station-options" placeholder="如：人民广场">
+              </div>
+              <div class="field">
+                <span>到达站</span>
+                <input id="seg-manual-to" type="text" list="rec-station-options" placeholder="如：徐家汇">
+              </div>
+              <div class="field">
+                <span>运行时长（分钟）</span>
+                <input id="seg-manual-run" type="number" min="0" step="0.5" placeholder="如 34">
+              </div>
+              <div class="field">
+                <span>交通类型</span>
+                <input id="seg-type" type="text" list="rec-type-options" placeholder="地铁 / 高铁 / 公交…">
+              </div>
+            </div>
+          </fieldset>
+
+          <fieldset>
+            <legend>时间与车次</legend>
+            <div class="grid2">
+              <div class="field">
+                <span>起始时间</span>
+                <input id="seg-start" type="time">
+              </div>
+              <div class="field">
+                <span>到达时间</span>
+                <input id="seg-end" type="time">
               </div>
               <div class="field">
                 <span>车次 / 班次（选填）</span>
@@ -109,22 +191,6 @@
               <div class="field">
                 <span>车型（选填，可直接输入）</span>
                 <input id="seg-model" type="text" list="rec-model-options" placeholder="如：A 型车 / CR400AF">
-              </div>
-              <div class="field">
-                <span>起始站</span>
-                <input id="seg-from" type="text" placeholder="如：人民广场">
-              </div>
-              <div class="field">
-                <span>起始时间</span>
-                <input id="seg-start" type="time">
-              </div>
-              <div class="field">
-                <span>到达站</span>
-                <input id="seg-to" type="text" placeholder="如：徐家汇">
-              </div>
-              <div class="field">
-                <span>到达时间</span>
-                <input id="seg-end" type="time">
               </div>
               <div class="field">
                 <span>票价（元，选填）</span>
@@ -171,6 +237,8 @@
     <option value="其他"></option>
   </datalist>
 
+  <datalist id="rec-station-options"></datalist>
+
   <datalist id="rec-model-options">
     <option value="A 型车"></option>
     <option value="B 型车"></option>
@@ -190,6 +258,9 @@
 
   <div class="toast" id="rec-toast" hidden></div>
 
+  <!-- 规划内核：记录页按需加载（打开数据库线路录入时才下载 Pyodide） -->
+  <script src="https://cdn.jsdelivr.net/pyodide/v0.27.2/full/pyodide.js"></script>
+  <script src="js/bridge.js"></script>
   <script src="js/drafts.js"></script>
   <script src="js/record.js"></script>
 </body>

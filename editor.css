@@ -385,3 +385,23 @@ dialog.ed-submit-dialog { width: min(760px, 94vw); }
   .ed-brand { font-size: 15px; }
   .ed-state { display: none; }
 }
+
+/* 快车 / 大站车服务编辑 */
+.ed-express { border-top: 1px dashed var(--ed-line); padding-top: 10px; }
+.ed-express > .hint { display: block; margin: 3px 0 8px; }
+.ed-express-item {
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  padding: 10px;
+  margin-bottom: 10px;
+  background: #fbfcff;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.ed-express-item .grid3 { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px 10px; }
+.ed-express-item select[multiple] { width: 100%; font-size: 12.5px; }
+.ed-express-foot { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.ed-express-foot .hint { flex: 1 1 auto; }
+.ed-express-foot button { font-size: 12px; }
+.ed-express > button { font-size: 12.5px; }

@@ -119,8 +119,24 @@
     }
   }
 
+  /** 启动结果缓存：规划器与运转记录共用同一个内核实例（失败后可重试）。 */
+  let bootPromise = null;
+
+  /** 启动内核；重复调用复用同一次启动（运转记录等页面按需调用）。 */
+  function ensure(onProgress = () => {}) {
+    if (!bootPromise) {
+      bootPromise = boot(onProgress).catch((err) => {
+        bootPromise = null;
+        throw err;
+      });
+    }
+    return bootPromise;
+  }
+
   window.TP = {
-    boot,
+    boot: ensure,
+    ensure,
+    get ready() { return Boolean(pyodide); },
     published: {},
     backendAvailable: false,
     manifest: null,
@@ -132,9 +148,9 @@
     line: (lineId) => call("api_line", lineId),
     stations: () => call("api_stations"),
     searchLines: (keyword) => call("api_search_lines", keyword, 30),
-    pickDirection: (lineId, from, to) => call("api_pick_direction", lineId, from, to),
-    reachable: (lineId, direction, from) => call("api_reachable", lineId, direction, from),
-    reachableAny: (lineId, from) => call("api_reachable_any", lineId, from),
+    pickDirection: (lineId, from, to, service = "") => call("api_pick_direction", lineId, from, to, service || ""),
+    reachable: (lineId, direction, from, service = "") => call("api_reachable", lineId, direction, from, service || ""),
+    reachableAny: (lineId, from, service = "") => call("api_reachable_any", lineId, from, service || ""),
     transferHints: (station, excludeLineId) => call("api_transfer_hints", station, excludeLineId || ""),
     evaluate: (trip) => call("api_evaluate", JSON.stringify(trip)),
     manualTypes: () => call("api_manual_types"),

@@ -39,12 +39,16 @@
         steps: [],
       };
     }
+    // 与规划方案（Trip）保持同一结构，规划与记录的 JSON 可互相导入
     return {
-      title: "我的运转记录",
+      name: "我的运转记录",
       date: todayISO(),
+      city: "",
       note: "",
+      transfer_walk_default: 5,
+      paid_zone_mode: false,
       fields: [],
-      segments: [],
+      steps: [],
     };
   }
 
@@ -165,10 +169,13 @@
       if (!n) return "空方案";
       return `${n} 段行程${data.city ? ` · ${data.city}` : ""}`;
     }
-    const segments = Array.isArray(data?.segments) ? data.segments : [];
-    if (!segments.length) return "空记录";
-    const types = [...new Set(segments.map((s) => s && s.type).filter(Boolean))];
-    return `${segments.length} 段记录${types.length ? ` · ${types.join(" / ")}` : ""}`;
+    // 新版记录使用 steps（与规划一致），旧版草稿可能是 segments
+    const steps = Array.isArray(data?.steps)
+      ? data.steps
+      : (Array.isArray(data?.segments) ? data.segments : []);
+    if (!steps.length) return "空记录";
+    const types = [...new Set(steps.map((s) => s && (s.type || s.line_name || s.line)).filter(Boolean))];
+    return `${steps.length} 段记录${types.length ? ` · ${types.slice(0, 4).join(" / ")}` : ""}`;
   }
 
   function formatWhen(iso) {

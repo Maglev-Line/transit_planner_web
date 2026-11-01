@@ -270,6 +270,7 @@
       <div class="kv">班次：${esc(line.headwayText)}${line.firstTrain ? ` · 首班 ${esc(line.firstTrain)}` : ""}${line.lastTrain ? ` · 末班 ${esc(line.lastTrain)}` : ""}</div>
       ${line.operator ? `<div class="kv">运营：${esc(line.operator)}</div>` : ""}
       ${line.ring ? `<div class="kv">环线（首尾闭合）</div>` : ""}
+      ${lineServices(line).length ? `<div class="kv">快车：${lineServices(line).map((svc) => `${esc(svc.name)}（停 ${(svc.stops || []).length} 站）`).join(" / ")}</div>` : ""}
       <div class="station-chain">${chain}</div>
       <p class="hint" style="margin:6px 0 0">双击左侧线路可把该线路预填到新行程。</p>`;
     $("line-detail").scrollTop = 0;
@@ -461,6 +462,8 @@
     const transfer = seg?.transfer ? '<span class="badge-transfer">转乘（跨付费区）</span>' : "";
     const zone = seg ? `<b>付费区</b>${seg.paidZone + 1}` : "";
     const manual = step.manual ? '<span class="type">手动</span>' : "";
+    const serviceName = seg?.serviceName || (step.service ? step.service : "");
+    const service = serviceName ? `<span class="badge-express">${esc(serviceName)}</span>` : "";
     const stopsBlock = stops.length
       ? `<details class="stops-toggle"><summary class="hint">经停站（${stops.length} 站）</summary><div class="stops">${stops.map(esc).join(" · ")}</div></details>`
       : "";
@@ -473,7 +476,7 @@
           <div class="card-head">
             <span class="nm">${esc(name)}</span>
             ${typeLabel ? `<span class="type">${esc(typeLabel)}</span>` : ""}
-            ${manual}${transfer}
+            ${service}${manual}${transfer}
             <span class="actions">
               <button class="ghost" data-act="up" data-i="${i}" title="上移" ${i === 0 ? "disabled" : ""}>↑</button>
               <button class="ghost" data-act="down" data-i="${i}" title="下移" ${i === state.trip.steps.length - 1 ? "disabled" : ""}>↓</button>
@@ -741,12 +744,10 @@
   });
 
   $("btn-export").addEventListener("click", () => {
-    const blob = new Blob([JSON.stringify(state.trip, null, 2)], { type: "application/json" });
-    const a = document.createElement("a");
-    a.href = URL.createObjectURL(blob);
-    a.download = `${state.trip.name || "运转方案"}.json`;
-    a.click();
-    URL.revokeObjectURL(a.href);
+    // 与运转记录共用同一结构：kind 标记当前离线编辑器，起止时间等记录字段原样保留
+    const payload = { ...state.trip, kind: "plan", version: 2, exportedAt: new Date().toISOString() };
+    D.downloadJSON(D.safeFileName(state.trip.name, "运转方案"), payload);
+    toast("已导出方案 JSON（与运转记录互通）");
   });
 
   // 一键清除当前方案的全部行程段（保留城市、方案名、日期与付费区设置）
@@ -772,9 +773,11 @@
       const raw = JSON.parse(await file.text());
       const data = raw && Array.isArray(raw.steps) ? raw : raw?.trip;
       if (!data || typeof data !== "object" || !Array.isArray(data.steps)) {
-        throw new Error("文件中没有找到 steps 数组，可能不是规划方案 JSON");
+        throw new Error("文件中没有找到 steps 数组，可能不是方案或记录 JSON");
       }
-      state.trip = { ...state.trip, ...data, steps: data.steps };
+      // 记录 JSON 与方案结构一致：去掉文档元信息，段落里的记录字段（起止时间等）原样保留
+      const { kind: _kind, version: _version, exportedAt: _exported, ...tripData } = data;
+      state.trip = { ...state.trip, ...tripData, steps: tripData.steps };
       syncTopbar();
       if (state.trip.city && state.trip.city !== state.city) await setCity(state.trip.city, { silent: true });
       renderAll();
@@ -854,7 +857,47 @@
 
   // ---------------- 行程弹窗 ----------------
 
-  const dlg = { index: null, mode: "db", lineId: "", line: null, prefillFrom: "" };
+  const dlg = { index: null, mode: "db", lineId: "", line: null, prefillFrom: "", service: "" };
+
+  /** 当前弹窗选中的车种 id（空串 = 各站停）。 */
+  function dialogService() {
+    return $("service-field").hidden ? "" : $("line-service").value;
+  }
+
+  /** 线路的快车服务列表（无快车时为空）。 */
+  function lineServices(line) {
+    return Array.isArray(line?.express) ? line.express : [];
+  }
+
+  /** 填充车种下拉：始终包含「各站停」；线路有快车服务时显示该区域。 */
+  function fillServiceSelect(line, selected = "") {
+    const services = lineServices(line);
+    $("service-field").hidden = services.length === 0;
+    if (!services.length) {
+      $("line-service").innerHTML = "";
+      $("service-hint").textContent = "";
+      dlg.service = "";
+      return;
+    }
+    const opts = ['<option value="">各站停（普通车）</option>'];
+    services.forEach((svc) => {
+      const stops = Array.isArray(svc.stops) ? svc.stops : [];
+      const headway = svc.headwayText ? ` · ${svc.headwayText}` : "";
+      opts.push(`<option value="${esc(svc.id)}">${esc(svc.name)} · 停 ${stops.length} 站${esc(headway)}</option>`);
+    });
+    $("line-service").innerHTML = opts.join("");
+    const exists = services.some((svc) => svc.id === selected);
+    $("line-service").value = exists ? selected : "";
+    dlg.service = $("line-service").value;
+    updateServiceHint();
+  }
+
+  function updateServiceHint() {
+    const svc = lineServices(dlg.line).find((s) => s.id === $("line-service").value);
+    $("service-hint").textContent = svc
+      ? `停靠：${(svc.stops || []).join(" → ")}`
+      : "各站停：全部车站都会停靠";
+  }
 
   function setDialogError(msg) {
     $("dlg-error").hidden = !msg;
@@ -890,6 +933,10 @@
     $("from-station").innerHTML = "";
     $("direction").innerHTML = "";
     $("to-station").innerHTML = "";
+    $("service-field").hidden = true;
+    $("line-service").innerHTML = "";
+    $("service-hint").textContent = "";
+    dlg.service = "";
     $("db-run").textContent = "选择起点与到达站后自动计算";
     $("m-line-name").value = "";
     $("m-direction").value = "";
@@ -956,12 +1003,9 @@
     $("line-picked").innerHTML =
       `<span class="swatch" style="display:inline-block;vertical-align:-1px;background:${swatch(line.color, line.color2)}"></span>
        ${esc(line.name)} · ${esc(line.typeLabel)} · ${esc(line.headwayText)}`;
-    $("from-station").innerHTML = line.stations.map((s) => `<option value="${esc(s)}">${esc(s)}</option>`).join("");
+    fillServiceSelect(line, step ? step.service || "" : "");
+    fillStationSelects(step);
     $("direction").innerHTML = line.directions.map((d) => `<option value="${esc(d)}">${esc(d)}</option>`).join("");
-    const preferredFrom = step ? step.from_station : dlg.prefillFrom;
-    if (preferredFrom && line.stations.includes(preferredFrom)) {
-      $("from-station").value = preferredFrom;
-    }
     if (step && line.directions.includes(step.direction_label)) {
       $("direction").value = step.direction_label;
     }
@@ -970,10 +1014,22 @@
     else await autoPickDirection();         // 新增：按默认起终点直接给出方向
   }
 
-  /** 到达站候选只取决于线路与起点站（不限方向）；方向在选好起终点后自动判定。 */
+  /** 起终点候选：有快车服务时只列该服务停靠的车站。 */
+  function fillStationSelects(step) {
+    const line = dlg.line;
+    if (!line) return;
+    const stops = dialogService()
+      ? (lineServices(line).find((s) => s.id === dialogService())?.stops || [])
+      : line.stations;
+    $("from-station").innerHTML = stops.map((s) => `<option value="${esc(s)}">${esc(s)}</option>`).join("");
+    const preferredFrom = step ? step.from_station : dlg.prefillFrom;
+    if (preferredFrom && stops.includes(preferredFrom)) $("from-station").value = preferredFrom;
+  }
+
+  /** 到达站候选只取决于线路、车种与起点站（不限方向）；方向在选好起终点后自动判定。 */
   async function refreshToStations(prefer = "") {
     if (!dlg.line) return;
-    const res = TP.reachableAny(dlg.line.id, $("from-station").value);
+    const res = TP.reachableAny(dlg.line.id, $("from-station").value, dialogService());
     if (!res.ok) {
       $("to-station").innerHTML = "";
       $("db-run").textContent = res.error;
@@ -989,7 +1045,7 @@
     const from = $("from-station").value;
     const to = $("to-station").value;
     if (from && to && from !== to) {
-      const res = TP.pickDirection(dlg.line.id, from, to);
+      const res = TP.pickDirection(dlg.line.id, from, to, dialogService());
       if (res.ok && res.direction) $("direction").value = res.direction;
     }
     await refreshRunHint();
@@ -1007,11 +1063,13 @@
       name: "", city: state.city, note: "", transfer_walk_default: 0, paid_zone_mode: false,
       steps: [{
         line_id: dlg.line.id, direction_label: $("direction").value, from_station: from, to_station: to,
-        manual: false, type: dlg.line.type, line_name: dlg.line.name,
+        manual: false, type: dlg.line.type, line_name: dlg.line.name, service: dialogService(),
       }],
     });
     if (res.ok && res.segments.length) {
-      $("db-run").textContent = `${fmtMin(res.segments[0].run)} · ${res.segments[0].stopCount} 站 · ${res.segments[0].headway}`;
+      const seg = res.segments[0];
+      const serviceTag = seg.serviceName ? ` · ${seg.serviceName}` : "";
+      $("db-run").textContent = `${fmtMin(seg.run)} · ${seg.stopCount} 站${serviceTag} · ${seg.headway}`;
     } else {
       $("db-run").textContent = res.error || "无法计算该区间";
     }
@@ -1051,6 +1109,15 @@
     if (!dlg.line) return;
     // 起点变了：到达站候选随之刷新（尽量保留原到达站），再按起终点自动判定方向
     await refreshToStations($("to-station").value);
+    await autoPickDirection();
+  });
+  $("line-service").addEventListener("change", async () => {
+    if (!dlg.line) return;
+    // 车种变化：停靠站不同，起终点候选整体刷新
+    dlg.service = $("line-service").value;
+    updateServiceHint();
+    fillStationSelects(null);
+    await refreshToStations("");
     await autoPickDirection();
   });
   $("to-station").addEventListener("change", () => autoPickDirection());
@@ -1147,6 +1214,7 @@
         use_timetable: useTimetable,
         price,
         transfer: prev ? prev.transfer : null,
+        service: dialogService(),
       };
     } else {
       const name = $("m-line-name").value.trim();
@@ -1230,7 +1298,7 @@
       return `
         <div class="seg">
           <div class="ribbon" style="background:${swatch(s.color, s.color2)}"></div>
-          <div class="hd">${i + 1}. ${esc(s.lineName)}（${esc(s.typeLabel)}）${s.transfer ? " · 转乘（跨付费区）" : ""}</div>
+          <div class="hd">${i + 1}. ${esc(s.lineName)}（${esc(s.typeLabel)}）${s.serviceName ? ` · ${esc(s.serviceName)}` : ""}${s.transfer ? " · 转乘（跨付费区）" : ""}</div>
           <div class="ln">${esc(s.from)} → ${esc(s.direction)} → ${esc(s.to)}
             · 运行 ${fmtMin(s.run)}${s.walk > 0 ? ` · 上车前步行 ${fmtMin(s.walk)}` : ""} · ${s.stopCount} 站
             · 班次 ${esc(s.headway)}

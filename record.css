@@ -61,6 +61,11 @@
   border-radius: 99px;
   padding: 1px 7px;
 }
+.rec-express {
+  color: #6b3fa0;
+  background: #f3edff;
+  border: 1px solid #d9cbf5;
+}
 .rec-actions { margin-left: auto; display: flex; gap: 2px; }
 
 .rec-route { display: flex; align-items: center; gap: 10px; margin-top: 8px; }

@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass, field, asdict
+from dataclasses import fields as dc_fields
 from pathlib import Path
 
 # 交通类型常量
@@ -62,6 +63,31 @@ class Direction:
         return self.label
 
 
+# 快车每跳过一个中间站默认节省的分钟（停站时间）
+DEFAULT_EXPRESS_SKIP_MINUTES = 0.4
+
+
+@dataclass
+class ExpressService:
+    """快车 / 大站车 / 直达车等不停靠全部车站的列车服务。
+
+    stops：本服务实际停靠的站（有序，须是本线路站表中的车站）。
+    section_minutes：可选，停靠站之间的运行分钟（长度 = len(stops) - 1）；
+                     缺省时按基础区间时长累加，并按跳过的车站数节省停站时间。
+    headway_text：可选，本服务的发车班次文字（留空沿用线路班次）。
+    """
+    id: str = ""
+    name: str = "快车"
+    stops: list[str] = field(default_factory=list)
+    section_minutes: list[float] = field(default_factory=list)
+    skip_minutes: float = DEFAULT_EXPRESS_SKIP_MINUTES
+    headway_text: str = ""
+
+    def __post_init__(self) -> None:
+        if not self.id:
+            self.id = self.name or "express"
+
+
 @dataclass
 class Line:
     """一条线路。stations 为有序站表，travel_minutes[i] 为 stations[i]->stations[i+1] 的时长(分钟)。"""
@@ -80,6 +106,7 @@ class Line:
     last_train: str = ""
     ring: bool = False
     directions: list[Direction] = field(default_factory=list)
+    express: list[ExpressService] = field(default_factory=list)  # 快车服务（可空）
 
     def __post_init__(self) -> None:
         if not self.directions and len(self.stations) >= 2:
@@ -123,6 +150,22 @@ class Line:
                 return i
         raise LineError(f"线路 {self.name} 不存在方向 {label}")
 
+    def express_service(self, service_id: str) -> ExpressService:
+        """按 id 取快车服务（空 id / 各站停 返回空服务由调用方处理）。"""
+        for svc in self.express:
+            if svc.id == service_id:
+                return svc
+        raise LineError(f"线路 {self.name} 不存在车种 {service_id}")
+
+    def has_express(self) -> bool:
+        return bool(self.express)
+
+    def service_stops(self, service_id: str = "") -> list[str]:
+        """某车种的停靠站表：空 id 表示各站停（全部车站）。"""
+        if not service_id:
+            return list(self.stations)
+        return list(self.express_service(service_id).stops)
+
     def to_dict(self) -> dict:
         d = asdict(self)
         return d
@@ -131,6 +174,14 @@ class Line:
     def from_dict(cls, data: dict) -> "Line":
         data = dict(data)
         data["directions"] = [Direction(**x) for x in data.get("directions", [])]
+        express = data.get("express")
+        known = {f.name for f in dc_fields(ExpressService)}
+        data["express"] = [
+            x if isinstance(x, ExpressService)
+            else ExpressService(**{k: v for k, v in x.items() if k in known})
+            for x in (express if isinstance(express, list) else [])
+            if isinstance(x, (dict, ExpressService))
+        ]
         return cls(**data)
 
 
@@ -206,6 +257,7 @@ def merge_lines(first: Line, second: Line) -> Line:
         last_train=primary.last_train or secondary.last_train,
         ring=primary.ring or secondary.ring,
         directions=list(primary.directions) or list(secondary.directions),
+        express=list(primary.express) or list(secondary.express),
     )
 
 
@@ -371,6 +423,10 @@ class Step:
     manual=True ：完全手动填写（自定义线路名/方向/时长/经停站/颜色），
                   适用于跨城国铁、数据库未收录的线路等。
     walk_minutes：上车前（从上一到达站）的换乘/步行分钟；首步忽略。None 表示用默认值。
+    service：车种（线路 express 服务的 id）；空串表示各站停的普通车。
+    start_time / end_time：实际乘车时刻（"HH:MM"）。数据库线路由引擎忽略，供运转记录使用。
+    train_no / train_model：车次与车型文字（可选）。
+    extras：本段自定义字段 [[名称, 内容], ...]。
     """
     line_id: str = ""
     direction_label: str = ""
@@ -391,6 +447,12 @@ class Step:
     price: float | None = None        # 票价(元)，手动输入
     transfer: bool | None = None      # 跨付费区转乘（转乘）：上车前需出闸/换系统。
                                      # None=自动（按数据中的转乘站组判定）；True/False=用户强制指定。
+    service: str = ""                 # 车种（线路 express 服务 id）；空串 = 各站停
+    start_time: str = ""              # 实际乘车时刻（运转记录用，规划忽略）
+    end_time: str = ""                # 实际到达时刻（运转记录用，规划忽略）
+    train_no: str = ""                # 车次（可选）
+    train_model: str = ""             # 车型（可选）
+    extras: list = field(default_factory=list)  # 本段自定义字段 [{"label": .., "value": ..}]
 
     def to_dict(self) -> dict:
         return {
@@ -412,6 +474,12 @@ class Step:
             "use_timetable": self.use_timetable,
             "price": self.price,
             "transfer": self.transfer,
+            "service": self.service,
+            "start_time": self.start_time,
+            "end_time": self.end_time,
+            "train_no": self.train_no,
+            "train_model": self.train_model,
+            "extras": self.extras,
         }
 
     @classmethod
@@ -435,12 +503,22 @@ class Step:
             use_timetable=data.get("use_timetable", False),
             price=data.get("price"),
             transfer=data.get("transfer"),
+            service=data.get("service", ""),
+            start_time=data.get("start_time", ""),
+            end_time=data.get("end_time", ""),
+            train_no=data.get("train_no", ""),
+            train_model=data.get("train_model", ""),
+            extras=data.get("extras", []) or [],
         )
 
 
 @dataclass
 class Trip:
-    """一个完整运转行程方案。"""
+    """一个完整运转行程方案。
+
+    规划方案与运转记录共用这一份结构：记录额外使用 steps[*].start_time / end_time
+    与顶层 fields（整次运转自定义字段），规划器会忽略这些字段。
+    """
     name: str = "我的运转方案"
     date: str = ""
     city: str = "上海"
@@ -448,6 +526,7 @@ class Trip:
     transfer_walk_default: float = 5.0   # 默认换乘/站外步行分钟
     paid_zone_mode: bool = False         # 付费区模式：按进闸站→出闸站计费，跨付费区转车标记「转乘」
     steps: list[Step] = field(default_factory=list)
+    fields: list = field(default_factory=list)  # 整次运转自定义字段（运转记录用）
 
     def to_dict(self) -> dict:
         return {
@@ -458,13 +537,21 @@ class Trip:
             "transfer_walk_default": self.transfer_walk_default,
             "paid_zone_mode": self.paid_zone_mode,
             "steps": [s.to_dict() for s in self.steps],
+            "fields": self.fields,
         }
 
     @classmethod
     def from_dict(cls, data: dict) -> "Trip":
-        d = dict(data)
-        d["steps"] = [Step.from_dict(x) for x in d.get("steps", [])]
-        return cls(**d)
+        """容错解析：忽略 kind / version / segments 等非本结构的额外字段。"""
+        d = dict(data or {})
+        known = {f.name for f in dc_fields(cls)}
+        d["steps"] = [
+            s if isinstance(s, Step) else Step.from_dict(s)
+            for s in d.get("steps", []) or []
+            if isinstance(s, (dict, Step))
+        ]
+        filtered = {k: v for k, v in d.items() if k in known}
+        return cls(**filtered)
 
     def save(self, path: str | Path) -> None:
         path = Path(path)

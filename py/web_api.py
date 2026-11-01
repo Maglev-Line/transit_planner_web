@@ -66,6 +66,7 @@ def _line_summary(ln: Line, brief: bool = False) -> dict:
         "firstTrain": ln.first_train,
         "lastTrain": ln.last_train,
         "directions": [x.label for x in ln.directions],
+        "express": _service_summaries(ln),
     }
     if not brief:
         d["stations"] = list(ln.stations)
@@ -80,10 +81,32 @@ def _require_city() -> City:
 
 
 def _step_headway(seg) -> str:
-    """发车班次：手动段用填写文字，数据库段用线路班次。"""
+    """发车班次：手动段用填写文字，数据库段用线路（或快车服务）班次。"""
     if seg.manual:
         return seg.step.headway_text or "不定班"
+    service_id = getattr(seg.step, "service", "") or ""
+    if service_id:
+        try:
+            svc = seg.line.express_service(service_id)
+            if svc.headway_text:
+                return svc.headway_text
+        except LineError:
+            pass
     return seg.line.headway_text
+
+
+def _service_summaries(ln: Line) -> list[dict]:
+    """线路的快车服务摘要（供界面显示车种选择）。"""
+    return [
+        {
+            "id": svc.id,
+            "name": svc.name,
+            "stops": list(svc.stops),
+            "stopCount": len(svc.stops),
+            "headwayText": svc.headway_text or ln.headway_text,
+        }
+        for svc in ln.express
+    ]
 
 
 def _segment_payload(seg) -> dict:
@@ -113,6 +136,8 @@ def _segment_payload(seg) -> dict:
         "price": seg.step.price,
         "timetable": seg.step.timetable,
         "useTimetable": bool(seg.step.use_timetable),
+        "service": getattr(seg.step, "service", "") or "",
+        "serviceName": getattr(seg, "service_name", "") or "",
     }
 
 
@@ -314,6 +339,43 @@ def api_validate_city(doc_json: str) -> str:
                 elif minutes > 300:
                     warnings.append(f"{label}第 {j} 段时长超过 300 分钟，请确认")
 
+            # 快车 / 大站车等只停部分车站的服务
+            if ln.express:
+                station_order = {s: k for k, s in enumerate(ln.stations)}
+                seen_services: dict[str, int] = {}
+                for si, svc in enumerate(ln.express, 1):
+                    svc_label = f"{label}的第 {si} 个快车服务"
+                    name = getattr(svc, "name", "")
+                    if not isinstance(name, str) or not name.strip():
+                        errors.append(f"{svc_label}缺少名称（name）")
+                    sid = getattr(svc, "id", "") or ""
+                    if sid in seen_services:
+                        errors.append(f"{label}快车服务 ID「{sid}」重复（第 {seen_services[sid]} 个与第 {si} 个）")
+                    else:
+                        seen_services[sid] = si
+                    stops = getattr(svc, "stops", [])
+                    if not isinstance(stops, list) or len(stops) < 2:
+                        errors.append(f"{svc_label}至少需要 2 个停靠站（stops）")
+                        continue
+                    missing = [s for s in stops if s not in station_order]
+                    if missing:
+                        errors.append(f"{svc_label}的停靠站不在本站表内：{'、'.join(map(str, missing[:5]))}")
+                        continue
+                    positions = [station_order[s] for s in stops]
+                    if positions != sorted(positions) or len(set(positions)) != len(positions):
+                        errors.append(f"{svc_label}的停靠站需按站表顺序排列且不重复")
+                    if len(stops) >= len(ln.stations):
+                        warnings.append(f"{svc_label}停靠全部车站，与普通车没有区别")
+                    sections = getattr(svc, "section_minutes", [])
+                    if sections:
+                        if not isinstance(sections, list) or len(sections) != len(stops) - 1:
+                            errors.append(f"{svc_label}的 section_minutes 长度应为 {len(stops) - 1}")
+                        elif any(not _is_number(x) or x < 0 for x in sections):
+                            errors.append(f"{svc_label}的 section_minutes 必须是不小于 0 的数字")
+                    skip = getattr(svc, "skip_minutes", 0.0)
+                    if not _is_number(skip) or skip < 0:
+                        errors.append(f"{svc_label}的 skip_minutes 必须是不小于 0 的数字")
+
             stats["lines"] += 1
             stats["segments"] += max(0, len(ln.stations) - 1)
 
@@ -382,37 +444,38 @@ def api_search_lines(keyword: str, limit: int = 20) -> str:
         return _err(str(exc))
 
 
-def api_pick_direction(line_id: str, from_station: str, to_station: str) -> str:
-    """按起终点自动选择方向，返回方向名（不可达返回 null）。"""
+def api_pick_direction(line_id: str, from_station: str, to_station: str, service: str = "") -> str:
+    """按起终点自动选择方向，返回方向名（不可达返回 null）。service 为空表示各站停。"""
     try:
         ln = _require_city().line(line_id)
-        d = engine.pick_direction(ln, from_station, to_station)
+        d = engine.pick_direction(ln, from_station, to_station, service or "")
         return _ok(direction=d.label if d else None)
     except Exception as exc:  # noqa: BLE001
         return _err(str(exc))
 
 
-def api_reachable(line_id: str, direction_label: str, from_station: str) -> str:
-    """当前站、当前方向下可到达的后续站点。"""
+def api_reachable(line_id: str, direction_label: str, from_station: str, service: str = "") -> str:
+    """当前站、当前方向下可到达的后续站点（可按快车服务过滤）。"""
     try:
         ln = _require_city().line(line_id)
         d = ln.directions[ln.direction_index(direction_label)]
-        return _ok(stations=engine.reachable_from(_require_city(), ln, d, from_station))
+        return _ok(stations=engine.reachable_from(_require_city(), ln, d, from_station, service or ""))
     except Exception as exc:  # noqa: BLE001
         return _err(str(exc))
 
 
-def api_reachable_any(line_id: str, from_station: str) -> str:
+def api_reachable_any(line_id: str, from_station: str, service: str = "") -> str:
     """不限方向：从某站出发可到达的全部后续站点（供先选起终点、再自动定方向的录入方式）。
 
     按线路方向表顺序合并两个方向的站表，重复站只保留首次出现的位置。
+    service 非空时只返回该快车服务停靠的后续车站。
     """
     try:
         city = _require_city()
         ln = city.line(line_id)
         out: list[str] = []
         for d in ln.directions:
-            for station in engine.reachable_from(city, ln, d, from_station):
+            for station in engine.reachable_from(city, ln, d, from_station, service or ""):
                 if station not in out:
                     out.append(station)
         return _ok(stations=out)
