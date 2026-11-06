@@ -45,7 +45,7 @@
   };
 
   let smartPlans = [];
-  let smartContext = { origin: "", target: "", mode: "station" };
+  let smartContext = { targets: [] };
 
   // ---------------- 启动 ----------------
 
@@ -153,7 +153,7 @@
       const hm = `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
       el.textContent = `已自动保存 ${hm}`;
     }
-    document.title = `${(state.trip.name || "").trim() || "我的运转方案"} · 规划 · 运转计划助手`;
+    document.title = `${(state.trip.name || "").trim() || "我的运转方案"} · 规划模式 · 运转计划助手`;
   }
 
   const persist = debounce(flushDraft, 350);
@@ -427,7 +427,7 @@
     const failed = res?.failedStep;
 
     if (!steps.length) {
-      $("step-list").innerHTML = '<p class="hint">还没有行程。点击下方「＋ 添加行程」开始串联：起点站 → 线路 → 方向 → 到达站。</p>';
+      $("step-list").innerHTML = '<p class="hint">还没有行程。点击下方「＋ 添加行程」开始串联。</p>';
       setStatus("");
       return;
     }
@@ -737,11 +737,6 @@
     box.hidden = !msg;
   }
 
-  function setSmartMode(mode) {
-    $("smart-station-field").hidden = mode !== "station";
-    $("smart-line-field").hidden = mode !== "line";
-  }
-
   function openSmartDialog() {
     if (!state.city) {
       showNotice("请先选择城市", "智能规划需要使用城市线路库，请先在上方选择城市。");
@@ -758,52 +753,113 @@
       return;
     }
 
-    const options = list.map((name) => `<option value="${esc(name)}">${esc(name)}</option>`).join("");
-    $("smart-origin").innerHTML = options;
-    $("smart-station").innerHTML = options;
-    $("smart-line").innerHTML = state.lines
-      .map((line) => `<option value="${esc(line.id)}">${esc(line.name)}${line.typeLabel ? `（${esc(line.typeLabel)}）` : ""}</option>`)
-      .join("");
-
-    const current = currentStation();
-    if (current && list.includes(current)) $("smart-origin").value = current;
-    const other = list.find((name) => name !== $("smart-origin").value);
-    if (other) $("smart-station").value = other;
+    $("smart-lines").innerHTML = state.lines.map((line) => `
+      <label class="smart-check">
+        <input type="checkbox" name="smart-line" value="${esc(line.id)}">
+        <span>${esc(line.name)}${line.typeLabel ? `（${esc(line.typeLabel)}）` : ""}</span>
+      </label>`).join("");
+    $("smart-stations").innerHTML = list.map((name) => `
+      <label class="smart-check">
+        <input type="checkbox" name="smart-station" value="${esc(name)}">
+        <span>${esc(name)}</span>
+      </label>`).join("");
     $("smart-walk").value = state.trip.transfer_walk_default ?? 5;
 
     smartPlans = [];
     $("smart-results").innerHTML = "";
     showSmartError("");
-    setSmartMode("station");
     $("smart-dialog").showModal();
   }
 
   function runSmartPlan() {
-    const mode = document.querySelector('input[name="smart-mode"]:checked')?.value || "station";
-    const origin = $("smart-origin").value;
-    const target = mode === "station" ? $("smart-station").value : $("smart-line").value;
+    const lineIds = [...document.querySelectorAll('input[name="smart-line"]:checked')].map((input) => input.value);
+    const stationNames = [...document.querySelectorAll('input[name="smart-station"]:checked')].map((input) => input.value);
     const walk = numOrNull($("smart-walk").value) ?? state.trip.transfer_walk_default ?? 5;
-
-    if (!origin) return showSmartError("请选择起点站");
-    if (!target) return showSmartError(mode === "station" ? "请选择到达站" : "请选择想坐的线路");
-    if (mode === "station" && origin === target) return showSmartError("起点站与到达站不能相同");
+    if (!lineIds.length && !stationNames.length) {
+      return showSmartError("请至少勾选一条想乘坐的线路或一座想前往的车站");
+    }
 
     showSmartError("");
-    smartContext = { origin, target, mode };
+    const goals = [
+      ...lineIds.map((id) => ({ mode: "line", target: id, label: state.lines.find((line) => line.id === id)?.name || id })),
+      ...stationNames.map((name) => ({ mode: "station", target: name, label: name })),
+    ];
+    smartContext = { targets: goals.map((goal) => goal.label) };
     const button = $("btn-smart-run");
     button.disabled = true;
     button.textContent = "计算中…";
-    // 让浏览器先绘制「计算中」，再执行同步的内核调用
     setTimeout(() => {
       try {
-        const res = TP.planRoutes({ mode, origin, target, transferWalk: walk, limit: 5 });
-        if (!res.ok) {
-          smartPlans = [];
-          $("smart-results").innerHTML = "";
-          showSmartError(res.error || "没有找到可行方案");
-          return;
+        const allStations = listStations();
+        const firstGoal = goals[0];
+        let origins = [];
+        if (firstGoal.mode === "line") {
+          const detail = TP.line(firstGoal.target);
+          if (!detail.ok) throw new Error(detail.error || `无法读取线路「${firstGoal.label}」`);
+          origins = detail.line?.stations || [];
+        } else {
+          origins = allStations.filter((name) => !stationNames.includes(name));
         }
-        smartPlans = res.plans || [];
+        origins = sampleOrigins([...new Set(origins)], 18);
+        const candidates = origins.map((origin) => ({
+          origin,
+          current: origin,
+          steps: [],
+          legs: [],
+          minutes: 0,
+          transfers: 0,
+          lineCount: 0,
+          stopCount: 0,
+        }));
+        let plans = candidates;
+        for (const goal of goals) {
+          const next = [];
+          for (const candidate of plans) {
+            if (goal.mode === "station" && candidate.current === goal.target) continue;
+            const result = TP.planRoutes({
+              mode: goal.mode,
+              origin: candidate.current,
+              target: goal.target,
+              transferWalk: walk,
+              limit: 2,
+            });
+            if (!result.ok) continue;
+            for (const route of result.plans || []) {
+              const routeSteps = JSON.parse(JSON.stringify(route.steps || []));
+              const last = routeSteps[routeSteps.length - 1];
+              if (!last || !last.to_station) continue;
+              const routeLegs = (route.legs || []).map((leg) => ({ ...leg }));
+              const previousLeg = candidate.legs[candidate.legs.length - 1];
+              if (previousLeg && routeLegs[0]) {
+                routeLegs[0].transfer = previousLeg.lineId !== routeLegs[0].lineId;
+                routeSteps[0].transfer = routeLegs[0].transfer ? true : null;
+              }
+              const legs = [...candidate.legs, ...routeLegs];
+              const transfers = legs.reduce((count, leg, index) => (
+                index > 0 && legs[index - 1].lineId !== leg.lineId ? count + 1 : count
+              ), 0);
+              next.push({
+                origin: candidate.origin,
+                current: last.to_station,
+                steps: [...candidate.steps, ...routeSteps],
+                legs,
+                minutes: candidate.minutes + Number(route.minutes || 0),
+                transfers,
+                lineCount: new Set(legs.map((leg) => leg.lineId)).size,
+                stopCount: legs.reduce((total, leg) => total + Number(leg.stopCount || 0), 0),
+              });
+            }
+          }
+          plans = next
+            .sort((a, b) => a.transfers - b.transfers || a.minutes - b.minutes)
+            .slice(0, 8);
+          if (!plans.length) break;
+        }
+        smartPlans = plans.map((plan, index) => ({
+          ...plan,
+          tag: `方案 ${index + 1}`,
+          experienceSummary: smartContext.targets.join("、"),
+        }));
         renderSmartPlans();
       } catch (err) {
         smartPlans = [];
@@ -814,6 +870,17 @@
         button.textContent = "生成方案";
       }
     }, 20);
+  }
+
+  function listStations() {
+    const result = TP.stations();
+    if (!result.ok) throw new Error(result.error || "无法读取车站列表");
+    return result.stations || [];
+  }
+
+  function sampleOrigins(stations, limit) {
+    if (stations.length <= limit) return stations;
+    return Array.from({ length: limit }, (_, index) => stations[Math.floor(index * (stations.length - 1) / (limit - 1))]);
   }
 
   function smartPlanHtml(plan, index) {
@@ -839,7 +906,7 @@
       <div class="smart-card-head">
         <span class="smart-tag">${esc(plan.tag || "备选")}</span>
         <span class="smart-time">${fmtMin(plan.minutes)}</span>
-        <span class="hint">起点 ${esc(smartContext.origin)} · 换乘 ${plan.transfers} 次 · ${plan.lineCount} 条线路 · ${plan.stopCount} 站</span>
+        <span class="hint">自动起点 ${esc(plan.origin)} · 覆盖 ${esc(plan.experienceSummary)} · 换乘 ${plan.transfers} 次 · ${plan.lineCount} 条线路 · ${plan.stopCount} 站</span>
         <div class="spacer"></div>
         <button type="button" data-smart-apply="append" data-smart-index="${index}">追加到末尾</button>
         <button type="button" class="primary" data-smart-apply="replace" data-smart-index="${index}">替换规划</button>
@@ -883,9 +950,6 @@
     ev.preventDefault();
     runSmartPlan();
   });
-  document.querySelectorAll('input[name="smart-mode"]').forEach((radio) => {
-    radio.addEventListener("change", () => setSmartMode(radio.value));
-  });
   $("smart-results").addEventListener("click", (ev) => {
     const button = ev.target.closest("[data-smart-apply]");
     if (!button) return;
@@ -901,6 +965,23 @@
   $("walk-default").addEventListener("change", (ev) => {
     state.trip.transfer_walk_default = numOrNull(ev.target.value) ?? 0;
     evaluate();
+  });
+
+  $("btn-switch-record").addEventListener("click", (ev) => {
+    ev.preventDefault();
+    flushDraft();
+    const data = {
+      ...JSON.parse(JSON.stringify(state.trip)),
+      fields: [],
+      steps: JSON.parse(JSON.stringify(state.trip.steps)),
+    };
+    const draft = D.create("record", {
+      title: (state.trip.name || "").trim() || "我的运转记录",
+      city: state.trip.city || "",
+      summary: D.summarize("record", data),
+      data,
+    });
+    location.href = `record.html?id=${encodeURIComponent(draft.id)}`;
   });
 
   $("btn-export").addEventListener("click", () => {
@@ -951,10 +1032,6 @@
     }
   });
 
-  // ---------------- 顶部操作条：联系作者 ----------------
-
-  const contact = $("contact");
-
   function toast(msg) {
     const el = $("toast");
     el.textContent = msg;
@@ -962,60 +1039,6 @@
     clearTimeout(toast._timer);
     toast._timer = setTimeout(() => { el.hidden = true; }, 2000);
   }
-
-  async function copyText(text) {
-    try {
-      if (navigator.clipboard && window.isSecureContext) {
-        await navigator.clipboard.writeText(text);
-        return true;
-      }
-    } catch { /* 无权限时走降级方案 */ }
-    try {
-      const ta = document.createElement("textarea");
-      ta.value = text;
-      ta.setAttribute("readonly", "");
-      ta.style.position = "fixed";
-      ta.style.top = "-1000px";
-      document.body.appendChild(ta);
-      ta.select();
-      const ok = document.execCommand("copy");
-      ta.remove();
-      return ok;
-    } catch {
-      return false;
-    }
-  }
-
-  // 触屏 / 键盘：点击「联系作者」切换卡片（鼠标悬停即可展开）
-  $("btn-contact").addEventListener("click", (ev) => {
-    ev.stopPropagation();
-    const open = contact.classList.toggle("open");
-    $("btn-contact").setAttribute("aria-expanded", String(open));
-  });
-  document.addEventListener("click", (ev) => {
-    if (!ev.target.closest(".contact")) {
-      contact.classList.remove("open");
-      $("btn-contact").setAttribute("aria-expanded", "false");
-    }
-  });
-  document.addEventListener("keydown", (ev) => {
-    if (ev.key === "Escape") contact.classList.remove("open");
-  });
-
-  // 单击微信号 → 复制到剪贴板
-  $("contact-wechat").addEventListener("click", async () => {
-    const row = $("contact-wechat");
-    const ok = await copyText("francal2010");
-    $("wechat-copy").innerHTML = ok
-      ? '已复制 <span class="ico ico-mono" style="--icon:url(assets/icons/check.svg)" aria-hidden="true"></span>'
-      : "复制失败";
-    row.classList.toggle("copied", ok);
-    toast(ok ? "微信号 francal2010 已复制到剪贴板" : "复制失败，请手动记录：francal2010");
-    setTimeout(() => {
-      $("wechat-copy").textContent = "复制";
-      row.classList.remove("copied");
-    }, 2000);
-  });
 
   // ---------------- 行程弹窗 ----------------
 

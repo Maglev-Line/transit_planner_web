@@ -4,7 +4,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>运转记录 · 运转计划助手</title>
+  <title>记录模式 · 运转计划助手</title>
   <meta name="description" content="按时间记录一次真实运转：自定义交通类型、线路、起止站与时间、车型等字段，自动统计用时，导出数据文件或 PDF。">
   <link rel="stylesheet" href="styles.css">
   <link rel="stylesheet" href="record.css">
@@ -12,15 +12,9 @@
 
 <body class="record-body">
   <div class="topstack">
-    <div class="cta-strip">
-      <a class="cta-btn" href="index.html" title="返回首页">← 返回首页</a>
-      <span class="cta-tip">记录一次真实运转，草稿会自动保存。</span>
-      <div class="spacer"></div>
-      <a class="cta-btn" href="plan.html" title="切换到规划模式"><img class="ico" src="assets/icons/map.svg" alt=""> 规划模式</a>
-    </div>
-
     <header class="topbar record-topbar">
-      <div class="brand">运转记录</div>
+      <a class="home-nav" href="index.html" title="返回首页">首页</a>
+      <div class="brand">记录模式</div>
 
       <label>记录名 <input id="rec-title" type="text" size="18" placeholder="我的运转记录"></label>
       <label>日期 <input id="rec-date" type="date"></label>
@@ -31,6 +25,10 @@
       <span class="draft-chip" id="rec-save-state">草稿已自动保存</span>
 
       <div class="spacer"></div>
+      <a class="btn-link" id="btn-switch-plan" href="plan.html" title="切换到规划模式，并继承当前行程">
+        <img class="ico" src="assets/icons/switch.svg" alt=""> 切换为规划模式
+      </a>
+      <button type="button" class="danger top-delete" id="btn-rec-clear" title="清除当前记录的全部行程段（记录设置保留）">清空记录</button>
       <button type="button" id="btn-rec-export" title="导出为数据文件（可再次导入编辑）"><span class="ico ico-mono" style="--icon:url(assets/icons/download.svg)" aria-hidden="true"></span> 导出文件</button>
       <button type="button" class="primary" id="btn-rec-print" title="生成 A4 记录表并调用打印（可选另存为 PDF）"><span class="ico ico-mono" style="--icon:url(assets/icons/download.svg)" aria-hidden="true"></span> 导出 PDF</button>
     </header>
@@ -65,7 +63,7 @@
     </aside>
   </div>
 
-  <!-- 页脚：友情链接 -->
+  <!-- 页脚：友情链接与联系作者 -->
   <footer class="site-footer">
     <span class="ft-title">友情链接</span>
 
@@ -80,6 +78,27 @@
     <a href="https://tools.kblack.cn/shmetro-faremap/" target="_blank" rel="noopener noreferrer"
        title="上海轨道交通票价图">上海轨道交通票价图</a>
 
+    <div class="contact" id="contact">
+      <button type="button" class="cta-btn" id="btn-contact" aria-haspopup="true" aria-expanded="false">
+        <span class="ico ico-mono" style="--icon:url(assets/icons/mail.svg)" aria-hidden="true"></span> 联系作者
+      </button>
+      <div class="contact-card" id="contact-card">
+        <div class="contact-box">
+          <div class="contact-title">联系作者</div>
+          <button type="button" class="contact-row" id="contact-wechat" title="单击复制微信号">
+            <span class="k">微信号</span><span class="v">francal2010</span><span class="copy" id="wechat-copy">复制</span>
+          </button>
+          <a class="contact-row" href="https://m.bilibili.com/space/3494369336232140" target="_blank" rel="noopener noreferrer" title="在 B 站查看「磁浮线」">
+            <span class="k">B 站</span><span class="v">磁浮线</span>
+            <span class="copy">前往 <span class="ico ico-mono" style="--icon:url(assets/icons/external-link.svg)" aria-hidden="true"></span></span>
+          </a>
+          <a class="contact-row" href="https://github.com/Maglev-Line" target="_blank" rel="noopener noreferrer" title="在 GitHub 查看 Maglev-Line">
+            <span class="k">GitHub</span><span class="v">Maglev-Line</span>
+            <span class="copy">前往 <span class="ico ico-mono" style="--icon:url(assets/icons/external-link.svg)" aria-hidden="true"></span></span>
+          </a>
+        </div>
+      </div>
+    </div>
     <span class="ft-note">以上均为第三方站点，与本站无隶属关系</span>
   </footer>
 
@@ -262,6 +281,7 @@
   <script src="https://cdn.jsdelivr.net/pyodide/v0.27.2/full/pyodide.js"></script>
   <script src="js/bridge.js"></script>
   <script src="js/drafts.js"></script>
+  <script src="js/contact.js"></script>
   <script src="js/record.js"></script>
 </body>
 

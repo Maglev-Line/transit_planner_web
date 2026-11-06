@@ -20,8 +20,8 @@
 .record-list-panel { min-height: 240px; }
 .record-side {
   position: sticky;
-  top: calc(var(--strip-h) + 68px);
-  max-height: calc(100vh - 90px - var(--strip-h));
+  top: 68px;
+  max-height: calc(100vh - 90px);
   overflow: auto;
 }
 .record-side textarea { width: 100%; resize: vertical; }

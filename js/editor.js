@@ -763,6 +763,7 @@
         const depart = { x: departX, y: spineY };
         const leadIn = Math.max(12, Math.min(need, firstAfter.x - departX - 2));
         const corner = { x: firstAfter.x - leadIn, y: trackY };
+        geom.departCornerX = corner.x;
         const path = roundedPolyline([depart, corner, ...points.slice(run.bStart + run.length)], radius);
         parts.push(`<path d="${path}" fill="none" ${stroke} opacity="0.95"/>`);
       }
@@ -774,6 +775,7 @@
         const merge = { x: mergeX, y: spineY };
         const leadIn = Math.max(12, Math.min(need, mergeX - lastBefore.x - 2));
         const corner = { x: lastBefore.x + leadIn, y: trackY };
+        geom.mergeCornerX = corner.x;
         const path = roundedPolyline([...points.slice(0, geom.beforeCount), corner, merge], radius);
         parts.push(`<path d="${path}" fill="none" ${stroke} opacity="0.95"/>`);
       }
@@ -790,8 +792,19 @@
         const a = points[i];
         const b = points[i + 1];
         const onTrack = a.y === trackY && b.y === trackY;
-        const mx = (a.x + b.x) / 2;
-        const my = (onTrack ? trackY : spineY) - (onTrack ? 18 : 26);
+        // 斜向连接段（分离/汇入）的区间中点与主线区间中点同列，胶囊按中点摆会压住主线胶囊；
+        // 这类区间改放到平行轨道一侧的直线段上方：分离段取「转角 → 支线站」，汇入段取「支线站 → 转角」
+        const merging = i < run.bStart;
+        const stationX = merging ? a.x : b.x;
+        const cornerX = merging ? geom.mergeCornerX : geom.departCornerX;
+        const hasCorner = Number.isFinite(cornerX);
+        // 与支线站保持 32px（胶囊半宽 20 + 站点半径 + 间隙），避免胶囊压住站点圆点
+        const mx = !onTrack && hasCorner
+          ? (merging
+            ? Math.max((cornerX + stationX) / 2, stationX + 32)
+            : Math.min((cornerX + stationX) / 2, stationX - 32))
+          : (a.x + b.x) / 2;
+        const my = onTrack || hasCorner ? trackY - 18 : spineY - 26;
         const value = branch.travel_minutes?.[i];
         parts.push(`<g class="seg-label" data-seg="${i}" data-line="${esc(branch.id)}" role="button" tabindex="0" aria-label="${esc(branch.name)} 第 ${i + 1} 段区间时长">
           <rect class="pill" x="${mx - 20}" y="${my - 12}" width="40" height="24" rx="12"/>
@@ -831,7 +844,7 @@
     };
 
     mainStations.forEach((name, i) => {
-      parts.push(stationNode(main, name, xMain[i], spineY, i, false));
+      parts.push(stationNode(main, name, xMain[i], spineY, i, group.branches.length > 0));
     });
 
     group.branches.forEach((branch) => {
@@ -1366,7 +1379,6 @@
       return;
     }
     $("city-meta").innerHTML = `
-      <div class="city-name">${esc(doc.city)}<small>城市名即数据文件名：${esc(doc.city)}.json</small></div>
       <div class="grid2">
         <div class="field"><span>地区</span><input data-city="region" type="text" value="${esc(doc.region)}" placeholder="如：华东"></div>
         <div class="field"><span>版本</span><input data-city="version" type="text" value="${esc(doc.version)}" placeholder="1.0"></div>

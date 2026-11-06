@@ -226,7 +226,7 @@
     const el = $("rec-save-state");
     const d = iso ? new Date(iso) : new Date();
     if (!Number.isNaN(d.getTime())) el.textContent = `已自动保存 ${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
-    document.title = `${state.record.name.trim() || DEFAULT_TITLE} · 运转记录 · 运转计划助手`;
+    document.title = `${state.record.name.trim() || DEFAULT_TITLE} · 记录模式 · 运转计划助手`;
   }
 
   function touch() {
@@ -541,7 +541,7 @@
   $("rec-title").addEventListener("input", (ev) => {
     state.record.name = ev.target.value;
     scheduleSave();
-    document.title = `${state.record.name.trim() || DEFAULT_TITLE} · 运转记录 · 运转计划助手`;
+    document.title = `${state.record.name.trim() || DEFAULT_TITLE} · 记录模式 · 运转计划助手`;
   });
 
   $("rec-date").addEventListener("change", (ev) => {
@@ -1069,6 +1069,32 @@
       steps: state.record.steps,
     };
   }
+
+  $("btn-switch-plan").addEventListener("click", (ev) => {
+    ev.preventDefault();
+    flushSave();
+    const tripData = JSON.parse(JSON.stringify(state.record));
+    delete tripData.fields;
+    const draft = D.create("plan", {
+      title: (state.record.name || "").trim() || "我的运转方案",
+      city: state.record.city || "",
+      summary: D.summarize("plan", tripData),
+      data: tripData,
+    });
+    location.href = `plan.html?id=${encodeURIComponent(draft.id)}`;
+  });
+
+  $("btn-rec-clear").addEventListener("click", () => {
+    if (!state.record.steps.length) {
+      toast("当前没有行程记录可清除");
+      return;
+    }
+    if (!confirm(`确定清除当前记录的 ${state.record.steps.length} 段行程吗？\n记录名、日期、城市与备注会保留，此操作不可撤销。`)) return;
+    state.record.steps = [];
+    touch();
+    flushSave();
+    toast("已清除当前记录");
+  });
 
   $("btn-rec-export").addEventListener("click", () => {
     flushSave();

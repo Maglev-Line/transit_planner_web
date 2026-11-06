@@ -93,20 +93,9 @@ label > input, label > select { margin-left: 4px; }
 .bar > div { height: 100%; width: 0; background: var(--brand); transition: width .25s; }
 .boot.error #boot-msg { color: var(--warn); font-weight: 600; }
 
-/* ---------- 顶部固定区（操作条 + 顶栏） ---------- */
-:root { --strip-h: 40px; }
-
+/* ---------- 顶部固定栏 ---------- */
 .topstack { position: sticky; top: 0; z-index: 10; }
 
-/* 顶部操作条：联系作者 */
-.cta-strip {
-  display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px;
-  min-height: var(--strip-h); padding: 5px 16px;
-  background: linear-gradient(90deg, #1f4fd8 0%, #2f6feb 55%, #4a86f7 100%);
-  color: #fff; border-bottom: 1px solid #1d47bd;
-}
-.cta-strip .spacer { flex: 1 1 auto; }
-.cta-tip { font-size: 12.5px; color: #dce6ff; }
 .cta-btn {
   display: inline-flex; align-items: center; gap: 6px;
   font-size: 13px; font-weight: 600; line-height: 1;
@@ -186,7 +175,7 @@ main {
   margin: 0 0 10px; font-size: 13px; color: var(--ink-2); font-weight: 700;
   display: flex; align-items: center; justify-content: space-between; gap: 8px;
 }
-.library, .side { position: sticky; top: calc(var(--strip-h) + 68px); max-height: calc(100vh - 90px - var(--strip-h)); overflow: auto; }
+.library, .side { position: sticky; top: 68px; max-height: calc(100vh - 90px); overflow: auto; }
 .plan { min-height: 200px; }
 
 /* ---------- 线路库 ---------- */
@@ -209,7 +198,7 @@ main {
 .search { width: 100%; margin-bottom: 8px; }
 
 /* 线路库：列表与详情各占一段高度，中间的分割条可上下拖动 */
-.library { display: flex; flex-direction: column; overflow: hidden; height: calc(100vh - 90px - var(--strip-h)); }
+.library { display: flex; flex-direction: column; overflow: hidden; height: calc(100vh - 90px); }
 .library > h2, .library > .search { flex: 0 0 auto; }
 .library > #line-list { flex: 1 1 auto; min-height: 60px; overflow: auto; scrollbar-gutter: stable; }
 .library.has-detail > #line-list { flex: 0 0 auto; }
@@ -511,6 +500,33 @@ main {
 
 .home-tip { margin: 24px 0 0; font-size: 12.5px; color: var(--ink-3); }
 .home-body .site-footer { margin-top: auto; }
+.home-body .home-topbar,
+.home-body .hero > *,
+.home-body .site-footer,
+.home-body .mode-card {
+  animation: home-fade-in .55s ease-out;
+}
+.home-body .hero > :nth-child(1) { animation-delay: .08s; }
+.home-body .hero > :nth-child(2) { animation-delay: .18s; }
+.home-body .hero > :nth-child(3) { animation-delay: .3s; }
+.home-body .hero > :nth-child(4) { animation-delay: .42s; }
+.home-body .mode-card.plan { animation-delay: .55s; }
+.home-body .mode-card.record { animation-delay: .68s; }
+.home-body .hero > :nth-child(5) { animation-delay: .82s; }
+.home-body .site-footer { animation-delay: .92s; }
+@keyframes home-fade-in {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .home-body .home-topbar,
+  .home-body .hero > *,
+  .home-body .site-footer,
+  .home-body .mode-card {
+    opacity: 1;
+    animation: none;
+  }
+}
 
 /* 首页选择弹窗 */
 dialog.start-dialog { width: min(620px, 94vw); }
@@ -615,6 +631,11 @@ dialog.start-dialog { width: min(620px, 94vw); }
   .mode-grid { grid-template-columns: 1fr; }
   .start-actions { grid-template-columns: 1fr; }
   .home-main { padding-top: 30px; }
+  .home-body .site-footer .ft-note { margin-left: 0; }
+}
+@media (max-width: 560px) {
+  .smart-select-grid { grid-template-columns: 1fr; }
+  .smart-checklist { grid-template-columns: 1fr; max-height: 180px; }
 }
 
 /* ---------- 页脚：友情链接 ---------- */
@@ -628,6 +649,18 @@ dialog.start-dialog { width: min(620px, 94vw); }
 .site-footer a { color: var(--brand); text-decoration: none; font-weight: 600; }
 .site-footer a:hover, .site-footer a:focus-visible { text-decoration: underline; }
 .site-footer .ft-note { margin-left: auto; font-size: 12px; color: var(--ink-3); }
+.site-footer .contact { margin-left: auto; }
+.site-footer .cta-btn {
+  color: var(--brand);
+  background: #eef4ff;
+  border-color: #c3d5fb;
+}
+.site-footer .cta-btn:hover, .site-footer .cta-btn:focus-visible {
+  background: #e2ecff;
+  border-color: #a9c2f7;
+}
+.site-footer .contact-card { top: auto; bottom: 100%; padding: 0 0 8px; }
+.top-delete { font-weight: 700; box-shadow: 0 1px 5px rgba(192, 57, 43, .14); }
 
 /* ---------- 弹窗表单 ---------- */
 dialog {
@@ -664,6 +697,34 @@ legend { font-size: 12px; color: var(--ink-2); padding: 0 4px; }
 
 /* ---------- 智能规划 ---------- */
 dialog.smart-dialog { width: min(760px, 96vw); }
+.smart-intro { margin: 0 0 12px; color: var(--ink-2); }
+.smart-select-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.smart-select-group { min-width: 0; }
+.smart-select-group h4 { margin: 0 0 6px; font-size: 13px; }
+.smart-checklist {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 3px 8px;
+  max-height: 220px;
+  overflow: auto;
+  padding: 7px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fbfcff;
+}
+.smart-check {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  min-width: 0;
+  padding: 3px 2px;
+  color: var(--ink);
+  font-size: 12px;
+  cursor: pointer;
+}
+.smart-check input { flex: 0 0 auto; margin: 2px 0 0; }
+.smart-check span { min-width: 0; overflow-wrap: anywhere; }
+.smart-settings { margin-top: 12px; }
 .smart-actions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-top: 14px; }
 .smart-results { display: flex; flex-direction: column; gap: 10px; margin-top: 12px; }
 .smart-card { border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; background: #fff; }

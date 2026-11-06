@@ -4,7 +4,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>规划 · 运转计划助手</title>
+  <title>规划模式 · 运转计划助手</title>
   <meta name="description" content="交通迷绕路运转行程规划工具：链条式手动规划、自动算时长、验换乘、付费区计费、导出运转图纸。">
   <link rel="stylesheet" href="styles.css">
 </head>
@@ -12,7 +12,7 @@
 <body>
   <!-- 启动遮罩：Pyodide 运行时与内核加载进度 -->
   <div class="boot" id="boot">
-    <h1>运转计划助手</h1>
+    <h1>规划模式</h1>
     <p id="boot-msg">正在加载…</p>
     <div class="bar"><div id="boot-bar"></div></div>
     <p class="boot-tip">正在加载线路数据，请稍候…</p>
@@ -21,48 +21,9 @@
   <!-- 主界面 -->
   <div id="app" hidden>
     <div class="topstack">
-      <!-- 顶部操作条：返回首页 / 联系作者 -->
-      <div class="cta-strip">
-        <a class="cta-btn" href="index.html" title="返回首页，选择规划或记录">← 返回首页</a>
-        <span class="cta-tip">免安装、打开即用，当前规划会自动保存。</span>
-        <div class="spacer"></div>
-
-        <div class="contact" id="contact">
-          <button type="button" class="cta-btn" id="btn-contact" aria-haspopup="true" aria-expanded="false">
-            <span class="ico ico-mono" style="--icon:url(assets/icons/mail.svg)" aria-hidden="true"></span> 联系作者
-          </button>
-
-          <!-- 悬停展开的联系卡片 -->
-          <div class="contact-card" id="contact-card">
-            <div class="contact-box">
-              <div class="contact-title">联系作者</div>
-
-              <button type="button" class="contact-row" id="contact-wechat" title="单击复制微信号">
-                <span class="k">微信号</span>
-                <span class="v">francal2010</span>
-                <span class="copy" id="wechat-copy">复制</span>
-              </button>
-
-              <a class="contact-row" href="https://m.bilibili.com/space/3494369336232140"
-                 target="_blank" rel="noopener noreferrer" title="在 B 站查看「磁浮线」">
-                <span class="k">B 站</span>
-                <span class="v">磁浮线</span>
-                <span class="copy">前往 <span class="ico ico-mono" style="--icon:url(assets/icons/external-link.svg)" aria-hidden="true"></span></span>
-              </a>
-
-              <a class="contact-row" href="https://github.com/Maglev-Line"
-                 target="_blank" rel="noopener noreferrer" title="在 GitHub 查看 Maglev-Line">
-                <span class="k">GitHub</span>
-                <span class="v">Maglev-Line</span>
-                <span class="copy">前往 <span class="ico ico-mono" style="--icon:url(assets/icons/external-link.svg)" aria-hidden="true"></span></span>
-              </a>
-            </div>
-          </div>
-        </div>
-      </div>
-
       <header class="topbar">
-        <div class="brand">运转计划助手</div>
+        <a class="home-nav" href="index.html" title="返回首页">首页</a>
+        <div class="brand">规划模式</div>
         <span class="draft-chip" id="draft-chip" title="当前规划会自动保存，可在首页「最近」中找回">草稿已自动保存</span>
 
         <label>城市
@@ -80,14 +41,16 @@
       </label>
 
       <div class="spacer"></div>
-      <a class="btn-link" href="record.html" title="记录一次真实运转（支持自定义字段与导出 PDF）">记录模式</a>
+      <a class="btn-link" id="btn-switch-record" href="record.html" title="切换到记录模式，并继承当前已规划行程">
+        <img class="ico" src="assets/icons/switch.svg" alt=""> 切换为记录模式
+      </a>
       <a class="btn-link" id="btn-editor" href="editor.html" title="编辑城市线路数据、提交审核">
         数据工坊
       </a>
       <button id="btn-import" title="载入本地规划方案文件"><img class="ico" src="assets/icons/folder.svg" alt=""> 导入方案</button>
       <input type="file" id="file-import" accept=".json,application/json" hidden>
       <button id="btn-export" title="保存为方案文件"><span class="ico ico-mono" style="--icon:url(assets/icons/download.svg)" aria-hidden="true"></span> 导出方案</button>
-      <button id="btn-clear" class="danger" title="一键清除当前方案的全部行程段（城市与方案设置保留）">清空规划</button>
+      <button id="btn-clear" class="danger top-delete" title="一键清除当前方案的全部行程段（城市与方案设置保留）">清空规划</button>
       <button id="btn-print" class="primary" title="生成 A4 运转图纸并调用打印（可选另存为 PDF）"><span class="ico ico-mono" style="--icon:url(assets/icons/download.svg)" aria-hidden="true"></span> 导出图纸 (PDF)</button>
       </header>
     </div>
@@ -111,7 +74,7 @@
         <div id="step-list"></div>
         <div class="add-row">
           <button id="btn-add" class="primary" title="添加一段行程">＋ 添加行程</button>
-          <button id="btn-smart" title="按换乘次数与出行时间自动生成方案">智能规划</button>
+          <button id="btn-smart" title="选择想体验的线路和车站，自动生成覆盖目标的行程">智能规划</button>
         </div>
       </section>
 
@@ -131,7 +94,7 @@
       </aside>
     </main>
 
-    <!-- 页脚：友情链接 -->
+    <!-- 页脚：友情链接与联系作者 -->
     <footer class="site-footer">
       <span class="ft-title">友情链接</span>
 
@@ -146,6 +109,27 @@
       <a href="https://tools.kblack.cn/shmetro-faremap/" target="_blank" rel="noopener noreferrer"
          title="上海轨道交通票价图">上海轨道交通票价图</a>
 
+      <div class="contact" id="contact">
+        <button type="button" class="cta-btn" id="btn-contact" aria-haspopup="true" aria-expanded="false">
+          <span class="ico ico-mono" style="--icon:url(assets/icons/mail.svg)" aria-hidden="true"></span> 联系作者
+        </button>
+        <div class="contact-card" id="contact-card">
+          <div class="contact-box">
+            <div class="contact-title">联系作者</div>
+            <button type="button" class="contact-row" id="contact-wechat" title="单击复制微信号">
+              <span class="k">微信号</span><span class="v">francal2010</span><span class="copy" id="wechat-copy">复制</span>
+            </button>
+            <a class="contact-row" href="https://m.bilibili.com/space/3494369336232140" target="_blank" rel="noopener noreferrer" title="在 B 站查看「磁浮线」">
+              <span class="k">B 站</span><span class="v">磁浮线</span>
+              <span class="copy">前往 <span class="ico ico-mono" style="--icon:url(assets/icons/external-link.svg)" aria-hidden="true"></span></span>
+            </a>
+            <a class="contact-row" href="https://github.com/Maglev-Line" target="_blank" rel="noopener noreferrer" title="在 GitHub 查看 Maglev-Line">
+              <span class="k">GitHub</span><span class="v">Maglev-Line</span>
+              <span class="copy">前往 <span class="ico ico-mono" style="--icon:url(assets/icons/external-link.svg)" aria-hidden="true"></span></span>
+            </a>
+          </div>
+        </div>
+      </div>
       <span class="ft-note">以上均为第三方站点，与本站无隶属关系</span>
     </footer>
   </div>
@@ -313,7 +297,7 @@
     </form>
   </dialog>
 
-  <!-- 智能规划：按换乘次数与出行时间生成方案 -->
+  <!-- 智能规划：选择想体验的线路与车站 -->
   <dialog id="smart-dialog" class="smart-dialog">
     <form method="dialog">
       <div class="modal-head">
@@ -323,26 +307,18 @@
       </div>
 
       <div class="modal-body">
-        <div class="grid2">
-          <div class="field">
-            <span>起点站</span>
-            <select id="smart-origin"></select>
-          </div>
-          <div class="field">
-            <span>目标</span>
-            <div class="row">
-              <label class="check"><input type="radio" name="smart-mode" value="station" checked> 前往车站</label>
-              <label class="check"><input type="radio" name="smart-mode" value="line"> 乘坐线路</label>
-            </div>
-          </div>
-          <div class="field" id="smart-station-field">
-            <span>到达站</span>
-            <select id="smart-station"></select>
-          </div>
-          <div class="field" id="smart-line-field" hidden>
-            <span>想坐的线路（默认坐到终点）</span>
-            <select id="smart-line"></select>
-          </div>
+        <p class="smart-intro">勾选想体验的线路和想前往的车站。系统会自动选择起点，并规划覆盖全部目标的路线。</p>
+        <div class="smart-select-grid">
+          <section class="smart-select-group">
+            <h4>想乘坐的线路</h4>
+            <div class="smart-checklist" id="smart-lines" role="group" aria-label="想乘坐的线路"></div>
+          </section>
+          <section class="smart-select-group">
+            <h4>想前往的车站</h4>
+            <div class="smart-checklist" id="smart-stations" role="group" aria-label="想前往的车站"></div>
+          </section>
+        </div>
+        <div class="grid2 smart-settings">
           <div class="field">
             <span>换乘步行（分钟）</span>
             <input id="smart-walk" type="number" min="0" step="1" value="5">
@@ -351,7 +327,7 @@
 
         <div class="smart-actions">
           <button type="button" class="primary" id="btn-smart-run">生成方案</button>
-          <span class="hint">按换乘次数与出行时间综合排序，普通车计算，不含候车时间。</span>
+          <span class="hint">自动选择起点，按换乘次数与时间综合排序，规划将覆盖所有勾选目标。</span>
         </div>
 
         <div class="err" id="smart-error" hidden></div>
@@ -370,6 +346,7 @@
   <script src="js/drafts.js"></script>
   <script src="js/line-branches.js"></script>
   <script src="js/bridge.js"></script>
+  <script src="js/contact.js"></script>
   <script src="js/app.js"></script>
 </body>
 
