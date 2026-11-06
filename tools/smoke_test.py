@@ -119,9 +119,50 @@ def main() -> int:
           + (f"，例如 {hints[1]['name']} {hints[1]['directions']}" if len(hints) > 1 else ""))
 
     check_express()
+    check_routes()
 
     print("\n全部检查通过。")
     return 0
+
+
+def check_routes() -> None:
+    """智能规划：前往车站 / 乘坐线路两种模式都能给出可计算的方案。"""
+    city = call("api_load_city", "上海")
+    lines = [
+        ln for ln in city["lines"]
+        if not ln.get("ring") and ln["stationCount"] >= 5 and not ln["name"].endswith("支线")
+    ]
+    assert len(lines) >= 2, "智能规划测试需要至少两条非环线线路"
+    first = call("api_line", lines[0]["id"])["line"]
+    second = call("api_line", lines[1]["id"])["line"]
+    origin = first["stations"][0]
+    target = second["stations"][-1]
+    assert origin != target, "测试起点与终点不应相同"
+
+    params = {"mode": "station", "origin": origin, "target": target, "transferWalk": 5, "limit": 5}
+    plans = call("api_plan_routes", json.dumps(params, ensure_ascii=False))["plans"]
+    assert plans, "前往车站模式应给出方案"
+    for plan in plans:
+        assert plan["transfers"] == max(0, len(plan["legs"]) - 1), "换乘次数应与乘车段数一致"
+        assert abs(plan["minutes"] - sum(leg["run"] + leg["walk"] for leg in plan["legs"])) < 0.3
+        evaluated = call("api_evaluate", json.dumps({"city": "上海", "steps": plan["steps"]}, ensure_ascii=False))
+        assert evaluated["failedStep"] is None, f"方案步骤应可被内核计算：{evaluated.get('error')}"
+    print(f"[√] 智能规划（前往车站）：{origin} → {target}，{len(plans)} 个方案，"
+          f"推荐 {plans[0]['minutes']} 分钟 / 换乘 {plans[0]['transfers']} 次")
+
+    params = {"mode": "line", "origin": origin, "target": second["id"], "transferWalk": 5, "limit": 5}
+    plans = call("api_plan_routes", json.dumps(params, ensure_ascii=False))["plans"]
+    assert plans, "乘坐线路模式应给出方案"
+    for plan in plans:
+        assert plan["legs"][-1]["lineId"] == second["id"], "方案最后一段应乘坐所选线路"
+        assert abs(plan["minutes"] - sum(leg["run"] + leg["walk"] for leg in plan["legs"])) < 0.3
+    print(f"[√] 智能规划（乘坐线路）：{second['name']}，{len(plans)} 个方案，"
+          f"推荐 {plans[0]['minutes']} 分钟 / 换乘 {plans[0]['transfers']} 次")
+
+    same = json.loads(web_api.api_plan_routes(json.dumps({
+        "mode": "station", "origin": origin, "target": origin,
+    }, ensure_ascii=False)))
+    assert not same["ok"] and same["error"], "起点与终点相同时应返回错误"
 
 
 def check_express() -> None:

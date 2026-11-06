@@ -218,7 +218,7 @@
     try {
       return JSON.parse(text);
     } catch {
-      throw new Error("文件不是有效的 JSON");
+      throw new Error("文件格式不正确");
     }
   }
 

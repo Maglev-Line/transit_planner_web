@@ -36,7 +36,7 @@
         cache: "no-store",
       });
     } catch {
-      return { ok: false, offline: true, error: "无法连接审核服务（离线或未部署 Netlify Functions）" };
+      return { ok: false, offline: true, error: "无法连接审核服务" };
     }
 
     let data = null;
@@ -44,7 +44,7 @@
 
     // 没有任何 JSON 响应 = 这台服务器没有审核接口（例如 python -m http.server）
     if (!data) {
-      return { ok: false, offline: true, status: res.status, error: "审核服务未启用（需通过 Netlify 部署，或运行 netlify dev）" };
+      return { ok: false, offline: true, status: res.status, error: "审核服务未启用" };
     }
     if (!res.ok || !data.ok) {
       return {

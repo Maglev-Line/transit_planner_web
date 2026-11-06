@@ -16,14 +16,14 @@
     <div class="rv-brand">数据审核台</div>
     <span class="hint">所有提交与差异公开可查</span>
     <div class="spacer"></div>
-    <a class="ed-link" href="editor.html">线路数据工坊 ↗</a>
+    <a class="ed-link" href="editor.html">线路数据工坊 <span class="ico ico-mono" style="--icon:url(assets/icons/external-link.svg)" aria-hidden="true"></span></a>
     <span class="rv-admin-state" id="admin-state">未登录管理员</span>
     <button type="button" id="btn-login">管理员登录</button>
     <button type="button" id="btn-logout" class="ghost" hidden>退出登录</button>
   </header>
 
   <div class="rv-offline" id="offline" hidden>
-    审核服务未启用：当前是纯静态环境（例如本地 python -m http.server）。部署到 Netlify 后即可查看公开审核记录与进行审核。
+    审核服务未启用：当前环境没有连接审核服务，暂时只能查看页面。连接审核服务后即可查看公开审核记录与进行审核。
   </div>
 
   <main class="rv-main">
@@ -48,7 +48,7 @@
     <section class="rv-help">
       <h3>审核规则</h3>
       <ul>
-        <li>任何人都可以匿名提交城市数据修改或新建城市（JSON 由系统做结构与数值校验）。</li>
+        <li>任何人都可以匿名提交城市数据修改或新建城市（数据由系统做结构与数值校验）。</li>
         <li>提交说明、完整数据、差异对比与审核结果对所有访客公开；<b>联系方式仅管理员可见</b>。</li>
         <li>管理员通过后，覆盖数据立即对全站生效（优先于内置数据），所有访客刷新页面即可使用。</li>
         <li>管理员可随时回滚到内置数据或任意历史版本；每次回滚同样记录在本页。</li>
@@ -68,24 +68,16 @@
       </div>
       <div class="modal-body">
         <p class="hint">
-          请输入 Netlify 站点环境变量 <code>ADMIN_TOKEN</code> 的值。
-          口令只保存在当前浏览器标签页（sessionStorage），关闭标签页后自动失效。
+          请输入管理员口令。口令只保存在当前标签页，关闭后自动失效。
         </p>
         <div class="field">
           <span>管理员口令</span>
-          <input id="admin-token" type="password" autocomplete="current-password" placeholder="ADMIN_TOKEN">
+          <input id="admin-token" type="password" autocomplete="current-password" placeholder="管理员口令">
         </div>
 
         <div class="rv-config" id="login-config" hidden>
-          <b>服务端未读取到 ADMIN_TOKEN</b>
-          <p>管理员登录要求 Netlify Function 在运行时能读到该环境变量。请按以下步骤检查：</p>
-          <ol>
-            <li>Netlify → <b>Project configuration → Environment variables</b></li>
-            <li>新增 <code>ADMIN_TOKEN</code>，值用足够长的随机字符串</li>
-            <li><b>Scopes 勾选 Functions</b>（只勾 Builds 时函数读不到）</li>
-            <li>保存后 <b>重新部署</b>（Deploys → Trigger deploy → Deploy site）</li>
-            <li>回到本页点「重新检测配置」</li>
-          </ol>
+          <b>服务端未配置管理员口令</b>
+          <p>请联系站点维护者完成配置后，再点下方按钮重新检测。</p>
           <button type="button" id="btn-recheck">重新检测配置</button>
         </div>
 

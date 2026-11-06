@@ -122,7 +122,7 @@
     } catch (err) {
       document.body.classList.add("err");
       $("boot").classList.add("error");
-      $("boot-msg").textContent = `启动失败：${err.message}。请确认网络可访问 cdn.jsdelivr.net（Pyodide 运行时），并通过 http(s) 访问本页面。`;
+      $("boot-msg").textContent = `启动失败：${err.message}。请检查网络连接后重试。`;
     }
   }
 
@@ -258,7 +258,7 @@
     renderAll();
     if (!restoredFromDraft) offerDraft(name);
     if (!state.backend && $("banner").hidden) {
-      showBanner("在线审核未启用：当前是纯静态环境，仍可编辑并「导出 JSON」；部署到 Netlify 后即可匿名提交审核。", [], "info");
+      showBanner("在线审核未启用：仍可编辑并导出数据文件；连接审核服务后即可匿名提交审核。", [], "info");
     }
     scheduleValidate();
   }
@@ -292,7 +292,7 @@
       return;
     }
     const when = new Date(draft.savedAt || Date.now()).toLocaleString("zh-CN");
-    showBanner(`发现本浏览器在 ${when} 保存、尚未提交的草稿。`, [
+    showBanner(`发现本地在 ${when} 保存、尚未提交的草稿。`, [
       {
         label: "恢复草稿",
         cls: "primary",
@@ -369,7 +369,7 @@
       el.textContent = "● 有未提交修改";
       el.className = "ed-state dirty";
     } else if (state.submitted) {
-      el.textContent = "✓ 已提交，等待审核";
+      el.innerHTML = '已提交，等待审核 <span class="ico ico-mono" style="--icon:url(assets/icons/check.svg)" aria-hidden="true"></span>';
       el.className = "ed-state submitted";
     } else {
       el.textContent = state.published[state.cityName] ? "已同步社区审核版" : "已同步内置数据";
@@ -381,7 +381,7 @@
     const published = state.published[state.cityName];
     if (state.origin === "draft") return "本地草稿（尚未提交）";
     if (state.origin === "new") return "新建城市（尚未提交）";
-    if (state.origin === "upload") return "上传的 JSON（尚未提交）";
+    if (state.origin === "upload") return "上传的数据文件（尚未提交）";
     if (published) return `社区审核版 · ${published.updatedAt ? new Date(published.updatedAt).toLocaleString("zh-CN") : "已通过"}`;
     return "内置数据";
   }
@@ -580,6 +580,59 @@
     return i < (line.stations || []).length - 1 ? i : -1;
   }
 
+  /** 第 i 段的两端站名（环线包含「末站 → 首站」的闭合区间）。 */
+  function segmentStations(line, index) {
+    const stations = line?.stations || [];
+    if (!stations.length || index < 0 || index >= segmentCount(line)) return null;
+    if (line.ring) {
+      const m = ringSize(line);
+      if (m < 2) return null;
+      return { from: stations[index], to: stations[(index + 1) % m] };
+    }
+    if (index + 1 >= stations.length) return null;
+    return { from: stations[index], to: stations[index + 1] };
+  }
+
+  /** 在一条线路中查找同名区间（先同向、再反向）；找不到返回 -1。 */
+  function findSegmentIndex(line, from, to) {
+    const total = segmentCount(line);
+    for (let i = 0; i < total; i += 1) {
+      const seg = segmentStations(line, i);
+      if (!seg) continue;
+      if (seg.from === from && seg.to === to) return i;
+    }
+    for (let i = 0; i < total; i += 1) {
+      const seg = segmentStations(line, i);
+      if (!seg) continue;
+      if (seg.from === to && seg.to === from) return i;
+    }
+    return -1;
+  }
+
+  /** 与第 i 段物理相同的同组线路（主线 / 支线）。 */
+  function sharedSegmentLines(line, index) {
+    const seg = segmentStations(line, index);
+    if (!seg) return [];
+    const group = window.LineBranches.groupOf(state.doc?.lines || [], line.id);
+    const members = group ? [group.main, ...group.branches] : [line];
+    return members.filter((member) => member !== line && findSegmentIndex(member, seg.from, seg.to) >= 0);
+  }
+
+  /** 写入区间时长；共线段同时写入主线与支线，保持两者一致。 */
+  function setSegmentMinutes(line, index, value) {
+    if (!line || index < 0 || index >= segmentCount(line)) return;
+    line.travel_minutes[index] = value;
+    const seg = segmentStations(line, index);
+    if (!seg) return;
+    const group = window.LineBranches.groupOf(state.doc?.lines || [], line.id);
+    const members = group ? [group.main, ...group.branches] : [line];
+    members.forEach((member) => {
+      if (member === line) return;
+      const j = findSegmentIndex(member, seg.from, seg.to);
+      if (j >= 0) member.travel_minutes[j] = value;
+    });
+  }
+
   function renderMap() {
     const map = $("map");
     const line = selectedLine();
@@ -730,8 +783,10 @@
         parts.push(`<line x1="${points[0].x}" y1="${trackY}" x2="${points[points.length - 1].x}" y2="${trackY}" ${stroke} opacity="0.95"/>`);
       }
 
-      // 支线区间时长（含连接段）
+      // 支线区间时长（含连接段）；共线区间的时长由主线胶囊显示，避免出现两个圆角矩形
+      const sharedEnd = run.bStart + run.length - 1;
       for (let i = 0; i < points.length - 1; i += 1) {
+        if (i >= run.bStart && i < sharedEnd) continue;
         const a = points[i];
         const b = points[i + 1];
         const onTrack = a.y === trackY && b.y === trackY;
@@ -1060,13 +1115,16 @@
       const value = line.travel_minutes[i];
       const m = line.ring ? ringSize(line) : line.stations.length - 1;
       const toStation = line.ring ? line.stations[(i + 1) % m] : line.stations[i + 1];
+      const sharedNames = sharedSegmentLines(line, i).map((member) => member.name || member.id);
       box.innerHTML = `${banner}
         <div class="ed-station-card">
           <div class="ed-sc-head">
             <span class="ed-sc-badge">区间 ${i + 1}</span>
             <b>${esc(line.stations[i])} → ${esc(toStation)}</b>
             <div class="spacer"></div>
-            <span class="hint">点线路上的时长胶囊即可编辑</span>
+            <span class="hint">${sharedNames.length
+              ? `共线段：修改会同步到「${esc(sharedNames.join("、"))}」`
+              : "点线路上的时长胶囊即可编辑"}</span>
           </div>
           <div class="ed-sc-grid" style="grid-template-columns:minmax(120px,.5fr)">
             <div class="field"><span>运行时长（分钟）</span><input id="seg-minutes" type="number" min="0" step="0.5" value="${Number.isFinite(Number(value)) ? Number(value) : ""}"></div>
@@ -1109,13 +1167,13 @@
         <div class="row">
           <button type="button" data-act="insert-before">← 在前面插入</button>
           <button type="button" data-act="insert-after">在后面插入 →</button>
-          <button type="button" data-act="left" ${i > 0 ? "" : "disabled"}>◀ 左移</button>
-          <button type="button" data-act="right" ${canRight ? "" : "disabled"}>右移 ▶</button>
+          <button type="button" data-act="left" ${i > 0 ? "" : "disabled"}><span class="ico ico-mono" style="--icon:url(assets/icons/chevron-left.svg)" aria-hidden="true"></span> 左移</button>
+          <button type="button" data-act="right" ${canRight ? "" : "disabled"}>右移 <span class="ico ico-mono" style="--icon:url(assets/icons/chevron-right.svg)" aria-hidden="true"></span></button>
           <div class="spacer"></div>
           <button type="button" class="danger" data-act="delete">删除本站</button>
         </div>
         ${canOpenBranch(line) ? `<div class="row ed-branch-row">
-          <button type="button" data-act="open-branch" title="以本站为分叉点新建一条支线">⑂ 从本站开新支线</button>
+          <button type="button" data-act="open-branch" title="以本站为分叉点新建一条支线"><span class="ico ico-mono" style="--icon:url(assets/icons/branch.svg)" aria-hidden="true"></span> 从本站开新支线</button>
           <span class="hint">非环线可用；支线会与本线共用分叉点之前（或之后）的车站。</span>
         </div>` : ""}
       </div>`;
@@ -1209,7 +1267,7 @@
         </div>
         <div class="ed-dirs">
           <b>方向</b>
-          <span class="hint">方向由站表自动生成；环线或自定义方向可在 JSON 模式中直接编辑。</span>
+          <span class="hint">方向由站表自动生成；环线或自定义方向可在源码模式中直接编辑。</span>
           <div class="chips">${(line.directions || []).map((d) => `<span class="chip">${esc(d.label || "—")}</span>`).join("") || "<span class='hint'>尚未生成</span>"}</div>
           <button type="button" id="btn-rebuild-dirs">按站表重建方向</button>
         </div>
@@ -1378,12 +1436,12 @@
     const v = state.validation;
     const stats = v?.stats || localStats();
     let html = `<div class="v-stats">${stats.lines} 条线路 · ${stats.stations} 站 · ${stats.segments} 段</div>`;
-    if (state.validating) html += `<div class="v-busy">正在用内核校验…</div>`;
+    if (state.validating) html += `<div class="v-busy">正在校验…</div>`;
     else if (!v) html += `<div class="v-busy">等待校验…</div>`;
     else if (!v.valid) {
       html += `<div class="v-block errors"><h4>${v.errors.length} 处错误（修正后才能提交）</h4><ul>${v.errors.map((e) => `<li>${esc(e)}</li>`).join("")}</ul></div>`;
     } else {
-      html += `<div class="v-ok">✓ 数据校验通过</div>`;
+      html += `<div class="v-ok"><span class="ico ico-mono" style="--icon:url(assets/icons/check.svg)" aria-hidden="true"></span> 数据校验通过</div>`;
     }
     if (v?.warnings?.length) {
       html += `<div class="v-block warnings"><h4>${v.warnings.length} 条提醒</h4><ul>${v.warnings.map((w) => `<li>${esc(w)}</li>`).join("")}</ul></div>`;
@@ -1763,7 +1821,7 @@
     $("btn-export").addEventListener("click", () => {
       if (!state.doc) return;
       downloadJson(state.cityName || state.doc.city, JSON.stringify(state.doc, null, 2));
-      toast("已导出城市 JSON");
+      toast("已导出城市数据");
     });
 
     $("btn-submit").addEventListener("click", openSubmitDialog);
@@ -1815,7 +1873,7 @@
         const needed = segmentCount(line);
         for (let i = 0; i < needed; i += 1) {
           const value = Number(line.travel_minutes[i]);
-          if (!Number.isFinite(value)) line.travel_minutes[i] = 3;
+          if (!Number.isFinite(value)) setSegmentMinutes(line, i, 3);
         }
         touch();
         renderWorkspace();
@@ -1876,16 +1934,16 @@
         refreshLineListSoon();
       } else if (el.id === "st-prev") {
         const prevIndex = prevSegmentIndex(line, state.stationIndex);
-        if (prevIndex >= 0) line.travel_minutes[prevIndex] = toNumber(el.value);
+        if (prevIndex >= 0) setSegmentMinutes(line, prevIndex, toNumber(el.value));
         touch();
         renderMap();
       } else if (el.id === "st-next") {
         const nextIndex = nextSegmentIndex(line, state.stationIndex);
-        if (nextIndex >= 0) line.travel_minutes[nextIndex] = toNumber(el.value);
+        if (nextIndex >= 0) setSegmentMinutes(line, nextIndex, toNumber(el.value));
         touch();
         renderMap();
       } else if (el.id === "seg-minutes") {
-        line.travel_minutes[state.segmentIndex] = toNumber(el.value);
+        setSegmentMinutes(line, state.segmentIndex, toNumber(el.value));
         touch();
         renderMap();
       }
@@ -2024,7 +2082,7 @@
         $("json-text").value = JSON.stringify(JSON.parse($("json-text").value), null, 2);
         $("json-error").hidden = true;
       } catch (err) {
-        setJsonError(`JSON 解析失败：${err.message}`);
+        setJsonError(`解析失败：${err.message}`);
       }
     });
 
@@ -2131,7 +2189,7 @@
     try {
       raw = JSON.parse($("json-text").value);
     } catch (err) {
-      setJsonError(`JSON 解析失败：${err.message}`);
+      setJsonError(`解析失败：${err.message}`);
       return;
     }
     const doc = normalizeDoc(raw, state.cityName);
@@ -2162,7 +2220,7 @@
     persistDraft();
     renderAll();
     switchView("map");
-    toast("已从 JSON 应用修改");
+    toast("已从源码应用修改");
   }
 
   // ---------------- 新建 / 上传 ----------------
@@ -2277,12 +2335,12 @@
       try {
         raw = JSON.parse(String(reader.result));
       } catch (err) {
-        toast(`JSON 解析失败：${err.message}`);
+        toast(`文件解析失败：${err.message}`);
         return;
       }
       const name = String(raw?.city || "").trim();
       if (!name) {
-        toast("JSON 里缺少城市名（city 字段）");
+        toast("文件里缺少城市名（city 字段）");
         return;
       }
       if (name !== state.cityName && !confirm(`上传的数据属于「${name}」，是否切换为编辑该城市？`)) return;
@@ -2314,7 +2372,7 @@
       if (!res.valid) {
         toast(`已载入，但仍有 ${(res.errors || []).length} 处校验错误，请查看右侧「数据校验」`);
       } else {
-        toast("已载入上传的 JSON");
+        toast("已载入上传的数据文件");
       }
     };
     reader.readAsText(file, "utf-8");
@@ -2325,7 +2383,7 @@
   function openSubmitDialog() {
     if (!state.doc) return;
     if (!state.backend) {
-      toast("在线审核未启用：请先「导出 JSON」提交给管理员，或使用 Netlify 部署版");
+      toast("在线审核未启用：请先导出数据文件提交给管理员，或连接审核服务后再提交");
       return;
     }
     if (state.validation && !state.validation.valid) {

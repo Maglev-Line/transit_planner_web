@@ -44,6 +44,9 @@
     },
   };
 
+  let smartPlans = [];
+  let smartContext = { origin: "", target: "", mode: "station" };
+
   // ---------------- 启动 ----------------
 
   async function boot() {
@@ -56,12 +59,6 @@
       state.typeLabels = info.typeLabels || {};
       state.typeKeys = Object.keys(state.typeLabels);
       state.cities = [...new Set([...(info.cities || []), ...Object.keys(info.combinedCities || {})])];
-
-      const baseCities = (info.cities || []).filter((c) => !info.combinedCities?.[c]);
-      $("kernel-info").textContent =
-        `${info.appName} 内核 v${info.version} · 同步于 ${info.syncedAt || "未知"} · ` +
-        `${baseCities.length} 座城市 + ${Object.keys(info.combinedCities || {}).length} 个同城组合 · ` +
-        `${state.typeKeys.length} 种交通类型`;
 
       fillCitySelect();
       fillTypeSelect();
@@ -78,9 +75,7 @@
     } catch (err) {
       document.body.classList.add("err");
       $("boot").classList.add("error");
-      $("boot-msg").textContent =
-        `启动失败：${err.message}。请确认网络可访问 cdn.jsdelivr.net（Pyodide 运行时），` +
-        `并通过 http(s) 访问本页面（直接双击 plan.html 时浏览器会禁止读取内核文件）。`;
+      $("boot-msg").textContent = `启动失败：${err.message}。请检查网络连接后重试。`;
     }
   }
 
@@ -195,7 +190,7 @@
           : "editor.html";
         editorButton.title = res.city?.combined
           ? "同城组合由多座城市合并而成，请分别编辑组成城市的数据"
-          : "在线编辑该城市线路数据、上传 JSON、提交审核";
+          : "编辑该城市线路数据、提交审核";
       }
     }
     state.lineDetail.clear();
@@ -734,6 +729,169 @@
     }
   }
 
+  // ---------------- 智能规划 ----------------
+
+  function showSmartError(msg) {
+    const box = $("smart-error");
+    box.textContent = msg || "";
+    box.hidden = !msg;
+  }
+
+  function setSmartMode(mode) {
+    $("smart-station-field").hidden = mode !== "station";
+    $("smart-line-field").hidden = mode !== "line";
+  }
+
+  function openSmartDialog() {
+    if (!state.city) {
+      showNotice("请先选择城市", "智能规划需要使用城市线路库，请先在上方选择城市。");
+      return;
+    }
+    const stations = TP.stations();
+    if (!stations.ok) {
+      showNotice("线路库不可用", stations.error || "无法读取当前城市的车站。");
+      return;
+    }
+    const list = stations.stations || [];
+    if (!list.length) {
+      showNotice("没有可用车站", "当前城市没有可用车站数据，暂时无法智能规划。");
+      return;
+    }
+
+    const options = list.map((name) => `<option value="${esc(name)}">${esc(name)}</option>`).join("");
+    $("smart-origin").innerHTML = options;
+    $("smart-station").innerHTML = options;
+    $("smart-line").innerHTML = state.lines
+      .map((line) => `<option value="${esc(line.id)}">${esc(line.name)}${line.typeLabel ? `（${esc(line.typeLabel)}）` : ""}</option>`)
+      .join("");
+
+    const current = currentStation();
+    if (current && list.includes(current)) $("smart-origin").value = current;
+    const other = list.find((name) => name !== $("smart-origin").value);
+    if (other) $("smart-station").value = other;
+    $("smart-walk").value = state.trip.transfer_walk_default ?? 5;
+
+    smartPlans = [];
+    $("smart-results").innerHTML = "";
+    showSmartError("");
+    setSmartMode("station");
+    $("smart-dialog").showModal();
+  }
+
+  function runSmartPlan() {
+    const mode = document.querySelector('input[name="smart-mode"]:checked')?.value || "station";
+    const origin = $("smart-origin").value;
+    const target = mode === "station" ? $("smart-station").value : $("smart-line").value;
+    const walk = numOrNull($("smart-walk").value) ?? state.trip.transfer_walk_default ?? 5;
+
+    if (!origin) return showSmartError("请选择起点站");
+    if (!target) return showSmartError(mode === "station" ? "请选择到达站" : "请选择想坐的线路");
+    if (mode === "station" && origin === target) return showSmartError("起点站与到达站不能相同");
+
+    showSmartError("");
+    smartContext = { origin, target, mode };
+    const button = $("btn-smart-run");
+    button.disabled = true;
+    button.textContent = "计算中…";
+    // 让浏览器先绘制「计算中」，再执行同步的内核调用
+    setTimeout(() => {
+      try {
+        const res = TP.planRoutes({ mode, origin, target, transferWalk: walk, limit: 5 });
+        if (!res.ok) {
+          smartPlans = [];
+          $("smart-results").innerHTML = "";
+          showSmartError(res.error || "没有找到可行方案");
+          return;
+        }
+        smartPlans = res.plans || [];
+        renderSmartPlans();
+      } catch (err) {
+        smartPlans = [];
+        $("smart-results").innerHTML = "";
+        showSmartError(`计算失败：${err.message}`);
+      } finally {
+        button.disabled = false;
+        button.textContent = "生成方案";
+      }
+    }, 20);
+  }
+
+  function smartPlanHtml(plan, index) {
+    const legs = (plan.legs || []).map((leg, legIndex) => {
+      const color = leg.color2
+        ? `linear-gradient(90deg, ${leg.color} 0 50%, ${leg.color2} 50% 100%)`
+        : (leg.color || "#888888");
+      const walk = leg.walk > 0
+        ? `<div class="smart-walk">上车前步行 ${fmtMin(leg.walk)}</div>`
+        : "";
+      const transfer = leg.transfer && legIndex > 0
+        ? '<span class="smart-badge">转乘</span>'
+        : "";
+      return `${walk}<div class="smart-leg">
+        <i class="dot" style="background:${color}"></i>
+        <span class="ln">${esc(leg.lineName)}</span>
+        <span class="meta">${esc(leg.from)} 至 ${esc(leg.to)}</span>
+        <span class="dir">${esc(leg.direction)} · ${fmtMin(leg.run)} · ${leg.stopCount} 站</span>
+        ${transfer}
+      </div>`;
+    }).join("");
+    return `<div class="smart-card">
+      <div class="smart-card-head">
+        <span class="smart-tag">${esc(plan.tag || "备选")}</span>
+        <span class="smart-time">${fmtMin(plan.minutes)}</span>
+        <span class="hint">起点 ${esc(smartContext.origin)} · 换乘 ${plan.transfers} 次 · ${plan.lineCount} 条线路 · ${plan.stopCount} 站</span>
+        <div class="spacer"></div>
+        <button type="button" data-smart-apply="append" data-smart-index="${index}">追加到末尾</button>
+        <button type="button" class="primary" data-smart-apply="replace" data-smart-index="${index}">替换规划</button>
+      </div>
+      <div class="smart-legs">${legs}</div>
+    </div>`;
+  }
+
+  function renderSmartPlans() {
+    const box = $("smart-results");
+    if (!smartPlans.length) {
+      box.innerHTML = '<p class="smart-empty">没有找到可行方案。</p>';
+      return;
+    }
+    box.innerHTML = smartPlans.map((plan, index) => smartPlanHtml(plan, index)).join("");
+  }
+
+  function applySmartPlan(index, mode) {
+    const plan = smartPlans[index];
+    if (!plan) return;
+    const steps = JSON.parse(JSON.stringify(plan.steps || []));
+    if (!steps.length) return;
+    if (mode === "replace") {
+      if (state.trip.steps.length
+        && !confirm(`用该方案替换当前 ${state.trip.steps.length} 段行程吗？`)) return;
+      state.trip.steps = steps;
+    } else {
+      // 追加时按上一段到达站自动判定第一段的换乘步行
+      steps[0].walk_minutes = null;
+      state.trip.steps.push(...steps);
+    }
+    $("smart-dialog").close();
+    evaluate();
+    toast(mode === "replace" ? "已替换为智能方案" : "已追加智能方案");
+  }
+
+  $("btn-smart").addEventListener("click", openSmartDialog);
+  $("btn-smart-close").addEventListener("click", () => $("smart-dialog").close());
+  $("btn-smart-run").addEventListener("click", runSmartPlan);
+  $("smart-dialog").addEventListener("submit", (ev) => {
+    ev.preventDefault();
+    runSmartPlan();
+  });
+  document.querySelectorAll('input[name="smart-mode"]').forEach((radio) => {
+    radio.addEventListener("change", () => setSmartMode(radio.value));
+  });
+  $("smart-results").addEventListener("click", (ev) => {
+    const button = ev.target.closest("[data-smart-apply]");
+    if (!button) return;
+    applySmartPlan(Number(button.dataset.smartIndex), button.dataset.smartApply);
+  });
+
   // ---------------- 顶栏交互 ----------------
 
   $("city-select").addEventListener("change", (ev) => setCity(ev.target.value));
@@ -749,7 +907,7 @@
     // 与运转记录共用同一结构：kind 标记当前离线编辑器，起止时间等记录字段原样保留
     const payload = { ...state.trip, kind: "plan", version: 2, exportedAt: new Date().toISOString() };
     D.downloadJSON(D.safeFileName(state.trip.name, "运转方案"), payload);
-    toast("已导出方案 JSON（与运转记录互通）");
+    toast("已导出方案文件（与运转记录互通）");
   });
 
   // 一键清除当前方案的全部行程段（保留城市、方案名、日期与付费区设置）
@@ -775,7 +933,7 @@
       const raw = JSON.parse(await file.text());
       const data = raw && Array.isArray(raw.steps) ? raw : raw?.trip;
       if (!data || typeof data !== "object" || !Array.isArray(data.steps)) {
-        throw new Error("文件中没有找到 steps 数组，可能不是方案或记录 JSON");
+        throw new Error("文件中没有找到 steps 数组，可能不是方案或记录文件");
       }
       // 记录 JSON 与方案结构一致：去掉文档元信息，段落里的记录字段（起止时间等）原样保留
       const { kind: _kind, version: _version, exportedAt: _exported, ...tripData } = data;
@@ -848,7 +1006,9 @@
   $("contact-wechat").addEventListener("click", async () => {
     const row = $("contact-wechat");
     const ok = await copyText("francal2010");
-    $("wechat-copy").textContent = ok ? "已复制 ✓" : "复制失败";
+    $("wechat-copy").innerHTML = ok
+      ? '已复制 <span class="ico ico-mono" style="--icon:url(assets/icons/check.svg)" aria-hidden="true"></span>'
+      : "复制失败";
     row.classList.toggle("copied", ok);
     toast(ok ? "微信号 francal2010 已复制到剪贴板" : "复制失败，请手动记录：francal2010");
     setTimeout(() => {
@@ -923,7 +1083,7 @@
     $("dlg-title").textContent = index == null ? "添加行程" : `编辑第 ${index + 1} 段行程`;
     $("dlg-subtitle").textContent = state.cityInfo ? state.cityInfo.name : "纯手动模式";
     $("dlg-foot-hint").textContent = state.city
-      ? "先选起点站与到达站，方向由内核自动判定"
+      ? "先选起点站与到达站，方向会自动判定"
       : "未加载线路库：只能使用手动自选方式";
     setDialogError("");
 

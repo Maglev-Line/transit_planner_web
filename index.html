@@ -4,8 +4,8 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>运转计划助手 · Web</title>
-  <meta name="description" content="交通迷的运转工作台：链条式规划绕路行程，或按时间记录一次真实运转；草稿自动保存，支持导出 JSON / PDF。">
+  <title>运转计划助手</title>
+  <meta name="description" content="交通迷的运转工作台：链条式规划绕路行程，或按时间记录一次真实运转；草稿自动保存，支持导出数据文件 / PDF。">
   <link rel="stylesheet" href="styles.css">
 </head>
 
@@ -13,12 +13,12 @@
   <div class="topstack">
     <!-- 顶部操作条：联系作者 -->
     <div class="cta-strip">
-      <span class="cta-tip">浏览器版免安装、打开即用，草稿自动保存在本浏览器。</span>
+      <span class="cta-tip">免安装、打开即用，草稿会自动保存。</span>
       <div class="spacer"></div>
 
       <div class="contact" id="contact">
         <button type="button" class="cta-btn" id="btn-contact" aria-haspopup="true" aria-expanded="false">
-          ✉ 联系作者
+          <span class="ico ico-mono" style="--icon:url(assets/icons/mail.svg)" aria-hidden="true"></span> 联系作者
         </button>
 
         <div class="contact-card" id="contact-card">
@@ -35,14 +35,14 @@
                target="_blank" rel="noopener noreferrer" title="在 B 站查看「磁浮线」">
               <span class="k">B 站</span>
               <span class="v">磁浮线</span>
-              <span class="copy">前往 ↗</span>
+              <span class="copy">前往 <span class="ico ico-mono" style="--icon:url(assets/icons/external-link.svg)" aria-hidden="true"></span></span>
             </a>
 
             <a class="contact-row" href="https://github.com/Maglev-Line"
                target="_blank" rel="noopener noreferrer" title="在 GitHub 查看 Maglev-Line">
               <span class="k">GitHub</span>
               <span class="v">Maglev-Line</span>
-              <span class="copy">前往 ↗</span>
+              <span class="copy">前往 <span class="ico ico-mono" style="--icon:url(assets/icons/external-link.svg)" aria-hidden="true"></span></span>
             </a>
           </div>
         </div>
@@ -50,14 +50,14 @@
     </div>
 
     <header class="home-topbar">
-      <div class="brand">运转计划助手<span>Web</span></div>
+      <div class="brand">运转计划助手</div>
       <div class="spacer"></div>
       <button type="button" class="ann-btn" id="btn-announcements" title="查看公告" aria-haspopup="dialog">
-        <span class="ann-ico" aria-hidden="true">📢</span>
+        <span class="ann-ico" aria-hidden="true"><img class="ico" src="assets/icons/megaphone.svg" alt=""></span>
         <span class="ann-text">公告</span>
         <span class="ann-badge" id="ann-badge" hidden>0</span>
       </button>
-      <a class="home-nav" href="editor.html" title="在线编辑城市线路数据、上传 JSON、提交审核">线路数据工坊</a>
+      <a class="home-nav" href="editor.html" title="编辑城市线路数据、提交审核">线路数据工坊</a>
       <a class="home-nav" href="review.html" title="查看匿名提交、审核结果与已生效数据">数据审核台</a>
     </header>
   </div>
@@ -73,7 +73,7 @@
 
       <div class="mode-grid">
         <button type="button" class="mode-card plan" data-kind="plan">
-          <span class="mode-ico" aria-hidden="true">🗺</span>
+          <span class="mode-ico" aria-hidden="true"><img class="ico" src="assets/icons/map.svg" alt=""></span>
           <span class="mode-title">规划</span>
           <span class="mode-desc">
             起点站 → 线路 → 方向 → 到达站，链条式串联行程。自动算时长、查经停、验换乘，
@@ -83,17 +83,17 @@
         </button>
 
         <button type="button" class="mode-card record" data-kind="record">
-          <span class="mode-ico" aria-hidden="true">📝</span>
+          <span class="mode-ico" aria-hidden="true"><img class="ico" src="assets/icons/notebook.svg" alt=""></span>
           <span class="mode-title">记录</span>
           <span class="mode-desc">
             按时间记下每一段真实乘车：交通类型、线路、起止站与时间、车型都能自定义，
-            自动统计乘车时长，导出 JSON 或 PDF。
+            自动统计乘车时长，导出数据文件或 PDF。
           </span>
           <span class="mode-go">开始记录 →</span>
         </button>
       </div>
 
-      <p class="home-tip">草稿会自动保存在本浏览器，随时可以从「最近」继续编辑。</p>
+      <p class="home-tip">草稿会自动保存，随时可以从「最近」继续编辑。</p>
     </section>
   </div>
 
@@ -145,19 +145,19 @@
     <div class="modal-body">
       <div class="start-actions" id="start-actions">
         <button type="button" class="start-action" id="start-new">
-          <span class="sa-ico" aria-hidden="true">✨</span>
+          <span class="sa-ico" aria-hidden="true"><img class="ico" src="assets/icons/sparkles.svg" alt=""></span>
           <b>新建</b>
           <span id="start-new-desc">从零开始编辑一份新的规划</span>
         </button>
         <button type="button" class="start-action" id="start-recent">
-          <span class="sa-ico" aria-hidden="true">🕘</span>
+          <span class="sa-ico" aria-hidden="true"><img class="ico" src="assets/icons/clock.svg" alt=""></span>
           <b>最近</b>
           <span>继续编辑自动保存的草稿</span>
         </button>
         <button type="button" class="start-action" id="start-import">
-          <span class="sa-ico" aria-hidden="true">📂</span>
+          <span class="sa-ico" aria-hidden="true"><img class="ico" src="assets/icons/folder.svg" alt=""></span>
           <b>导入</b>
-          <span>从本地 JSON 文件进入编辑</span>
+          <span>从本地文件进入编辑</span>
         </button>
       </div>
 
@@ -172,7 +172,7 @@
     </div>
 
     <div class="modal-foot">
-      <span class="hint" id="start-foot-hint">草稿只保存在本浏览器，不会上传</span>
+      <span class="hint" id="start-foot-hint">草稿只保存在本地，不会上传</span>
       <div class="spacer"></div>
       <button type="button" id="btn-start-cancel">取消</button>
     </div>

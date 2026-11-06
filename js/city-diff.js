@@ -260,7 +260,7 @@
     const items = [];
     stations.added.forEach((s) => items.push(`<li class="add">＋ ${esc(s.name)} <span class="hint">第 ${s.index + 1} 站</span></li>`));
     stations.removed.forEach((s) => items.push(`<li class="del">－ ${esc(s.name)} <span class="hint">原第 ${s.index + 1} 站</span></li>`));
-    stations.renamed.forEach((s) => items.push(`<li class="rename">✎ ${esc(s.before)} → <b>${esc(s.after)}</b></li>`));
+    stations.renamed.forEach((s) => items.push(`<li class="rename"><span class="ico ico-mono" style="--icon:url(assets/icons/pencil.svg)" aria-hidden="true"></span> ${esc(s.before)} → <b>${esc(s.after)}</b></li>`));
     if (!items.length) return "";
     return `<ul class="diff-ops">${items.join("")}</ul>`;
   }

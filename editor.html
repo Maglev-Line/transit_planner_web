@@ -5,7 +5,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>线路数据工坊 · 运转计划助手</title>
-  <meta name="description" content="以线路图方式在线编辑城市线路数据：增删车站、修改区间时长与换乘关系，导出城市 JSON，或匿名提交给管理员审核后全站生效。">
+  <meta name="description" content="以线路图方式在线编辑城市线路数据：增删车站、修改区间时长与换乘关系，导出城市数据，或匿名提交给管理员审核后全站生效。">
   <link rel="stylesheet" href="styles.css">
   <link rel="stylesheet" href="editor.css">
 </head>
@@ -13,13 +13,10 @@
 <body class="ed-body">
   <!-- 启动遮罩：Pyodide 运行时与内核加载进度 -->
   <div class="boot" id="boot">
-    <h1>线路数据工坊 <span>Web</span></h1>
-    <p id="boot-msg">正在准备 Python 运行时…</p>
+    <h1>线路数据工坊</h1>
+    <p id="boot-msg">正在加载…</p>
     <div class="bar"><div id="boot-bar"></div></div>
-    <p class="boot-tip">
-      编辑器与规划器共用同一份 Python 内核，用于校验城市数据是否合法；
-      首次打开需下载约 10&nbsp;MB 运行时，之后由浏览器缓存。
-    </p>
+    <p class="boot-tip">正在加载城市线路数据，请稍候…</p>
   </div>
 
   <div id="editor" hidden>
@@ -32,15 +29,15 @@
           <select id="city-select" title="选择要编辑的城市数据库"></select>
         </label>
         <button type="button" id="btn-new-city" class="ghost" title="从空白或现有城市创建新的城市数据库">＋ 新建城市</button>
-        <button type="button" id="btn-upload" class="ghost" title="上传城市 JSON，覆盖当前编辑内容">⬆ 上传 JSON</button>
+        <button type="button" id="btn-upload" class="ghost" title="上传城市数据文件，覆盖当前编辑内容"><span class="ico ico-mono" style="--icon:url(assets/icons/upload.svg)" aria-hidden="true"></span> 上传数据</button>
         <input type="file" id="file-upload" accept=".json,application/json" hidden>
       </div>
 
       <div class="spacer"></div>
       <span class="ed-state" id="ed-state">—</span>
-      <a class="ed-link" href="review.html" title="查看所有提交记录、差异与已发布数据">审核台 ↗</a>
+      <a class="ed-link" href="review.html" title="查看所有提交记录、差异与已发布数据">审核台 <span class="ico ico-mono" style="--icon:url(assets/icons/external-link.svg)" aria-hidden="true"></span></a>
       <button type="button" id="btn-reset" class="ghost" title="放弃未提交的修改，恢复为线上数据">还原</button>
-      <button type="button" id="btn-export" title="下载当前编辑的城市 JSON">导出 JSON</button>
+      <button type="button" id="btn-export" title="下载当前编辑的城市数据"><span class="ico ico-mono" style="--icon:url(assets/icons/download.svg)" aria-hidden="true"></span> 导出数据</button>
       <button type="button" id="btn-submit" class="primary" title="匿名提交给管理员审核；通过后全站生效">提交审核</button>
     </header>
 
@@ -69,7 +66,7 @@
           <div class="ed-tabs" role="tablist">
             <button type="button" role="tab" data-view="map" class="active">线路图</button>
             <button type="button" role="tab" data-view="props">线路属性</button>
-            <button type="button" role="tab" data-view="json">JSON</button>
+            <button type="button" role="tab" data-view="json">源码</button>
           </div>
         </div>
 
@@ -83,9 +80,9 @@
 
         <div class="ed-view" id="view-json" hidden>
           <div class="ed-json-actions">
-            <button type="button" id="btn-json-apply" class="primary">从 JSON 应用</button>
+            <button type="button" id="btn-json-apply" class="primary">从源码应用</button>
             <button type="button" id="btn-json-format">格式化</button>
-            <span class="hint">JSON 模式可编辑全部字段（含方向、双色等）；应用时会用内核数据模型校验。</span>
+            <span class="hint">源码模式可编辑全部字段（含方向、双色等）；应用时会自动校验。</span>
           </div>
           <div class="err" id="json-error" hidden></div>
           <textarea id="json-text" spellcheck="false" autocomplete="off"></textarea>
@@ -119,7 +116,7 @@
       </div>
       <div class="modal-body">
         <div class="field">
-          <span>城市名（同时作为 JSON 文件名）</span>
+          <span>城市名（同时作为数据文件名）</span>
           <input id="new-city-name" type="text" placeholder="如：杭州" autocomplete="off">
         </div>
         <div class="grid2">

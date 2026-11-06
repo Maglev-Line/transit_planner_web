@@ -29,6 +29,9 @@ body.rv-body {
 }
 .ed-back:hover { background: #eef1f6; color: var(--ink); }
 .ed-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
   font-size: 12.5px;
   font-weight: 600;
   color: var(--brand);

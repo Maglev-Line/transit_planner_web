@@ -31,6 +31,19 @@ html, body {
 
 button, input, select, textarea { font: inherit; color: inherit; }
 
+/* 图标：统一按文字大小缩放；彩色入口图标放在带 font-size 的容器里即可 */
+.ico {
+  width: 1em; height: 1em; display: inline-block; flex: none;
+  vertical-align: -0.12em; object-fit: contain;
+}
+/* 单色图标用遮罩，才能跟随按钮 / 文字的 currentColor */
+.ico-mono {
+  background-color: currentColor;
+  -webkit-mask: var(--icon) center / contain no-repeat;
+  mask: var(--icon) center / contain no-repeat;
+}
+.mode-ico .ico, .ann-ico .ico, .sa-ico .ico { vertical-align: 0; }
+
 button {
   border: 1px solid var(--line);
   background: #fff;
@@ -133,7 +146,7 @@ label > input, label > select { margin-left: 4px; }
 .contact-row:hover { background: #f3f6fb; border-color: #dbe3ef; }
 .contact-row .k { flex: 0 0 auto; width: 48px; color: var(--ink-3); font-size: 12px; }
 .contact-row .v { flex: 1 1 auto; font-family: ui-monospace, Consolas, monospace; }
-.contact-row .copy { flex: 0 0 auto; font-size: 11.5px; color: var(--brand); }
+.contact-row .copy { flex: 0 0 auto; display: inline-flex; align-items: center; gap: 3px; font-size: 11.5px; color: var(--brand); }
 .contact-row.copied { background: #eef8f1; border-color: #bfe4cd; }
 .contact-row.copied .copy { color: var(--ok); }
 
@@ -648,6 +661,27 @@ fieldset { border: 1px dashed var(--line); border-radius: 8px; padding: 10px; ma
 legend { font-size: 12px; color: var(--ink-2); padding: 0 4px; }
 .tt-row { display: grid; grid-template-columns: 1fr 90px 90px 32px; gap: 6px; align-items: center; margin-bottom: 6px; }
 .err { color: var(--warn); font-size: 12.5px; }
+
+/* ---------- 智能规划 ---------- */
+dialog.smart-dialog { width: min(760px, 96vw); }
+.smart-actions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-top: 14px; }
+.smart-results { display: flex; flex-direction: column; gap: 10px; margin-top: 12px; }
+.smart-card { border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; background: #fff; }
+.smart-card-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.smart-card-head .spacer { flex: 1 1 auto; }
+.smart-tag {
+  background: #e7efff; color: var(--brand); border-radius: 99px;
+  padding: 2px 8px; font-size: 12px; font-weight: 600;
+}
+.smart-time { font-size: 16px; font-weight: 700; }
+.smart-legs { margin-top: 8px; display: flex; flex-direction: column; gap: 2px; }
+.smart-leg { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: 12.5px; padding: 3px 0; }
+.smart-leg .dot { width: 10px; height: 10px; border-radius: 50%; flex: none; }
+.smart-leg .ln { font-weight: 600; }
+.smart-leg .dir, .smart-leg .meta { color: var(--ink-3); }
+.smart-walk { color: var(--ink-3); font-size: 12px; padding-left: 18px; }
+.smart-badge { font-size: 11px; color: #8a5a00; background: #fff4dc; border-radius: 99px; padding: 1px 7px; }
+.smart-empty { color: var(--ink-3); font-size: 12.5px; margin: 10px 0 0; }
 
 /* ---------- 打印（另存为 PDF） ---------- */
 /* 浏览器默认「不打印背景图形」会把色带/时间轴背景丢掉，这里强制保留 */

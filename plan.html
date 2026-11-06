@@ -4,21 +4,18 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>规划 · 运转计划助手 Web</title>
-  <meta name="description" content="交通迷绕路运转行程规划工具（浏览器版）：链条式手动规划、自动算时长、验换乘、付费区计费、导出运转图纸。">
+  <title>规划 · 运转计划助手</title>
+  <meta name="description" content="交通迷绕路运转行程规划工具：链条式手动规划、自动算时长、验换乘、付费区计费、导出运转图纸。">
   <link rel="stylesheet" href="styles.css">
 </head>
 
 <body>
   <!-- 启动遮罩：Pyodide 运行时与内核加载进度 -->
   <div class="boot" id="boot">
-    <h1>运转计划助手 <span>Web</span></h1>
-    <p id="boot-msg">正在准备 Python 运行时…</p>
+    <h1>运转计划助手</h1>
+    <p id="boot-msg">正在加载…</p>
     <div class="bar"><div id="boot-bar"></div></div>
-    <p class="boot-tip">
-      规划器在浏览器内直接运行 Python 规划内核（Pyodide），首次打开需下载约 10&nbsp;MB 运行时；
-      之后由浏览器缓存。
-    </p>
+    <p class="boot-tip">正在加载线路数据，请稍候…</p>
   </div>
 
   <!-- 主界面 -->
@@ -27,12 +24,12 @@
       <!-- 顶部操作条：返回首页 / 联系作者 -->
       <div class="cta-strip">
         <a class="cta-btn" href="index.html" title="返回首页，选择规划或记录">← 返回首页</a>
-        <span class="cta-tip">浏览器版免安装、打开即用，当前规划会自动保存在本浏览器。</span>
+        <span class="cta-tip">免安装、打开即用，当前规划会自动保存。</span>
         <div class="spacer"></div>
 
         <div class="contact" id="contact">
           <button type="button" class="cta-btn" id="btn-contact" aria-haspopup="true" aria-expanded="false">
-            ✉ 联系作者
+            <span class="ico ico-mono" style="--icon:url(assets/icons/mail.svg)" aria-hidden="true"></span> 联系作者
           </button>
 
           <!-- 悬停展开的联系卡片 -->
@@ -50,14 +47,14 @@
                  target="_blank" rel="noopener noreferrer" title="在 B 站查看「磁浮线」">
                 <span class="k">B 站</span>
                 <span class="v">磁浮线</span>
-                <span class="copy">前往 ↗</span>
+                <span class="copy">前往 <span class="ico ico-mono" style="--icon:url(assets/icons/external-link.svg)" aria-hidden="true"></span></span>
               </a>
 
               <a class="contact-row" href="https://github.com/Maglev-Line"
                  target="_blank" rel="noopener noreferrer" title="在 GitHub 查看 Maglev-Line">
                 <span class="k">GitHub</span>
                 <span class="v">Maglev-Line</span>
-                <span class="copy">前往 ↗</span>
+                <span class="copy">前往 <span class="ico ico-mono" style="--icon:url(assets/icons/external-link.svg)" aria-hidden="true"></span></span>
               </a>
             </div>
           </div>
@@ -65,8 +62,8 @@
       </div>
 
       <header class="topbar">
-        <div class="brand">运转计划助手<span>Web</span></div>
-        <span class="draft-chip" id="draft-chip" title="当前规划会自动保存在本浏览器，可在首页「最近」中找回">草稿已自动保存</span>
+        <div class="brand">运转计划助手</div>
+        <span class="draft-chip" id="draft-chip" title="当前规划会自动保存，可在首页「最近」中找回">草稿已自动保存</span>
 
         <label>城市
         <select id="city-select" title="选择城市线路库；也可选「纯手动」不使用线路库"></select>
@@ -84,14 +81,14 @@
 
       <div class="spacer"></div>
       <a class="btn-link" href="record.html" title="记录一次真实运转（支持自定义字段与导出 PDF）">记录模式</a>
-      <a class="btn-link" id="btn-editor" href="editor.html" title="在线编辑城市线路数据、上传 JSON、提交审核">
+      <a class="btn-link" id="btn-editor" href="editor.html" title="编辑城市线路数据、提交审核">
         数据工坊
       </a>
-      <button id="btn-import" title="载入本地规划方案 JSON">导入方案</button>
+      <button id="btn-import" title="载入本地规划方案文件"><img class="ico" src="assets/icons/folder.svg" alt=""> 导入方案</button>
       <input type="file" id="file-import" accept=".json,application/json" hidden>
-      <button id="btn-export" title="保存为方案 JSON">导出方案</button>
+      <button id="btn-export" title="保存为方案文件"><span class="ico ico-mono" style="--icon:url(assets/icons/download.svg)" aria-hidden="true"></span> 导出方案</button>
       <button id="btn-clear" class="danger" title="一键清除当前方案的全部行程段（城市与方案设置保留）">清空规划</button>
-      <button id="btn-print" class="primary" title="生成 A4 运转图纸并调用打印（可选另存为 PDF）">导出图纸 (PDF)</button>
+      <button id="btn-print" class="primary" title="生成 A4 运转图纸并调用打印（可选另存为 PDF）"><span class="ico ico-mono" style="--icon:url(assets/icons/download.svg)" aria-hidden="true"></span> 导出图纸 (PDF)</button>
       </header>
     </div>
 
@@ -114,6 +111,7 @@
         <div id="step-list"></div>
         <div class="add-row">
           <button id="btn-add" class="primary" title="添加一段行程">＋ 添加行程</button>
+          <button id="btn-smart" title="按换乘次数与出行时间自动生成方案">智能规划</button>
         </div>
       </section>
 
@@ -130,9 +128,6 @@
 
         <h2 style="margin-top:14px">付费区与票价</h2>
         <div id="zones"></div>
-
-        <h2 style="margin-top:14px">内核信息</h2>
-        <p class="hint" id="kernel-info"></p>
       </aside>
     </main>
 
@@ -314,6 +309,53 @@
         <div class="spacer"></div>
         <button type="button" id="btn-dlg-cancel">取消</button>
         <button type="button" class="primary" id="btn-dlg-save">确定</button>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- 智能规划：按换乘次数与出行时间生成方案 -->
+  <dialog id="smart-dialog" class="smart-dialog">
+    <form method="dialog">
+      <div class="modal-head">
+        <h3>智能规划</h3>
+        <div class="spacer"></div>
+        <button type="button" class="ghost" id="btn-smart-close">关闭</button>
+      </div>
+
+      <div class="modal-body">
+        <div class="grid2">
+          <div class="field">
+            <span>起点站</span>
+            <select id="smart-origin"></select>
+          </div>
+          <div class="field">
+            <span>目标</span>
+            <div class="row">
+              <label class="check"><input type="radio" name="smart-mode" value="station" checked> 前往车站</label>
+              <label class="check"><input type="radio" name="smart-mode" value="line"> 乘坐线路</label>
+            </div>
+          </div>
+          <div class="field" id="smart-station-field">
+            <span>到达站</span>
+            <select id="smart-station"></select>
+          </div>
+          <div class="field" id="smart-line-field" hidden>
+            <span>想坐的线路（默认坐到终点）</span>
+            <select id="smart-line"></select>
+          </div>
+          <div class="field">
+            <span>换乘步行（分钟）</span>
+            <input id="smart-walk" type="number" min="0" step="1" value="5">
+          </div>
+        </div>
+
+        <div class="smart-actions">
+          <button type="button" class="primary" id="btn-smart-run">生成方案</button>
+          <span class="hint">按换乘次数与出行时间综合排序，普通车计算，不含候车时间。</span>
+        </div>
+
+        <div class="err" id="smart-error" hidden></div>
+        <div class="smart-results" id="smart-results"></div>
       </div>
     </form>
   </dialog>

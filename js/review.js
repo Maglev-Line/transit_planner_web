@@ -143,7 +143,7 @@
     state.tab = tab;
     renderTabs();
     if (!state.backend) {
-      $("list").innerHTML = `<div class="rv-empty">审核服务未启用，暂时无法查看在线审核记录。<br>部署到 Netlify 后即可使用。</div>`;
+      $("list").innerHTML = `<div class="rv-empty">审核服务未启用，暂时无法查看在线审核记录。<br>连接审核服务后即可使用。</div>`;
       return;
     }
     $("list").innerHTML = `<p class="hint">正在加载…</p>`;
@@ -289,7 +289,7 @@
         <b class="rv-city">${esc(item.city)}</b>
         <span class="rv-time">提交于 ${fmtTime(item.createdAt)}</span>
         <div class="spacer"></div>
-        <button type="button" class="ghost" data-act="toggle">展开差异 ▾</button>
+        <button type="button" class="ghost" data-act="toggle">展开差异 <span class="ico ico-mono" style="--icon:url(assets/icons/chevron-down.svg)" aria-hidden="true"></span></button>
       </div>
       <p class="rv-desc">${esc(item.summary)}</p>
       <div class="rv-facts">
@@ -309,7 +309,7 @@
           <button type="button" data-act="reject">驳回</button>
           <button type="button" class="danger" data-act="hide" title="仅隐藏，不公开">隐藏（垃圾信息）</button>` : ""}
         ${state.admin ? `<button type="button" class="danger" data-act="ban" ${item.ipHash ? "" : "disabled"} title="${item.ipHash ? "按 IP 指纹封禁该提交者" : "这条记录没有可用的 IP 指纹"}">${item.banned ? "调整封禁" : "封禁提交者"}</button>` : ""}
-        <button type="button" data-act="download">下载 JSON</button>
+        <button type="button" data-act="download"><span class="ico ico-mono" style="--icon:url(assets/icons/download.svg)" aria-hidden="true"></span> 下载数据</button>
         <a class="btn" href="editor.html?city=${encodeURIComponent(item.city)}">在数据工坊中打开</a>
       </div>
       <div class="rv-detail" hidden></div>
@@ -330,7 +330,7 @@
           <b class="rv-city">${esc(city.name)}</b>
           <span class="rv-time">更新于 ${fmtTime(city.updatedAt)}</span>
           <div class="spacer"></div>
-          <button type="button" class="ghost" data-act="toggle">展开差异 ▾</button>
+          <button type="button" class="ghost" data-act="toggle">展开差异 <span class="ico ico-mono" style="--icon:url(assets/icons/chevron-down.svg)" aria-hidden="true"></span></button>
         </div>
         <p class="rv-desc">${esc(city.summary || "（无说明）")}</p>
         <div class="rv-facts">
@@ -514,11 +514,11 @@
     const button = card.querySelector('[data-act="toggle"]');
     if (!detail.hidden) {
       detail.hidden = true;
-      if (button) button.textContent = "展开差异 ▾";
+      if (button) button.innerHTML = '展开差异 <span class="ico ico-mono" style="--icon:url(assets/icons/chevron-down.svg)" aria-hidden="true"></span>';
       return;
     }
     detail.hidden = false;
-    if (button) button.textContent = "收起差异 ▴";
+    if (button) button.innerHTML = '收起差异 <span class="ico ico-mono" style="--icon:url(assets/icons/chevron-up.svg)" aria-hidden="true"></span>';
     if (detail.dataset.loaded === "1") return;
     detail.innerHTML = `<p class="hint">正在加载差异…</p>`;
 
@@ -542,7 +542,7 @@
     const ip = sub.ipHash ? `<div class="rv-contact">提交 IP 指纹（仅管理员可见）：${esc(sub.ipHash)}</div>` : "";
     const size = (JSON.stringify(res.doc || {}).length / 1024).toFixed(0);
     detail.innerHTML = `${CityDiff.renderHtml(diff)}${contact}${ip}
-      <div class="rv-json"><details><summary>查看提交的完整城市 JSON（约 ${size} KB）</summary><pre>${esc(JSON.stringify(res.doc, null, 2))}</pre></details></div>`;
+      <div class="rv-json"><details><summary>查看提交的完整城市数据（约 ${size} KB）</summary><pre>${esc(JSON.stringify(res.doc, null, 2))}</pre></details></div>`;
     detail.dataset.loaded = "1";
   }
 
@@ -560,7 +560,7 @@
       : `<div class="rv-facts">还没有历史版本。</div>`;
     const size = (JSON.stringify(res.doc || {}).length / 1024).toFixed(0);
     detail.innerHTML = `${CityDiff.renderHtml(diff)}${versionLine}
-      <div class="rv-json"><details><summary>查看当前生效的完整城市 JSON（约 ${size} KB）</summary><pre>${esc(JSON.stringify(res.doc, null, 2))}</pre></details></div>`;
+      <div class="rv-json"><details><summary>查看当前生效的完整城市数据（约 ${size} KB）</summary><pre>${esc(JSON.stringify(res.doc, null, 2))}</pre></details></div>`;
     detail.dataset.loaded = "1";
   }
 
@@ -600,14 +600,14 @@
       state.details.set(item.id, res);
     }
     saveJson(`${item.city}-${item.id}`, detail.doc);
-    toast("已下载提交的 JSON");
+    toast("已下载提交的数据");
   }
 
   async function downloadPublished(name) {
     const res = await DataApi.publishedCity(name);
     if (!res.ok) return toast(res.error || "加载失败");
     saveJson(name, res.doc);
-    toast("已导出当前生效的城市 JSON");
+    toast("已导出当前生效的城市数据");
   }
 
   async function rollback(name, to) {
@@ -788,7 +788,7 @@
 
   function openLoginDialog() {
     if (!state.backend) {
-      toast("审核服务未启用：请通过 Netlify 部署（或运行 netlify dev）后再登录");
+      toast("审核服务未启用：连接审核服务后再登录");
       return;
     }
     $("admin-token").value = "";

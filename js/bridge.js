@@ -27,10 +27,10 @@
 
   /** 调用 Python 接口并解析返回的 JSON。 */
   function call(name, ...args) {
-    if (!pyodide) throw new Error("Python 运行时尚未就绪");
+    if (!pyodide) throw new Error("正在加载，请稍候");
     const module = pyodide.globals.get("web_api");
     const fn = module[name];
-    if (!fn) throw new Error(`内核接口不存在：${name}`);
+    if (!fn) throw new Error(`功能尚未就绪：${name}`);
     const raw = fn(...args);
     return JSON.parse(String(raw));
   }
@@ -40,28 +40,28 @@
    * @param {(msg: string, ratio: number) => void} onProgress 进度回调（0~1）
    */
   async function boot(onProgress = () => {}) {
-    onProgress("正在下载并启动 Python 运行时（Pyodide）…", 0.05);
+    onProgress("正在加载…", 0.05);
     pyodide = await loadPyodide({ indexURL: PYODIDE_URL });
 
-    onProgress("正在读取内核清单…", 0.35);
+    onProgress("正在读取数据清单…", 0.35);
     const manifest = JSON.parse(await fetchText("py/manifest.json"));
     TP.manifest = manifest;
 
     const coreUrls = manifest.coreFiles.map((rel) => `py/${rel}`);
     const dataUrls = manifest.dataFiles.map((f) => `py/data/${f}`);
-    const urls = [...coreUrls, "py/web_api.py", ...dataUrls];
+    const urls = [...coreUrls, "py/web_api.py", "py/route_planner.py", ...dataUrls];
 
     let done = 0;
     const texts = await Promise.all(
       urls.map(async (url) => {
         const text = await fetchText(url);
         done += 1;
-        onProgress(`正在加载内核与数据（${done}/${urls.length}）…`, 0.35 + 0.5 * (done / urls.length));
+        onProgress(`正在加载数据（${done}/${urls.length}）…`, 0.35 + 0.5 * (done / urls.length));
         return text;
       })
     );
 
-    onProgress("正在装配内核…", 0.9);
+    onProgress("正在准备…", 0.9);
     pyodide.FS.mkdirTree(`${PY_ROOT}/transit_planner/core`);
     pyodide.FS.mkdirTree(DATA_ROOT);
     pyodide.FS.writeFile(`${PY_ROOT}/manifest.json`, JSON.stringify(manifest));
@@ -72,8 +72,9 @@
     });
     const offset = coreUrls.length;
     writeFile(`${PY_ROOT}/web_api.py`, texts[offset]);
+    writeFile(`${PY_ROOT}/route_planner.py`, texts[offset + 1]);
     manifest.dataFiles.forEach((f, i) => {
-      writeFile(`${DATA_ROOT}/${f}`, texts[offset + 1 + i]);
+      writeFile(`${DATA_ROOT}/${f}`, texts[offset + 2 + i]);
     });
 
     pyodide.runPython(`import sys\nif "${PY_ROOT}" not in sys.path:\n    sys.path.insert(0, "${PY_ROOT}")`);
@@ -84,7 +85,7 @@
 
     pyodide.runPython("import web_api");
 
-    onProgress("内核就绪", 1);
+    onProgress("加载完成", 1);
     return call("api_init");
   }
 
@@ -152,6 +153,7 @@
     reachable: (lineId, direction, from, service = "") => call("api_reachable", lineId, direction, from, service || ""),
     reachableAny: (lineId, from, service = "") => call("api_reachable_any", lineId, from, service || ""),
     transferHints: (station, excludeLineId) => call("api_transfer_hints", station, excludeLineId || ""),
+    planRoutes: (params) => call("api_plan_routes", JSON.stringify(params || {})),
     evaluate: (trip) => call("api_evaluate", JSON.stringify(trip)),
     manualTypes: () => call("api_manual_types"),
     newTrip: (city) => call("api_new_trip", city || ""),

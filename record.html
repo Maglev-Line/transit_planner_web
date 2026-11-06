@@ -4,8 +4,8 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>运转记录 · 运转计划助手 Web</title>
-  <meta name="description" content="按时间记录一次真实运转：自定义交通类型、线路、起止站与时间、车型等字段，自动统计用时，导出 JSON 或 PDF。">
+  <title>运转记录 · 运转计划助手</title>
+  <meta name="description" content="按时间记录一次真实运转：自定义交通类型、线路、起止站与时间、车型等字段，自动统计用时，导出数据文件或 PDF。">
   <link rel="stylesheet" href="styles.css">
   <link rel="stylesheet" href="record.css">
 </head>
@@ -14,25 +14,25 @@
   <div class="topstack">
     <div class="cta-strip">
       <a class="cta-btn" href="index.html" title="返回首页">← 返回首页</a>
-      <span class="cta-tip">记录一次真实运转，草稿自动保存在本浏览器。</span>
+      <span class="cta-tip">记录一次真实运转，草稿会自动保存。</span>
       <div class="spacer"></div>
-      <a class="cta-btn" href="plan.html" title="切换到规划模式">🗺 规划模式</a>
+      <a class="cta-btn" href="plan.html" title="切换到规划模式"><img class="ico" src="assets/icons/map.svg" alt=""> 规划模式</a>
     </div>
 
     <header class="topbar record-topbar">
-      <div class="brand">运转记录<span>Web</span></div>
+      <div class="brand">运转记录</div>
 
       <label>记录名 <input id="rec-title" type="text" size="18" placeholder="我的运转记录"></label>
       <label>日期 <input id="rec-date" type="date"></label>
       <label>城市
         <select id="rec-city" title="选择城市线路库；也可选「纯手动」不使用线路库"></select>
       </label>
-      <button type="button" class="ghost" id="btn-rec-kernel" title="加载线路库后可选用数据库线路（首次约 10 MB）">加载线路库</button>
+      <button type="button" class="ghost" id="btn-rec-kernel" title="加载线路库后可选用数据库线路">加载线路库</button>
       <span class="draft-chip" id="rec-save-state">草稿已自动保存</span>
 
       <div class="spacer"></div>
-      <button type="button" id="btn-rec-export" title="导出为 JSON 文件（可再次导入编辑）">导出 JSON</button>
-      <button type="button" class="primary" id="btn-rec-print" title="生成 A4 记录表并调用打印（可选另存为 PDF）">导出 PDF</button>
+      <button type="button" id="btn-rec-export" title="导出为数据文件（可再次导入编辑）"><span class="ico ico-mono" style="--icon:url(assets/icons/download.svg)" aria-hidden="true"></span> 导出文件</button>
+      <button type="button" class="primary" id="btn-rec-print" title="生成 A4 记录表并调用打印（可选另存为 PDF）"><span class="ico ico-mono" style="--icon:url(assets/icons/download.svg)" aria-hidden="true"></span> 导出 PDF</button>
     </header>
   </div>
 

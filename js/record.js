@@ -247,12 +247,12 @@
     if (state.kernel.ready) return true;
     if (state.kernel.loading) return false;
     if (!window.TP) {
-      setKernelHint("规划内核未加载（离线），只能使用手动自选");
+      setKernelHint("线路库未加载，只能使用手动自选");
       return false;
     }
     state.kernel.loading = true;
     state.kernel.error = "";
-    setKernelHint("正在加载线路库内核（首次约 10 MB，之后走浏览器缓存）…");
+    setKernelHint("正在加载线路库…");
     syncKernelButton();
     try {
       const info = await TP.ensure();
@@ -1077,7 +1077,7 @@
       return;
     }
     D.downloadJSON(D.safeFileName(state.record.name, DEFAULT_TITLE), exportData());
-    toast("已导出 JSON（与规划方案互通）");
+    toast("已导出数据文件（与规划方案互通）");
   });
 
   $("btn-rec-print").addEventListener("click", () => {

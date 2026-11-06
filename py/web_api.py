@@ -536,6 +536,32 @@ def api_transfer_hints(station: str, exclude_line_id: str = "") -> str:
         return _err(str(exc))
 
 
+def api_plan_routes(params_json: str) -> str:
+    """智能规划：按换乘次数与出行时间返回若干最优方案。
+
+    params：
+      mode: "station"（前往车站）或 "line"（乘坐指定线路）；
+      origin: 起点站；
+      target: 到达站名或线路 id；
+      transferWalk: 默认换乘/站外步行分钟（可选，默认 5）；
+      limit: 最多返回方案数（可选，1~5）。
+    """
+    try:
+        from route_planner import plan_routes
+
+        params = json.loads(params_json or "{}")
+        return _ok(**plan_routes(
+            _require_city(),
+            origin=str(params.get("origin") or ""),
+            mode=str(params.get("mode") or "station"),
+            target=str(params.get("target") or ""),
+            transfer_walk=float(params.get("transferWalk") or 5.0),
+            limit=int(params.get("limit") or 5),
+        ))
+    except Exception as exc:  # noqa: BLE001
+        return _err(f"智能规划失败：{exc}")
+
+
 def api_evaluate(trip_json: str) -> str:
     """评估整个方案。
 

@@ -68,7 +68,7 @@
     if (!annState.items.length) {
       $("ann-sub").textContent = "";
       list.innerHTML = annState.offline
-        ? '<p class="empty-hint">公告服务未启用（需通过 Netlify 部署）。</p>'
+        ? '<p class="empty-hint">公告服务未启用。</p>'
         : '<p class="empty-hint">暂无公告。</p>';
       return;
     }
@@ -124,8 +124,8 @@
     $("start-sub").textContent = kind === "plan" ? "链条式手动规划" : "按时间记录真实运转";
     $("start-new-desc").textContent = `从零开始编辑一份新的${KIND_LABEL[kind]}`;
     $("start-foot-hint").textContent = kind === "plan"
-      ? "规划草稿只保存在本浏览器，不会上传"
-      : "记录草稿只保存在本浏览器，不会上传";
+      ? "规划草稿只保存在本地，不会上传"
+      : "记录草稿只保存在本地，不会上传";
     $("recent-panel").hidden = true;
     if (!$("start-dialog").open) $("start-dialog").showModal();
   }
@@ -334,7 +334,9 @@
   $("contact-wechat").addEventListener("click", async () => {
     const row = $("contact-wechat");
     const ok = await copyText("francal2010");
-    $("wechat-copy").textContent = ok ? "已复制 ✓" : "复制失败";
+    $("wechat-copy").innerHTML = ok
+      ? '已复制 <span class="ico ico-mono" style="--icon:url(assets/icons/check.svg)" aria-hidden="true"></span>'
+      : "复制失败";
     row.classList.toggle("copied", ok);
     toast(ok ? "微信号 francal2010 已复制到剪贴板" : "复制失败，请手动记录：francal2010");
     setTimeout(() => {
