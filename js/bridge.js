@@ -12,8 +12,33 @@
   const PYODIDE_URL = "https://cdn.jsdelivr.net/pyodide/v0.27.2/full/";
   const PY_ROOT = "/py";          // 内核在虚拟文件系统中的位置
   const DATA_ROOT = "/data";      // 城市数据（CityLibrary 的数据目录）
+  const AUTHORITATIVE_CITY_DATA = new Set(["上海", "深圳"]);
 
   let pyodide = null;
+  let pyodideScriptPromise = null;
+
+  function loadPyodideScript() {
+    if (typeof window.loadPyodide === "function") return Promise.resolve();
+    if (!pyodideScriptPromise) {
+      pyodideScriptPromise = new Promise((resolve, reject) => {
+        const script = document.createElement("script");
+        script.src = `${PYODIDE_URL}pyodide.js`;
+        script.onload = () => {
+          if (typeof window.loadPyodide !== "function") {
+            reject(new Error("Pyodide 脚本已加载，但运行时入口不可用"));
+            return;
+          }
+          resolve();
+        };
+        script.onerror = () => {
+          pyodideScriptPromise = null;
+          reject(new Error("加载 Pyodide 失败，请检查网络连接后重试"));
+        };
+        document.head.appendChild(script);
+      });
+    }
+    return pyodideScriptPromise;
+  }
 
   async function fetchText(url) {
     const res = await fetch(url, { cache: "no-cache" });
@@ -41,6 +66,7 @@
    */
   async function boot(onProgress = () => {}) {
     onProgress("正在加载…", 0.05);
+    await loadPyodideScript();
     pyodide = await loadPyodide({ indexURL: PYODIDE_URL });
 
     onProgress("正在读取数据清单…", 0.35);
@@ -107,6 +133,7 @@
         if (!name || /[\\/]/.test(name) || name.includes("..")) continue;
         const doc = entry?.doc;
         if (!doc || typeof doc !== "object") continue;
+        if (AUTHORITATIVE_CITY_DATA.has(name)) continue;
         writeFile(`${DATA_ROOT}/${name}.json`, JSON.stringify(doc, null, 2));
         TP.published[name] = {
           updatedAt: entry.updatedAt || "",

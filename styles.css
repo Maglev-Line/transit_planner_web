@@ -337,36 +337,34 @@ main {
   position: relative;
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  padding: 5px 10px;
-  border: 1px solid var(--line);
-  border-radius: 999px;
-  background: #fff;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
   color: var(--ink-2);
-  font-size: 13px;
-  font-weight: 600;
   cursor: pointer;
 }
 .ann-btn:hover, .ann-btn:focus-visible {
   color: var(--brand);
-  border-color: #c3d5fb;
   background: #eef4ff;
 }
-.ann-btn.has-new {
-  color: var(--brand);
-  border-color: #c3d5fb;
-  background: #eef4ff;
-}
-.ann-ico { font-size: 15px; line-height: 1; }
+.ann-ico { width: 19px; height: 19px; }
 .ann-badge {
+  position: absolute;
+  top: -3px;
+  right: -3px;
   min-width: 18px;
   height: 18px;
   padding: 0 5px;
   border-radius: 99px;
+  border: 2px solid #fff;
   background: var(--warn);
   color: #fff;
   font-size: 11px;
-  line-height: 18px;
+  line-height: 14px;
   text-align: center;
 }
 

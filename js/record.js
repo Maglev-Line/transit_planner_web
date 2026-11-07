@@ -287,6 +287,9 @@
     }
     sel.innerHTML = opts.join("");
     sel.value = state.record.city || "";
+    const editorParams = new URLSearchParams({ from: "record" });
+    if (state.record.city) editorParams.set("city", state.record.city);
+    $("btn-rec-editor").href = `editor.html?${editorParams}`;
   }
 
   async function setCity(name, { silent = false } = {}) {

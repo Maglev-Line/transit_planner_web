@@ -52,7 +52,6 @@
     const badge = $("ann-badge");
     badge.textContent = String(unread);
     badge.hidden = unread === 0;
-    $("btn-announcements").classList.toggle("has-new", unread > 0);
     $("btn-announcements").title = unread
       ? `${unread} 条未读公告`
       : (annState.items.length ? "查看公告" : "暂无公告");

@@ -2460,7 +2460,7 @@
     renderState();
     $("submit-dialog").close();
     showBanner(`已提交审核（编号 ${res.id}）。审核记录与差异对所有访客公开，管理员通过后立即生效。`, [
-      { label: "查看审核记录", href: `review.html?submission=${encodeURIComponent(res.id)}` },
+      { label: "查看审核记录", href: `review.html?submission=${encodeURIComponent(res.id)}&from=editor` },
       { label: "关闭", onClick: clearBanner },
     ], "ok");
     toast("已提交，等待管理员审核");

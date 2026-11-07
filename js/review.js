@@ -310,7 +310,7 @@
           <button type="button" class="danger" data-act="hide" title="仅隐藏，不公开">隐藏（垃圾信息）</button>` : ""}
         ${state.admin ? `<button type="button" class="danger" data-act="ban" ${item.ipHash ? "" : "disabled"} title="${item.ipHash ? "按 IP 指纹封禁该提交者" : "这条记录没有可用的 IP 指纹"}">${item.banned ? "调整封禁" : "封禁提交者"}</button>` : ""}
         <button type="button" data-act="download"><span class="ico ico-mono" style="--icon:url(assets/icons/download.svg)" aria-hidden="true"></span> 下载数据</button>
-        <a class="btn" href="editor.html?city=${encodeURIComponent(item.city)}">在数据工坊中打开</a>
+        <a class="btn" href="editor.html?city=${encodeURIComponent(item.city)}&from=review">在数据工坊中打开</a>
       </div>
       <div class="rv-detail" hidden></div>
     </article>`;
@@ -343,7 +343,7 @@
             <button type="button" data-act="rollback-prev">回滚到上一版</button>
             <button type="button" class="danger" data-act="rollback-builtin">回滚到内置数据</button>` : ""}
           <button type="button" data-act="download">导出 JSON</button>
-          <a class="btn" href="editor.html?city=${encodeURIComponent(city.name)}">在数据工坊中打开</a>
+          <a class="btn" href="editor.html?city=${encodeURIComponent(city.name)}&from=review">在数据工坊中打开</a>
         </div>
         <div class="rv-detail" hidden></div>
       </article>`;

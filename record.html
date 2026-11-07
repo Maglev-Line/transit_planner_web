@@ -28,8 +28,9 @@
       <a class="btn-link" id="btn-switch-plan" href="plan.html" title="切换到规划模式，并继承当前行程">
         <img class="ico" src="assets/icons/switch.svg" alt=""> 切换为规划模式
       </a>
-      <button type="button" class="danger top-delete" id="btn-rec-clear" title="清除当前记录的全部行程段（记录设置保留）">清空记录</button>
+      <a class="btn-link" id="btn-rec-editor" href="editor.html?from=record" title="编辑城市线路数据、提交审核">数据工坊</a>
       <button type="button" id="btn-rec-export" title="导出为数据文件（可再次导入编辑）"><span class="ico ico-mono" style="--icon:url(assets/icons/download.svg)" aria-hidden="true"></span> 导出文件</button>
+      <button type="button" class="danger top-delete" id="btn-rec-clear" title="清除当前记录的全部行程段（记录设置保留）">清空记录</button>
       <button type="button" class="primary" id="btn-rec-print" title="生成 A4 记录表并调用打印（可选另存为 PDF）"><span class="ico ico-mono" style="--icon:url(assets/icons/download.svg)" aria-hidden="true"></span> 导出 PDF</button>
     </header>
   </div>
@@ -278,7 +279,6 @@
   <div class="toast" id="rec-toast" hidden></div>
 
   <!-- 规划内核：记录页按需加载（打开数据库线路录入时才下载 Pyodide） -->
-  <script src="https://cdn.jsdelivr.net/pyodide/v0.27.2/full/pyodide.js"></script>
   <script src="js/bridge.js"></script>
   <script src="js/drafts.js"></script>
   <script src="js/contact.js"></script>

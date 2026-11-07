@@ -10,13 +10,13 @@
   <link rel="stylesheet" href="review.css">
 </head>
 
-<body class="rv-body">
+<body class="rv-body" data-page="review">
   <header class="rv-header">
-    <a class="ed-back" href="plan.html" title="返回运转计划器">← 规划器</a>
+    <a class="ed-back" href="index.html" data-page-back>← 返回首页</a>
     <div class="rv-brand">数据审核台</div>
     <span class="hint">所有提交与差异公开可查</span>
     <div class="spacer"></div>
-    <a class="ed-link" href="editor.html">线路数据工坊 <span class="ico ico-mono" style="--icon:url(assets/icons/external-link.svg)" aria-hidden="true"></span></a>
+    <a class="ed-link" href="editor.html" data-page-link="editor">线路数据工坊 <span class="ico ico-mono" style="--icon:url(assets/icons/external-link.svg)" aria-hidden="true"></span></a>
     <span class="rv-admin-state" id="admin-state">未登录管理员</span>
     <button type="button" id="btn-login">管理员登录</button>
     <button type="button" id="btn-logout" class="ghost" hidden>退出登录</button>
@@ -123,6 +123,7 @@
 
   <div class="toast" id="toast" hidden></div>
 
+  <script src="js/navigation.js"></script>
   <script src="js/data-api.js"></script>
   <script src="js/city-diff.js"></script>
   <script src="js/review.js"></script>

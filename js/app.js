@@ -185,9 +185,9 @@
 
       const editorButton = $("btn-editor");
       if (editorButton) {
-        editorButton.href = name && !res.city?.combined
-          ? `editor.html?city=${encodeURIComponent(stem)}`
-          : "editor.html";
+        const editorParams = new URLSearchParams({ from: "plan" });
+        if (name && !res.city?.combined) editorParams.set("city", stem);
+        editorButton.href = `editor.html?${editorParams}`;
         editorButton.title = res.city?.combined
           ? "同城组合由多座城市合并而成，请分别编辑组成城市的数据"
           : "编辑该城市线路数据、提交审核";

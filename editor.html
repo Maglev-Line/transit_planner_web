@@ -10,7 +10,7 @@
   <link rel="stylesheet" href="editor.css">
 </head>
 
-<body class="ed-body">
+<body class="ed-body" data-page="editor">
   <!-- 启动遮罩：Pyodide 运行时与内核加载进度 -->
   <div class="boot" id="boot">
     <h1>线路数据工坊</h1>
@@ -21,7 +21,7 @@
 
   <div id="editor" hidden>
     <header class="ed-header">
-      <a class="ed-back" href="plan.html" title="返回运转计划器">← 返回规划器</a>
+      <a class="ed-back" href="index.html" data-page-back>← 返回首页</a>
       <div class="ed-brand">线路数据工坊 <span class="badge">社区协作</span></div>
 
       <div class="ed-citybar">
@@ -35,7 +35,7 @@
 
       <div class="spacer"></div>
       <span class="ed-state" id="ed-state">—</span>
-      <a class="ed-link" href="review.html" title="查看所有提交记录、差异与已发布数据">审核台 <span class="ico ico-mono" style="--icon:url(assets/icons/external-link.svg)" aria-hidden="true"></span></a>
+      <a class="ed-link" href="review.html" data-page-link="review" title="查看所有提交记录、差异与已发布数据">审核台 <span class="ico ico-mono" style="--icon:url(assets/icons/external-link.svg)" aria-hidden="true"></span></a>
       <button type="button" id="btn-reset" class="ghost" title="放弃未提交的修改，恢复为线上数据">还原</button>
       <button type="button" id="btn-export" title="下载当前编辑的城市数据"><span class="ico ico-mono" style="--icon:url(assets/icons/download.svg)" aria-hidden="true"></span> 导出数据</button>
       <button type="button" id="btn-submit" class="primary" title="匿名提交给管理员审核；通过后全站生效">提交审核</button>
@@ -181,6 +181,7 @@
   <div class="toast" id="toast" hidden></div>
 
   <script src="https://cdn.jsdelivr.net/pyodide/v0.27.2/full/pyodide.js"></script>
+  <script src="js/navigation.js"></script>
   <script src="js/bridge.js"></script>
   <script src="js/data-api.js"></script>
   <script src="js/line-branches.js"></script>
