@@ -110,12 +110,13 @@ def _path_indices(line: Line, sign: int, from_idx: int, to_idx: int):
         cur = from_idx
         stops.append(cur)
         minutes = 0.0
-        while cur != to_idx:
+        full_loop = from_idx == to_idx
+        while cur != to_idx or (full_loop and len(stops) == 1):
             nxt = (cur + sign) % m
             minutes += line.travel_minutes[cur if sign > 0 else nxt]
             cur = nxt
             stops.append(cur)
-            if len(stops) > m:
+            if len(stops) > m + 1:
                 raise LineError(f"线路 {line.name} 中 {line.stations[from_idx]} 无法到达 {line.stations[to_idx]}")
         return stops, minutes
     # 非环线
@@ -213,7 +214,7 @@ def compute_step(line: Line, direction: Direction, from_station: str, to_station
         return compute_service_step(line, direction, from_station, to_station, service_id)
     from_idx = line.station_index(from_station)
     to_idx = line.station_index(to_station)
-    if from_idx == to_idx:
+    if from_idx == to_idx and not line.ring:
         raise LineError("起点与终点相同")
     sign = direction_sign(line, direction)
     indices, minutes = _path_indices(line, sign, from_idx, to_idx)

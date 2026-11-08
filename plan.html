@@ -307,7 +307,7 @@
       </div>
 
       <div class="modal-body">
-        <p class="smart-intro">勾选想体验的线路和想前往的车站。系统会自动选择起点，并规划覆盖全部目标的路线。</p>
+        <p class="smart-intro">勾选想体验的线路和想前往的车站。起始站可选；留空时系统会自动选择。乘坐线路时，每个方案只需乘坐其中一个方向。</p>
         <div class="smart-select-grid">
           <section class="smart-select-group">
             <h4>想乘坐的线路</h4>
@@ -320,6 +320,11 @@
         </div>
         <div class="grid2 smart-settings">
           <div class="field">
+            <span>起始站（选填）</span>
+            <input id="smart-origin" type="text" list="smart-origin-options" autocomplete="off" placeholder="留空则自动选择起点">
+            <datalist id="smart-origin-options"></datalist>
+          </div>
+          <div class="field">
             <span>换乘步行（分钟）</span>
             <input id="smart-walk" type="number" min="0" step="1" value="5">
           </div>
@@ -327,7 +332,7 @@
 
         <div class="smart-actions">
           <button type="button" class="primary" id="btn-smart-run">生成方案</button>
-          <span class="hint">自动选择起点，按换乘次数与时间综合排序，规划将覆盖所有勾选目标。</span>
+          <span class="hint">按换乘次数与时间综合排序，规划将覆盖所有勾选目标。</span>
         </div>
 
         <div class="err" id="smart-error" hidden></div>

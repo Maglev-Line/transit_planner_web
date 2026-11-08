@@ -753,16 +753,44 @@
       return;
     }
 
+    const stationLines = new Map();
+    for (const summary of state.lines) {
+      let line = state.lineDetail.get(summary.id);
+      if (!line) {
+        const detail = TP.line(summary.id);
+        if (!detail.ok) {
+          showNotice("线路库不可用", detail.error || `无法读取线路「${summary.name}」`);
+          return;
+        }
+        line = detail.line;
+        state.lineDetail.set(line.id, line);
+      }
+      const marker = {
+        name: line.name,
+        color: swatch(line.color, line.color2),
+      };
+      for (const name of new Set(line.stations)) {
+        if (!stationLines.has(name)) stationLines.set(name, []);
+        stationLines.get(name).push(marker);
+      }
+    }
+
     $("smart-lines").innerHTML = state.lines.map((line) => `
       <label class="smart-check">
         <input type="checkbox" name="smart-line" value="${esc(line.id)}">
+        <i class="smart-color-marker" style="background:${swatch(line.color, line.color2)}" aria-hidden="true"></i>
         <span>${esc(line.name)}${line.typeLabel ? `（${esc(line.typeLabel)}）` : ""}</span>
       </label>`).join("");
     $("smart-stations").innerHTML = list.map((name) => `
       <label class="smart-check">
         <input type="checkbox" name="smart-station" value="${esc(name)}">
+        <span class="smart-station-markers" aria-label="${esc((stationLines.get(name) || []).map((line) => line.name).join("、"))}">
+          ${(stationLines.get(name) || []).map((line) => `<i class="smart-color-marker" style="background:${line.color}" title="${esc(line.name)}" aria-hidden="true"></i>`).join("")}
+        </span>
         <span>${esc(name)}</span>
       </label>`).join("");
+    $("smart-origin-options").innerHTML = list.map((name) => `<option value="${esc(name)}"></option>`).join("");
+    $("smart-origin").value = "";
     $("smart-walk").value = state.trip.transfer_walk_default ?? 5;
 
     smartPlans = [];
@@ -774,6 +802,7 @@
   function runSmartPlan() {
     const lineIds = [...document.querySelectorAll('input[name="smart-line"]:checked')].map((input) => input.value);
     const stationNames = [...document.querySelectorAll('input[name="smart-station"]:checked')].map((input) => input.value);
+    const requestedOrigin = $("smart-origin").value.trim();
     const walk = numOrNull($("smart-walk").value) ?? state.trip.transfer_walk_default ?? 5;
     if (!lineIds.length && !stationNames.length) {
       return showSmartError("请至少勾选一条想乘坐的线路或一座想前往的车站");
@@ -791,9 +820,14 @@
     setTimeout(() => {
       try {
         const allStations = listStations();
+        if (requestedOrigin && !allStations.includes(requestedOrigin)) {
+          throw new Error(`线路库中没有找到起始站「${requestedOrigin}」`);
+        }
         const firstGoal = goals[0];
         let origins = [];
-        if (firstGoal.mode === "line") {
+        if (requestedOrigin) {
+          origins = [requestedOrigin];
+        } else if (firstGoal.mode === "line") {
           const detail = TP.line(firstGoal.target);
           if (!detail.ok) throw new Error(detail.error || `无法读取线路「${firstGoal.label}」`);
           origins = detail.line?.stations || [];
@@ -815,7 +849,10 @@
         for (const goal of goals) {
           const next = [];
           for (const candidate of plans) {
-            if (goal.mode === "station" && candidate.current === goal.target) continue;
+            if (goal.mode === "station" && candidate.current === goal.target) {
+              next.push(candidate);
+              continue;
+            }
             const result = TP.planRoutes({
               mode: goal.mode,
               origin: candidate.current,
@@ -855,7 +892,14 @@
             .slice(0, 8);
           if (!plans.length) break;
         }
-        smartPlans = plans.map((plan, index) => ({
+        const completePlans = plans.filter((plan) => plan.steps.length);
+        if (!completePlans.length && plans.length) {
+          smartPlans = [];
+          $("smart-results").innerHTML = "";
+          showSmartError("起始站已是所选车站，无需规划行程；请添加其他目标");
+          return;
+        }
+        smartPlans = completePlans.map((plan, index) => ({
           ...plan,
           tag: `方案 ${index + 1}`,
           experienceSummary: smartContext.targets.join("、"),
@@ -906,7 +950,7 @@
       <div class="smart-card-head">
         <span class="smart-tag">${esc(plan.tag || "备选")}</span>
         <span class="smart-time">${fmtMin(plan.minutes)}</span>
-        <span class="hint">自动起点 ${esc(plan.origin)} · 覆盖 ${esc(plan.experienceSummary)} · 换乘 ${plan.transfers} 次 · ${plan.lineCount} 条线路 · ${plan.stopCount} 站</span>
+        <span class="hint">起点 ${esc(plan.origin)} · 覆盖 ${esc(plan.experienceSummary)} · 换乘 ${plan.transfers} 次 · ${plan.lineCount} 条线路 · ${plan.stopCount} 站</span>
         <div class="spacer"></div>
         <button type="button" data-smart-apply="append" data-smart-index="${index}">追加到末尾</button>
         <button type="button" class="primary" data-smart-apply="replace" data-smart-index="${index}">替换规划</button>

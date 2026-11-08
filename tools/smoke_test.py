@@ -159,6 +159,39 @@ def check_routes() -> None:
     print(f"[√] 智能规划（乘坐线路）：{second['name']}，{len(plans)} 个方案，"
           f"推荐 {plans[0]['minutes']} 分钟 / 换乘 {plans[0]['transfers']} 次")
 
+    # 环线允许同站起终点表示单方向完整乘坐一圈，并可经首尾相接处到达下一站
+    ring_summary = next(ln for ln in city["lines"] if ln["id"] == "sh_m4")
+    ring = call("api_line", ring_summary["id"])["line"]
+    ring_origin = ring["stations"][0]
+    ring_plans = call("api_plan_routes", json.dumps({
+        "mode": "line", "origin": ring_origin, "target": ring["id"], "limit": 5,
+    }, ensure_ascii=False))["plans"]
+    assert ring_plans, "从环线闭合站出发应能规划乘坐环线"
+    for plan in ring_plans:
+        ring_legs = [leg for leg in plan["legs"] if leg["lineId"] == ring["id"]]
+        assert len(ring_legs) == 1, "每个乘坐线路方案应只乘坐所选线路的一个方向"
+        assert len(ring_legs[0]["stops"]) == len(ring["stations"]), "环线一圈应经过去重后的全线车站并回到起点"
+        evaluated = call("api_evaluate", json.dumps({
+            "city": "上海", "steps": plan["steps"],
+        }, ensure_ascii=False))
+        assert evaluated["failedStep"] is None, f"环线方案应可被计算：{evaluated.get('error')}"
+    print(f"[√] 智能规划（环线）：{ring_origin} 出发可单向乘坐一圈并通过行程校验")
+
+    cross_closure = call("api_plan_routes", json.dumps({
+        "mode": "station", "origin": "上海体育馆", "target": "虹桥路", "limit": 5,
+    }, ensure_ascii=False))["plans"]
+    closure_plan = next((
+        plan for plan in cross_closure
+        if plan["legs"][0]["lineId"] == ring["id"]
+        and plan["legs"][0]["stops"][:3] == ["上海体育馆", "宜山路", "虹桥路"]
+    ), None)
+    assert closure_plan, "应能经宜山路闭合站跨越线路站表首尾"
+    evaluated = call("api_evaluate", json.dumps({
+        "city": "上海", "steps": closure_plan["steps"],
+    }, ensure_ascii=False))
+    assert evaluated["failedStep"] is None, f"跨越环线闭合站的方案应可计算：{evaluated.get('error')}"
+    print("[√] 智能规划：上海体育馆可经宜山路跨越4号线站表首尾到达虹桥路")
+
     same = json.loads(web_api.api_plan_routes(json.dumps({
         "mode": "station", "origin": origin, "target": origin,
     }, ensure_ascii=False)))

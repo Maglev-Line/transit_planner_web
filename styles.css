@@ -712,7 +712,7 @@ dialog.smart-dialog { width: min(760px, 96vw); }
 }
 .smart-check {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   gap: 6px;
   min-width: 0;
   padding: 3px 2px;
@@ -720,7 +720,22 @@ dialog.smart-dialog { width: min(760px, 96vw); }
   font-size: 12px;
   cursor: pointer;
 }
-.smart-check input { flex: 0 0 auto; margin: 2px 0 0; }
+.smart-check input { flex: 0 0 auto; margin: 0; }
+.smart-color-marker {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border: 1px solid rgba(0, 0, 0, .12);
+  border-radius: 50%;
+  flex: 0 0 auto;
+}
+.smart-station-markers {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  flex: 0 0 auto;
+}
+.smart-station-markers .smart-color-marker { width: 8px; height: 8px; }
 .smart-check span { min-width: 0; overflow-wrap: anywhere; }
 .smart-settings { margin-top: 12px; }
 .smart-actions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-top: 14px; }
