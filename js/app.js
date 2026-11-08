@@ -753,7 +753,7 @@
       return;
     }
 
-    const stationLines = new Map();
+    const lineDetails = [];
     for (const summary of state.lines) {
       let line = state.lineDetail.get(summary.id);
       if (!line) {
@@ -765,13 +765,23 @@
         line = detail.line;
         state.lineDetail.set(line.id, line);
       }
+      lineDetails.push(line);
+    }
+
+    const stationLines = new Map();
+    const lineGroups = window.LineBranches.groupLines(lineDetails);
+    for (const group of lineGroups) {
+      const members = [group.main, ...group.branches];
       const marker = {
-        name: line.name,
-        color: swatch(line.color, line.color2),
+        color: swatch(group.main.color, group.main.color2),
       };
-      for (const name of new Set(line.stations)) {
+      for (const name of new Set(members.flatMap((line) => line.stations))) {
         if (!stationLines.has(name)) stationLines.set(name, []);
-        stationLines.get(name).push(marker);
+        const stationMembers = members.filter((line) => line.stations.includes(name));
+        stationLines.get(name).push({
+          ...marker,
+          name: stationMembers.map((line) => line.name).join("、"),
+        });
       }
     }
 
