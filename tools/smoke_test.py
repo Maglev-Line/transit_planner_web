@@ -120,9 +120,41 @@ def main() -> int:
 
     check_express()
     check_routes()
+    check_combined_city()
 
     print("\n全部检查通过。")
     return 0
+
+
+def check_combined_city() -> None:
+    """同城组合只合并明确配置的跨城同站，其余重名站保持独立。"""
+    shanghai = call("api_city_json", "上海")["city"]
+    suzhou = call("api_city_json", "苏州")["city"]
+    original_names = [
+        {station for line in doc["lines"] for station in line["stations"]}
+        for doc in (shanghai, suzhou)
+    ]
+    shared_names = original_names[0] & original_names[1]
+    assert "花桥" in shared_names, "上海与苏州的同城配置应包含花桥站"
+
+    combined = call("api_load_city", "上海-苏州")
+    assert combined["city"]["combined"], "上海-苏州应以同城组合模式加载"
+    stations_by_city = {"上海": set(), "苏州": set()}
+    line_cities = {}
+    for summary in combined["lines"]:
+        city_name = summary["cityName"]
+        assert city_name in stations_by_city, f"线路 {summary['id']} 应标记所属城市"
+        line_cities[summary["id"]] = city_name
+        line = call("api_line", summary["id"])["line"]
+        stations_by_city[city_name].update(line["stations"])
+    assert line_cities["sh_m11"] == "上海" and line_cities["sz_m11"] == "苏州"
+    assert "花桥" in stations_by_city["上海"] and "花桥" in stations_by_city["苏州"], \
+        "配置为同座车站的花桥应在两地线路中保持同名"
+    for station in shared_names - {"花桥"}:
+        assert f"{station}（上海）" in stations_by_city["上海"]
+        assert f"{station}（苏州）" in stations_by_city["苏州"]
+        assert station not in stations_by_city["上海"] | stations_by_city["苏州"]
+    print(f"[√] 上海-苏州同城组合：{len(shared_names)} 个重名站中仅花桥共站")
 
 
 def check_routes() -> None:

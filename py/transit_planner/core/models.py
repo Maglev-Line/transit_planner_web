@@ -5,6 +5,7 @@
 from __future__ import annotations
 
 import json
+import re
 from dataclasses import dataclass, field, asdict
 from dataclasses import fields as dc_fields
 from pathlib import Path
@@ -199,6 +200,7 @@ class City:
     aliases: list[list[str]] = field(default_factory=list)
     # 同站异名组：同一车站、同一付费系统、仅名称不同（如广州"西塱"↔广佛线"西朗"），
     # 换乘不出闸，按同站换乘（步行 0 分钟）处理。
+    line_cities: dict[str, str] = field(default_factory=dict, repr=False)
 
     def line(self, line_id: str) -> Line:
         for ln in self.lines:
@@ -275,6 +277,11 @@ class CityLibrary:
         "珠江三角洲": ("广州", "深圳", "佛山", "东莞"),
     }
 
+    # 同城组合中允许跨城市共用的同名车站；未列出的重名站会按城市区分。
+    COMBINED_SHARED_STATIONS: dict[str, tuple[str, ...]] = {
+        "上海-苏州": ("花桥",),
+    }
+
     # 多城共用一份线路库文件：城市名 -> 数据文件 stem（广州 / 佛山 的线路统一存放于 广州-佛山.json）
     SHARED_CITY_FILES: dict[str, str] = {
         "广州": "广州-佛山",
@@ -315,12 +322,44 @@ class CityLibrary:
             c.name = city
         return c
 
+    @staticmethod
+    def _qualify_stations(city: City, names: dict[str, str]) -> None:
+        """为组合中的非共站重名站添加城市后缀，并同步更新线路引用。"""
+        if not names:
+            return
+
+        pattern = re.compile("|".join(re.escape(name) for name in sorted(names, key=len, reverse=True)))
+
+        def qualify_label(label: str) -> str:
+            return pattern.sub(lambda match: names[match.group()], label)
+
+        for line in city.lines:
+            line.stations = [names.get(station, station) for station in line.stations]
+            line.directions = [
+                Direction(
+                    label=qualify_label(direction.label),
+                    terminal=names.get(direction.terminal, direction.terminal),
+                    reverse=direction.reverse,
+                )
+                for direction in line.directions
+            ]
+            for service in line.express:
+                service.stops = [names.get(station, station) for station in service.stops]
+
+        city.transfers = [[names.get(station, station) for station in group] for group in city.transfers]
+        city.aliases = [[names.get(station, station) for station in group] for group in city.aliases]
+        city.external_walks = {
+            "|".join(names.get(station, station) for station in key.split("|", 1)): minutes
+            for key, minutes in city.external_walks.items()
+        }
+
     def _load_combined(self, key: str) -> City:
-        """合并多座城市为一座虚拟城市（同 ID / 同名的线路自动合并，换乘与同站异名全部合并）。"""
+        """合并多座城市为一座虚拟城市，并按配置隔离不同城市的同名车站。"""
         merged = City(name=key, region="同城组合", version="1.0")
         index_by_id: dict[str, int] = {}
         index_by_name: dict[str, int] = {}
         loaded_stems: set[str] = set()
+        parts: list[tuple[str, City]] = []
         for part in self.COMBINED_CITIES[key]:
             stem = self.file_stem(part)
             if stem in loaded_stems:
@@ -331,6 +370,22 @@ class CityLibrary:
                 continue
             with path.open("r", encoding="utf-8") as f:
                 c = City.from_dict(json.load(f))
+            parts.append((part, c))
+
+        station_owners: dict[str, set[str]] = {}
+        for part, city in parts:
+            for line in city.lines:
+                for station in line.stations:
+                    station_owners.setdefault(station, set()).add(part)
+        shared_stations = set(self.COMBINED_SHARED_STATIONS.get(key, ()))
+
+        for part, c in parts:
+            isolated_names = {
+                station: f"{station}（{part}）"
+                for station, owners in station_owners.items()
+                if len(owners) > 1 and station not in shared_stations and part in owners
+            }
+            self._qualify_stations(c, isolated_names)
             for ln in c.lines:
                 idx = index_by_id.get(ln.id)
                 if idx is None and ln.name.strip():
@@ -342,6 +397,7 @@ class CityLibrary:
                     idx = len(merged.lines)
                     merged.lines.append(ln)
                 index_by_id[ln.id] = idx
+                merged.line_cities[ln.id] = part
                 if ln.name.strip():
                     index_by_name[ln.name.strip()] = idx
             merged.external_walks.update(c.external_walks)

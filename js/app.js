@@ -199,23 +199,7 @@
     await evaluate();
     if (!silent) {
       persist();
-      warnIncompleteCity(name);
     }
-  }
-
-  // ---------------- 城市数据完善度提示 ----------------
-
-  /** 线路库较为完善的城市；其余城市选择时提示用户甄别数据。 */
-  const WELL_COVERED_CITIES = new Set(["上海", "苏州", "北京", "重庆", "广州", "佛山"]);
-
-  function warnIncompleteCity(name) {
-    if (!name) return;                                   // 纯手动模式不提示
-    const parts = state.info?.combinedCities?.[name] || [name];
-    if (parts.every((p) => WELL_COVERED_CITIES.has(p))) return;
-    showNotice(
-      "线路库数据提示",
-      `「${name}」城市数据库信息未完善，请仔细甄别数据准确度，有必要的麻烦手动输入。`,
-    );
   }
 
   function showNotice(title, message) {
@@ -789,7 +773,10 @@
       <label class="smart-check">
         <input type="checkbox" name="smart-line" value="${esc(line.id)}">
         <i class="smart-color-marker" style="background:${swatch(line.color, line.color2)}" aria-hidden="true"></i>
-        <span>${esc(line.name)}${line.typeLabel ? `（${esc(line.typeLabel)}）` : ""}</span>
+        <span class="smart-line-label">
+          <span>${esc(line.shortName || line.name)}${line.typeLabel ? `（${esc(line.typeLabel)}）` : ""}</span>
+          ${state.cityInfo?.combined && line.cityName ? `<small class="smart-line-city">${esc(line.cityName)}</small>` : ""}
+        </span>
       </label>`).join("");
     $("smart-stations").innerHTML = list.map((name) => `
       <label class="smart-check">

@@ -214,6 +214,10 @@ def api_load_city(name: str) -> str:
             return _ok(city=None, lines=[])
         city = _library().load(name)
         _city, _city_name = city, name
+        line_summaries = [_line_summary(ln, brief=True) for ln in city.lines]
+        if CityLibrary.is_combined(name):
+            for summary in line_summaries:
+                summary["cityName"] = city.line_cities.get(summary["id"], "")
         return _ok(
             city={
                 "name": city.name,
@@ -225,7 +229,7 @@ def api_load_city(name: str) -> str:
                 "transferGroups": city.transfers,
                 "aliasGroups": city.aliases,
             },
-            lines=[_line_summary(ln, brief=True) for ln in city.lines],
+            lines=line_summaries,
         )
     except Exception as exc:  # noqa: BLE001 - 统一转成 JSON 错误返回界面
         return _err(f"加载线路库失败：{exc}")
