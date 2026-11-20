@@ -2,9 +2,15 @@
   "city": "苏州",
   "region": "华东",
   "version": "1.0",
+  "systems": [
+    "地铁系统",
+    "有轨电车系统",
+    "智轨系统"
+  ],
   "lines": [
     {
       "id": "sz_m1",
+      "system": "地铁系统",
       "name": "苏州地铁1号线",
       "short_name": "1号线",
       "type": "metro",
@@ -82,6 +88,7 @@
     },
     {
       "id": "sz_m2",
+      "system": "地铁系统",
       "name": "苏州地铁2号线",
       "short_name": "2号线",
       "type": "metro",
@@ -181,6 +188,7 @@
     },
     {
       "id": "sz_m3",
+      "system": "地铁系统",
       "name": "苏州地铁3号线",
       "short_name": "3号线",
       "type": "metro",
@@ -284,6 +292,7 @@
     },
     {
       "id": "sz_m4",
+      "system": "地铁系统",
       "name": "苏州地铁4号线",
       "short_name": "4号线",
       "type": "metro",
@@ -375,6 +384,7 @@
     },
     {
       "id": "sz_m5",
+      "system": "地铁系统",
       "name": "苏州地铁5号线",
       "short_name": "5号线",
       "type": "metro",
@@ -472,6 +482,7 @@
     },
     {
       "id": "sz_m6",
+      "system": "地铁系统",
       "name": "苏州地铁6号线",
       "short_name": "6号线",
       "type": "metro",
@@ -559,6 +570,7 @@
     },
     {
       "id": "sz_m7",
+      "system": "地铁系统",
       "name": "苏州地铁7号线",
       "short_name": "7号线",
       "type": "metro",
@@ -644,6 +656,7 @@
     },
     {
       "id": "sz_m8",
+      "system": "地铁系统",
       "name": "苏州地铁8号线",
       "short_name": "8号线",
       "type": "metro",
@@ -729,6 +742,7 @@
     },
     {
       "id": "sz_m11",
+      "system": "地铁系统",
       "name": "苏州地铁11号线",
       "short_name": "11号线",
       "type": "metro",
@@ -736,19 +750,6 @@
       "color2": "",
       "operator": "苏州市轨道交通集团有限公司",
       "stations": [
-        "金厍桥",
-        "李公堤西",
-        "东方之门",
-        "烟雨桥",
-        "倪浜",
-        "唐庄",
-        "跨塘",
-        "苏州园区火车站",
-        "方湾街",
-        "丰和路",
-        "双马街",
-        "葑亭大道",
-        "戈巷街",
         "唯亭",
         "草鞋山",
         "阳澄湖东",
@@ -779,19 +780,6 @@
         "花桥"
       ],
       "travel_minutes": [
-        3.0,
-        3.0,
-        3.0,
-        3.0,
-        3.0,
-        3.0,
-        3.0,
-        3.0,
-        3.0,
-        3.0,
-        3.0,
-        3.0,
-        3.0,
         5,
         3.0,
         3.0,
@@ -832,14 +820,15 @@
           "reverse": false
         },
         {
-          "label": "唯亭（金厍桥）方向",
-          "terminal": "金厍桥",
+          "label": "唯亭方向",
+          "terminal": "唯亭",
           "reverse": false
         }
       ]
     },
     {
       "id": "sz_tram_t1",
+      "system": "有轨电车系统",
       "name": "苏州有轨电车1号线",
       "short_name": "有轨T1",
       "type": "tram",
@@ -897,6 +886,7 @@
     },
     {
       "id": "sz_tram_t2",
+      "system": "有轨电车系统",
       "name": "苏州有轨电车2号线",
       "short_name": "有轨T2",
       "type": "tram",
@@ -952,6 +942,7 @@
     },
     {
       "id": "sz_tram_t2b",
+      "system": "有轨电车系统",
       "name": "苏州有轨电车2号线支线",
       "short_name": "有轨T2支线",
       "type": "tram",
@@ -1009,6 +1000,7 @@
     },
     {
       "id": "sz_smart_tongli",
+      "system": "智轨系统",
       "name": "同里智轨",
       "short_name": "智轨",
       "type": "tram",
@@ -1039,71 +1031,94 @@
           "reverse": false
         }
       ]
-    },
-    {
-      "id": "sz_rail_hsrail",
-      "name": "京沪高铁(苏锡常段)",
-      "short_name": "京沪高铁",
-      "type": "national_rail",
-      "color": "#1A1A1A",
-      "color2": "#FFFFFF",
-      "operator": "中国铁路上海局",
-      "stations": [
-        "南京南",
-        "镇江南",
-        "丹阳北",
-        "常州北",
-        "无锡东",
-        "苏州北",
-        "昆山南",
-        "上海虹桥"
-      ],
-      "travel_minutes": [
-        14,
-        9,
-        10,
-        12,
-        8,
-        9,
-        12
-      ],
-      "headway_rush": 20,
-      "headway_normal": 30,
-      "first_train": "06:00",
-      "last_train": "22:00",
-      "ring": false,
-      "directions": [
-        {
-          "label": "上海虹桥方向",
-          "terminal": "上海虹桥",
-          "reverse": false
-        },
-        {
-          "label": "南京南方向",
-          "terminal": "南京南",
-          "reverse": false
-        }
-      ]
     }
   ],
   "external_walks": {},
   "transfers": [
     [
-      "苏州火车站",
-      "苏州"
+      {
+        "station": "狮子山",
+        "system": "地铁系统"
+      },
+      {
+        "station": "狮子山",
+        "system": "有轨电车系统"
+      }
     ],
     [
-      "高铁苏州北站",
-      "苏州北"
+      {
+        "station": "苏州新区火车站",
+        "system": "地铁系统"
+      },
+      {
+        "station": "苏州新区火车站",
+        "system": "有轨电车系统"
+      }
     ],
     [
-      "苏州新区火车站",
-      "苏州新区"
+      {
+        "station": "文昌路",
+        "system": "地铁系统"
+      },
+      {
+        "station": "文昌路",
+        "system": "有轨电车系统"
+      }
     ],
     [
-      "苏州园区火车站",
-      "苏州园区"
+      {
+        "station": "同里",
+        "system": "地铁系统"
+      },
+      {
+        "station": "同里",
+        "system": "智轨系统"
+      }
     ]
   ],
-  "aliases": []
+  "aliases": [],
+  "through_services": [
+    {
+      "id": "sz_through_m3_m11",
+      "name": "苏州地铁3/11号线跨线车",
+      "short_name": "3/11号线跨线车",
+      "type": "metro",
+      "color": "#ef821f",
+      "color2": "#f1c6a5",
+      "operator": "苏州市轨道交通集团有限公司",
+      "segments": [
+        {
+          "line_id": "sz_m11",
+          "from_station": "花桥",
+          "to_station": "唯亭"
+        },
+        {
+          "line_id": "sz_m3",
+          "from_station": "唯亭",
+          "to_station": "金厍桥"
+        }
+      ]
+    },
+    {
+      "id": "sz_through_m4_m7",
+      "name": "苏州地铁4/7号线跨线车",
+      "short_name": "4/7号线跨线车",
+      "type": "metro",
+      "color": "#1a6fb0",
+      "color2": "#a87bc9",
+      "operator": "苏州市轨道交通集团有限公司",
+      "segments": [
+        {
+          "line_id": "sz_m4",
+          "from_station": "龙道浜",
+          "to_station": "红庄"
+        },
+        {
+          "line_id": "sz_m7",
+          "from_station": "红庄",
+          "to_station": "木里"
+        }
+      ]
+    }
+  ]
 }

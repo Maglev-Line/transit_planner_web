@@ -251,16 +251,17 @@ main.rv-main {
 #ban-dialog .check { margin-top: 8px; }
 .rv-facts code { font-family: ui-monospace, Consolas, monospace; font-size: 11.5px; }
 
-/* 公告管理 */
-.rv-ann-card { border-style: dashed; }
-.rv-ann-form {
+/* 全站站信管理 */
+.rv-message-card { border-style: dashed; }
+.rv-message-form {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 150px;
   gap: 10px 12px;
   padding: 8px 0 4px;
 }
-.rv-ann-field { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--ink-2); }
-.rv-ann-field input, .rv-ann-field select, .rv-ann-field textarea { width: 100%; }
-.rv-ann-wide { grid-column: 1 / -1; }
-.rv-ann-form .err, .rv-ann-form .rv-card-actions { grid-column: 1 / -1; }
-.rv-ann-body { white-space: pre-wrap; overflow-wrap: anywhere; }
+.rv-message-field { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--ink-2); }
+.rv-message-field input, .rv-message-field select, .rv-message-field textarea { width: 100%; }
+.rv-message-field .rv-time { font-size: 11px; }
+.rv-message-wide { grid-column: 1 / -1; }
+.rv-message-form .err, .rv-message-form .rv-card-actions { grid-column: 1 / -1; }
+.rv-message-body { white-space: pre-wrap; overflow-wrap: anywhere; }

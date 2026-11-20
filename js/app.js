@@ -18,6 +18,9 @@
   const swatchV = (c1, c2) => (c2 ? `linear-gradient(180deg, ${c1} 0 50%, ${c2} 50% 100%)` : (c1 || "#888888"));
   const debounce = (fn, ms = 280) => { let t; return (...a) => { clearTimeout(t); t = setTimeout(() => fn(...a), ms); }; };
   const D = window.TPDrafts;
+  const history = { current: null, undo: [], redo: [], lastChangeAt: 0, ready: false, restoring: false };
+  const maxHistoryEntries = 100;
+  const historyCoalesceMs = 700;
 
   // ---------------- 状态 ----------------
 
@@ -67,6 +70,7 @@
       syncTopbar();
       const city = state.city || state.cities[0] || "";
       await setCity(city, { silent: true });
+      resetHistory();
 
       $("boot").hidden = true;
       $("app").hidden = false;
@@ -96,10 +100,69 @@
   }
 
   function syncTopbar() {
+    $("city-select").value = state.trip.city || "";
     $("trip-name").value = state.trip.name || "";
     $("trip-date").value = state.trip.date || "";
     $("paid-zone").checked = !!state.trip.paid_zone_mode;
-    $("walk-default").value = state.trip.transfer_walk_default ?? 5;
+  }
+
+  function updateHistoryButtons() {
+    $("btn-undo").disabled = history.undo.length === 0 || history.restoring;
+    $("btn-redo").disabled = history.redo.length === 0 || history.restoring;
+  }
+
+  function resetHistory() {
+    history.current = JSON.stringify(state.trip);
+    history.undo = [];
+    history.redo = [];
+    history.lastChangeAt = 0;
+    history.ready = true;
+    updateHistoryButtons();
+  }
+
+  function recordHistoryChange() {
+    if (!history.ready) return;
+    const next = JSON.stringify(state.trip);
+    if (next === history.current) return;
+    const now = Date.now();
+    if (!history.lastChangeAt || now - history.lastChangeAt > historyCoalesceMs) {
+      history.undo.push(history.current);
+      if (history.undo.length > maxHistoryEntries) history.undo.shift();
+    }
+    history.current = next;
+    history.lastChangeAt = now;
+    history.redo = [];
+    updateHistoryButtons();
+  }
+
+  async function restoreHistory(source, destination) {
+    if (history.restoring) return;
+    const target = source.pop();
+    if (!target) return;
+    history.restoring = true;
+    updateHistoryButtons();
+    destination.push(JSON.stringify(state.trip));
+    if (destination.length > maxHistoryEntries) destination.shift();
+    try {
+      const previousCity = state.city;
+      state.trip = JSON.parse(target);
+      history.current = JSON.stringify(state.trip);
+      history.lastChangeAt = 0;
+      const nextCity = state.trip.city || "";
+      syncTopbar();
+      if (previousCity !== nextCity) {
+        await setCity(nextCity, { silent: true });
+      } else {
+        state.city = nextCity;
+        renderAll();
+        await evaluate();
+      }
+      flushDraft();
+      history.current = JSON.stringify(state.trip);
+    } finally {
+      history.restoring = false;
+      updateHistoryButtons();
+    }
   }
 
   /** 读取 ?id= 指定的草稿；没有则打开最近一份，仍没有就新建。 */
@@ -156,13 +219,18 @@
     document.title = `${(state.trip.name || "").trim() || "我的运转方案"} · 规划模式 · 运转计划助手`;
   }
 
-  const persist = debounce(flushDraft, 350);
+  const persistSave = debounce(flushDraft, 350);
+  function persist() {
+    recordHistoryChange();
+    persistSave();
+  }
 
   // ---------------- 城市与线路库 ----------------
 
   async function setCity(name, { silent = false } = {}) {
     state.city = name;
     state.trip.city = name;
+    recordHistoryChange();
     state.selectedLine = "";
     $("city-select").value = name;
     $("line-detail").hidden = true;
@@ -226,6 +294,7 @@
         <span class="nm">${esc(ln.name)}</span>
         ${isBranch(ln.name) ? '<span class="tag tag-branch">支线</span>' : ""}
         <span class="tag">${esc(ln.typeLabel)}</span>
+        ${ln.system ? `<span class="tag">${esc(ln.system)}</span>` : ""}
       </div>`).join("");
   }
 
@@ -247,6 +316,7 @@
     $("library-splitter").hidden = false;
     $("line-detail").innerHTML = `
       <div class="kv"><b>${esc(line.name)}</b><span class="tag">${esc(line.typeLabel)}</span></div>
+      ${line.system ? `<div class="kv">系统：${esc(line.system)}</div>` : ""}
       <div class="kv">方向：${esc(line.directions.join(" / "))}</div>
       <div class="kv">班次：${esc(line.headwayText)}${line.firstTrain ? ` · 首班 ${esc(line.firstTrain)}` : ""}${line.lastTrain ? ` · 末班 ${esc(line.lastTrain)}` : ""}</div>
       ${line.operator ? `<div class="kv">运营：${esc(line.operator)}</div>` : ""}
@@ -378,6 +448,7 @@
 
   async function evaluate() {
     if (!state.trip.steps.length && !state.trip) return;
+    recordHistoryChange();
     let res;
     try {
       res = TP.evaluate(state.trip);
@@ -435,12 +506,13 @@
     const color2 = seg?.color2 || step.color2 || "";
     const name = seg?.lineName || step.line_name || step.line_id || "未命名线路";
     const typeLabel = seg?.typeLabel || state.typeLabels[step.type] || step.type || "";
+    const system = seg?.system || step.system || "";
     const dir = seg?.direction || step.direction_label || "—";
     const run = seg ? fmtMin(seg.run) : (step.run_minutes != null ? fmtMin(step.run_minutes) : "—");
     const stops = seg?.stops || [];
     const price = step.price != null ? `<span class="price">票价 ¥${esc(step.price)}</span>` : "";
     const note = step.note ? `<b>备注</b>${esc(step.note)}` : "";
-    const transfer = seg?.transfer ? '<span class="badge-transfer">转乘（跨付费区）</span>' : "";
+    const transfer = seg?.transfer ? '<span class="badge-transfer">跨系统转乘</span>' : "";
     const zone = seg ? `<b>付费区</b>${seg.paidZone + 1}` : "";
     const manual = step.manual ? '<span class="type">手动</span>' : "";
     const serviceName = seg?.serviceName || (step.service ? step.service : "");
@@ -448,6 +520,7 @@
     const stopsBlock = stops.length
       ? `<details class="stops-toggle"><summary class="hint">经停站（${stops.length} 站）</summary><div class="stops">${stops.map(esc).join(" · ")}</div></details>`
       : "";
+    const railTimetable = step.rail_timetable ? railTimetableHtml(step.rail_timetable) : "";
     const tt = renderTimetable(step);
 
     return `
@@ -457,6 +530,7 @@
           <div class="card-head">
             <span class="nm">${esc(name)}</span>
             ${typeLabel ? `<span class="type">${esc(typeLabel)}</span>` : ""}
+            ${system ? `<span class="type">${esc(system)}</span>` : ""}
             ${service}${manual}${transfer}
             <span class="actions">
               <button class="ghost" data-act="up" data-i="${i}" title="上移" ${i === 0 ? "disabled" : ""}>↑</button>
@@ -482,6 +556,7 @@
           </div>
           ${error ? `<div class="err-box">无法计算：${esc(error)}</div>` : ""}
           ${stopsBlock}
+          ${railTimetable}
           ${tt}
         </div>
       </div>`;
@@ -531,7 +606,7 @@
       ["其中运行", t ? fmtMin(t.run) : "—"],
       ["换乘 / 站外步行", t ? fmtMin(t.walk) : "—"],
       ["换乘次数", t ? `${t.transferCount} 次` : "—"],
-      ["转乘次数", t ? `${t.fareTransferCount} 次` : "—"],
+      ["转乘次数", t ? `${t.systemTransferCount ?? t.fareTransferCount} 次` : "—"],
       ["线路数", t ? `${t.lineCount} 条` : "—"],
       ["总站数", t ? `${t.stopCount} 站` : "—"],
       ["总票价", t ? `¥${t.price}` : "—"],
@@ -604,8 +679,8 @@
       $("hints").innerHTML = `<p class="hint">「${esc(station)}」暂无其他可换乘线路（本地数据未收录或不含换乘站）。</p>`;
       return;
     }
-    const inZone = others.filter((h) => !h.transfer);   // 站内换乘（同付费区）
-    const crossZone = others.filter((h) => h.transfer); // 出闸转乘（跨付费区，如地铁↔国铁）
+    const inZone = others.filter((h) => !h.transfer);   // 同系统换乘
+    const crossZone = others.filter((h) => h.transfer); // 跨系统转乘
     const row = (h) => {
       const board = h.boardStation || h.transferStation || station;
       return `
@@ -614,7 +689,7 @@
           <i class="dot" style="background:${swatch(h.color, h.color2)}"></i>
           <span>${esc(h.name)}</span>
           <span class="tag">${esc(h.typeLabel)}</span>
-          ${h.transfer ? '<span class="badge-transfer">出闸转乘</span>' : ""}
+          ${h.transfer ? '<span class="badge-transfer">跨系统转乘</span>' : ""}
           <span class="dirs" title="${esc(h.directions.join(" / "))}">${esc(h.directions.join(" / "))}</span>
         </div>`;
     };
@@ -625,7 +700,7 @@
     if (crossZone.length) {
       const exits = [...new Set(crossZone.map((h) => h.transferStation || station))];
       parts.push(
-        `<p class="hint" style="margin:0">在「${esc(exits.join(" / "))}」出闸转乘（换付费区）：</p>`,
+        `<p class="hint" style="margin:0">在「${esc(exits.join(" / "))}」跨系统转乘：</p>`,
         ...crossZone.map(row),
       );
     }
@@ -737,8 +812,10 @@
       return;
     }
 
+    const throughServiceIds = new Set(state.cityInfo?.throughServiceIds || []);
+    const planningLines = state.lines.filter((line) => !throughServiceIds.has(line.id));
     const lineDetails = [];
-    for (const summary of state.lines) {
+    for (const summary of planningLines) {
       let line = state.lineDetail.get(summary.id);
       if (!line) {
         const detail = TP.line(summary.id);
@@ -769,7 +846,7 @@
       }
     }
 
-    $("smart-lines").innerHTML = state.lines.map((line) => `
+    $("smart-lines").innerHTML = planningLines.map((line) => `
       <label class="smart-check">
         <input type="checkbox" name="smart-line" value="${esc(line.id)}">
         <i class="smart-color-marker" style="background:${swatch(line.color, line.color2)}" aria-hidden="true"></i>
@@ -855,7 +932,7 @@
               origin: candidate.current,
               target: goal.target,
               transferWalk: walk,
-              limit: 2,
+              limit: goal.mode === "line" ? 1 : 2,
             });
             if (!result.ok) continue;
             for (const route of result.plans || []) {
@@ -932,14 +1009,18 @@
       const walk = leg.walk > 0
         ? `<div class="smart-walk">上车前步行 ${fmtMin(leg.walk)}</div>`
         : "";
+      const interchange = leg.interchange && legIndex > 0
+        ? '<span class="smart-badge">换乘</span>'
+        : "";
       const transfer = leg.transfer && legIndex > 0
         ? '<span class="smart-badge">转乘</span>'
         : "";
       return `${walk}<div class="smart-leg">
         <i class="dot" style="background:${color}"></i>
-        <span class="ln">${esc(leg.lineName)}</span>
+        <span class="ln">${esc(leg.lineName)}${leg.serviceName ? `（${esc(leg.serviceName)}）` : ""}</span>
         <span class="meta">${esc(leg.from)} 至 ${esc(leg.to)}</span>
         <span class="dir">${esc(leg.direction)} · ${fmtMin(leg.run)} · ${leg.stopCount} 站</span>
+        ${interchange}
         ${transfer}
       </div>`;
     }).join("");
@@ -947,7 +1028,7 @@
       <div class="smart-card-head">
         <span class="smart-tag">${esc(plan.tag || "备选")}</span>
         <span class="smart-time">${fmtMin(plan.minutes)}</span>
-        <span class="hint">起点 ${esc(plan.origin)} · 覆盖 ${esc(plan.experienceSummary)} · 换乘 ${plan.transfers} 次 · ${plan.lineCount} 条线路 · ${plan.stopCount} 站</span>
+        <span class="hint">起点 ${esc(plan.origin)} · 覆盖 ${esc(plan.experienceSummary)} · 换乘 ${plan.transfers} 次 · 转乘 ${plan.systemTransfers} 次 · ${plan.lineCount} 条线路 · ${plan.stopCount} 站</span>
         <div class="spacer"></div>
         <button type="button" data-smart-apply="append" data-smart-index="${index}">追加到末尾</button>
         <button type="button" class="primary" data-smart-apply="replace" data-smart-index="${index}">替换规划</button>
@@ -1003,10 +1084,8 @@
   $("trip-name").addEventListener("input", (ev) => { state.trip.name = ev.target.value; persist(); });
   $("trip-date").addEventListener("change", (ev) => { state.trip.date = ev.target.value; persist(); });
   $("paid-zone").addEventListener("change", (ev) => { state.trip.paid_zone_mode = ev.target.checked; evaluate(); });
-  $("walk-default").addEventListener("change", (ev) => {
-    state.trip.transfer_walk_default = numOrNull(ev.target.value) ?? 0;
-    evaluate();
-  });
+  $("btn-undo").addEventListener("click", () => restoreHistory(history.undo, history.redo));
+  $("btn-redo").addEventListener("click", () => restoreHistory(history.redo, history.undo));
 
   $("btn-switch-record").addEventListener("click", (ev) => {
     ev.preventDefault();
@@ -1025,12 +1104,19 @@
     location.href = `record.html?id=${encodeURIComponent(draft.id)}`;
   });
 
-  $("btn-export").addEventListener("click", () => {
+  $("btn-export").addEventListener("click", () => $("export-dialog").showModal());
+  $("btn-export-json").addEventListener("click", () => {
+    $("export-dialog").close();
     // 与运转记录共用同一结构：kind 标记当前离线编辑器，起止时间等记录字段原样保留
     const payload = { ...state.trip, kind: "plan", version: 2, exportedAt: new Date().toISOString() };
     D.downloadJSON(D.safeFileName(state.trip.name, "运转方案"), payload);
     toast("已导出方案文件（与运转记录互通）");
   });
+  $("btn-export-pdf").addEventListener("click", () => {
+    $("export-dialog").close();
+    printPlan();
+  });
+  $("export-dialog").querySelector("[data-close-export]").addEventListener("click", () => $("export-dialog").close());
 
   // 一键清除当前方案的全部行程段（保留城市、方案名、日期与付费区设置）
   $("btn-clear").addEventListener("click", () => {
@@ -1038,7 +1124,7 @@
       toast("当前没有行程可清除");
       return;
     }
-    if (!confirm(`确定清除当前方案的 ${state.trip.steps.length} 段行程吗？\n城市、方案名、日期与付费区设置会保留，此操作不可撤销。`)) return;
+    if (!confirm(`确定清除当前方案的 ${state.trip.steps.length} 段行程吗？\n城市、方案名、日期与付费区设置会保留，可通过撤销恢复。`)) return;
     state.trip.steps = [];
     state.result = null;
     setStatus("");
@@ -1059,13 +1145,20 @@
       }
       // 记录 JSON 与方案结构一致：去掉文档元信息，段落里的记录字段（起止时间等）原样保留
       const { kind: _kind, version: _version, exportedAt: _exported, ...tripData } = data;
+      const updatedRailData = await updateStaleImportedRailData(tripData, data.exportedAt);
       state.trip = { ...state.trip, ...tripData, steps: tripData.steps };
       syncTopbar();
       if (state.trip.city && state.trip.city !== state.city) await setCity(state.trip.city, { silent: true });
       renderAll();
       await evaluate();
       flushDraft();
-      toast("已导入规划方案");
+      if (updatedRailData.failed.length) {
+        setStatus(`已导入规划方案；国铁数据更新失败（已保留原数据）：${updatedRailData.failed.join("；")}`, true);
+      } else {
+        toast(updatedRailData.updated
+          ? `已导入规划方案并更新 ${updatedRailData.updated} 段国铁经停数据`
+          : "已导入规划方案");
+      }
     } catch (err) {
       setStatus(`导入失败：${err.message}`, true);
     } finally {
@@ -1083,7 +1176,13 @@
 
   // ---------------- 行程弹窗 ----------------
 
-  const dlg = { index: null, mode: "db", lineId: "", line: null, prefillFrom: "", service: "" };
+  const dlg = {
+    index: null, mode: "db", lineId: "", line: null, prefillFrom: "", service: "",
+    railTrains: [], railTrain: null, railQuerySeq: 0, railConfirming: false,
+    railTimetableCache: new Map(), railTimetableRequests: new Map(),
+  };
+  const railApiRateLimitKey = "railkale-api-rate-limit-v1";
+  const railTimetableStoragePrefix = "railkale-timetable-cache-v1:";
 
   /** 当前弹窗选中的车种 id（空串 = 各站停）。 */
   function dialogService() {
@@ -1131,11 +1230,429 @@
   }
 
   function setMode(mode) {
+    const previous = dlg.mode;
     dlg.mode = mode;
     $("mode-db").checked = mode === "db";
+    $("mode-rail").checked = mode === "rail";
     $("mode-manual").checked = mode === "manual";
     $("db-fields").hidden = mode !== "db";
+    $("rail-fields").hidden = mode !== "rail";
+    $("timetable-fields").hidden = mode === "rail";
     $("manual-fields").hidden = mode !== "manual";
+    $("btn-dlg-save").textContent = mode === "rail"
+      ? (dlg.railTrain ? "确认并加入" : "选择车次后确认并加入")
+      : "确定";
+    if (previous === "rail" && mode !== "rail") resetRailQuery();
+  }
+
+  function resetRailQuery() {
+    dlg.railQuerySeq += 1;
+    dlg.railTrains = [];
+    dlg.railTrain = null;
+    $("rail-query-results").hidden = true;
+    $("rail-query-results").innerHTML = "";
+    $("rail-selected").hidden = true;
+    $("rail-selected").textContent = "";
+    $("rail-query-status").className = "hint";
+    $("rail-query-status").textContent = "";
+    $("btn-rail-query").disabled = false;
+    $("btn-rail-query").textContent = "查询车次";
+    if (dlg.mode === "rail") $("btn-dlg-save").textContent = "选择车次后确认并加入";
+  }
+
+  async function reserveRailApiRequest(endpoint) {
+    const reserve = () => {
+      const now = Date.now();
+      let records = {};
+      try {
+        const stored = localStorage.getItem(railApiRateLimitKey);
+        if (stored) {
+          records = JSON.parse(stored);
+          if (!records || typeof records !== "object" || Array.isArray(records)) {
+            throw new Error("访问记录格式无效");
+          }
+        }
+      } catch (error) {
+        throw new Error(`无法读取 RailKale 访问限额记录：${error.message}`);
+      }
+
+      const timestamps = records[endpoint] || [];
+      if (!Array.isArray(timestamps) || timestamps.some((time) => !Number.isSafeInteger(time))) {
+        throw new Error("RailKale 访问限额记录损坏，请清除本站缓存后重试");
+      }
+      const recent = timestamps.filter((time) => time > now - 60_000).sort((a, b) => a - b);
+      if (recent.length >= 3) {
+        const waitSeconds = Math.max(1, Math.ceil((recent[0] + 60_000 - now) / 1000));
+        return { allowed: false, waitSeconds };
+      }
+
+      records[endpoint] = [...recent, now];
+      try {
+        localStorage.setItem(railApiRateLimitKey, JSON.stringify(records));
+      } catch (error) {
+        throw new Error(`无法保存 RailKale 访问限额记录：${error.message}`);
+      }
+      return { allowed: true, waitSeconds: 0 };
+    };
+    return navigator.locks?.request
+      ? navigator.locks.request(railApiRateLimitKey, reserve)
+      : reserve();
+  }
+
+  async function fetchRailJson(endpoint, params) {
+    const limit = await reserveRailApiRequest(endpoint);
+    if (!limit.allowed) {
+      throw new Error(`已达到该接口每分钟 3 次的访问上限，请约 ${limit.waitSeconds} 秒后重试`);
+    }
+    const paths = { getTrains: "getTrains", trainTimeTable: "trainTimeTable" };
+    const path = paths[endpoint];
+    if (!path) throw new Error("不支持的 RailKale 接口");
+
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 20_000);
+    try {
+      const query = new URLSearchParams(params);
+      const response = await fetch(`https://next.laide.net.cn/api/v3/${path}?${query}`, {
+        headers: { Accept: "application/json" },
+        cache: "no-store",
+        signal: controller.signal,
+      });
+      if (!response.ok) throw new Error(`接口返回 HTTP ${response.status}`);
+      try {
+        return await response.json();
+      } catch {
+        throw new Error("接口返回的内容不是有效 JSON");
+      }
+    } catch (error) {
+      if (error.name === "AbortError") throw new Error("接口请求超过 20 秒，已停止等待");
+      throw error;
+    } finally {
+      clearTimeout(timeoutId);
+    }
+  }
+
+  function localDateValue(date = new Date()) {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, "0");
+    const day = String(date.getDate()).padStart(2, "0");
+    return `${year}-${month}-${day}`;
+  }
+
+  function parseRailDuration(value) {
+    const match = /^(\d{1,3}):([0-5]\d)$/.exec(String(value || ""));
+    if (!match) throw new Error(`接口返回了无效运行时长「${value}」`);
+    return Number(match[1]) * 60 + Number(match[2]);
+  }
+
+  function validRailTime(value) {
+    return /^(?:[01]\d|2[0-3]):[0-5]\d$/.test(String(value || ""));
+  }
+
+  function railArrivalStation(train, requestedTo) {
+    // The D107 result codes are ambiguous; the timetable verifies the actual stop before prefill.
+    if (train.trainNo === "D107" && train.fromStation === "SNH"
+      && train.toStation === "HKN" && train.fromTime === "20:38") {
+      if (train.toTime === "06:16" && train.duration === "09:38") return "武昌";
+      if (train.toTime === "06:41" && train.duration === "10:03") return "汉口";
+    }
+    return requestedTo;
+  }
+
+  function railTimeMinutes(value) {
+    if (!validRailTime(value)) return null;
+    const [hours, minutes] = value.split(":").map(Number);
+    return hours * 60 + minutes;
+  }
+
+  function normalizeRailTimetable(payload, train, date) {
+    const data = payload?.data;
+    if (!payload || payload.code !== 0 || !data || !Array.isArray(data.stops)) {
+      throw new Error(payload?.msg || "接口未返回有效的车次时刻表");
+    }
+    if (data.train_number !== train.trainNo || data.date !== date) {
+      throw new Error("时刻表车次号或日期与查询结果不一致");
+    }
+    const stops = data.stops.map((stop) => {
+      if (!stop || typeof stop.station_name !== "string" || !stop.station_name
+        || !validRailTime(stop.arrive_time) || !validRailTime(stop.depart_time)) {
+        throw new Error("时刻表中的车站或时刻数据格式不完整");
+      }
+      const minutes = Number(stop.stopover_minutes);
+      return {
+        stationNo: stop.station_no == null ? "" : String(stop.station_no),
+        stationName: stop.station_name,
+        arriveTime: stop.arrive_time,
+        departTime: stop.depart_time,
+        stopoverMinutes: Number.isFinite(minutes) ? minutes : null,
+        stopoverDisplay: typeof stop.stopover_display === "string" ? stop.stopover_display : "",
+      };
+    });
+    if (!stops.length) throw new Error("时刻表没有经停站信息");
+    return { ...data, stops };
+  }
+
+  function matchRailTimetableLeg(train, timetable) {
+    const starts = [];
+    const ends = [];
+    timetable.stops.forEach((stop, index) => {
+      if (stop.departTime === train.fromTime) starts.push(index);
+      if (stop.arriveTime === train.toTime) ends.push(index);
+    });
+    const pairs = [];
+    starts.forEach((start) => {
+      ends.forEach((end) => {
+        if (end > start) pairs.push({ start, end });
+      });
+    });
+    if (pairs.length !== 1) return null;
+
+    const { start, end } = pairs[0];
+    const departure = railTimeMinutes(timetable.stops[start].departTime);
+    const arrival = railTimeMinutes(timetable.stops[end].arriveTime);
+    const duration = (arrival - departure + 24 * 60) % (24 * 60);
+    if (duration !== train.durationMinutes) return null;
+    return { start, end, stops: timetable.stops.slice(start, end + 1), duration };
+  }
+
+  /** 已保存的国铁全程时刻表：在行程卡片中折叠展示，便于核对。 */
+  function railTimetableHtml(timetable) {
+    const stops = Array.isArray(timetable?.stops) ? timetable.stops : [];
+    if (!stops.length) return "";
+    const rows = stops.map((stop, index) => {
+      const first = index === 0;
+      const last = index === stops.length - 1;
+      const stopover = first ? "始发站"
+        : last ? "终到站"
+          : stop.stopoverDisplay || (stop.stopoverMinutes == null ? "—" : `${stop.stopoverMinutes}分钟`);
+      const rowClass = first ? "rail-stop-origin" : last ? "rail-stop-destination" : "";
+      return `<tr class="${rowClass}">
+        <td>${esc(stop.stationNo || "—")}</td>
+        <td>${esc(stop.stationName)}</td>
+        <td>${esc(stop.arriveTime)}</td>
+        <td>${esc(stop.departTime)}</td>
+        <td>${esc(stopover)}</td>
+      </tr>`;
+    }).join("");
+    return `<details class="stops-toggle">
+      <summary class="hint">完整经停时刻表（${stops.length} 站）</summary>
+      <div class="rail-timetable-scroll">
+        <table class="rail-stop-table">
+          <thead><tr><th>站次</th><th>车站</th><th>到站</th><th>发车</th><th>停留</th></tr></thead>
+          <tbody>${rows}</tbody>
+        </table>
+      </div>
+    </details>`;
+  }
+
+  async function loadRailTimetable(train, date, { forceRefresh = false } = {}) {
+    const key = `${date}|${train.trainNo}`;
+    if (!forceRefresh && dlg.railTimetableCache.has(key)) return dlg.railTimetableCache.get(key);
+    if (dlg.railTimetableRequests.has(key)) return dlg.railTimetableRequests.get(key);
+    const request = (async () => {
+      const storageKey = `${railTimetableStoragePrefix}${encodeURIComponent(key)}`;
+      const requestFresh = async () => {
+        let raw;
+        try {
+          raw = localStorage.getItem(storageKey);
+        } catch (error) {
+          throw new Error(`无法读取已缓存的国铁时刻表：${error.message}`);
+        }
+        if (raw && !forceRefresh) {
+          let cached;
+          try {
+            cached = JSON.parse(raw);
+          } catch {
+            throw new Error("已缓存的国铁时刻表 JSON 损坏，请清除本站缓存后重试");
+          }
+          if (!cached || typeof cached.fetchedAt !== "string" || !cached.payload) {
+            throw new Error("已缓存的国铁时刻表格式无效，请清除本站缓存后重试");
+          }
+          return {
+            timetable: normalizeRailTimetable(cached.payload, train, date),
+            fetchedAt: cached.fetchedAt,
+          };
+        }
+        const payload = await fetchRailJson("trainTimeTable", { train: train.trainNo, date });
+        const result = { timetable: normalizeRailTimetable(payload, train, date), fetchedAt: new Date().toISOString() };
+        try {
+          localStorage.setItem(storageKey, JSON.stringify({ payload, fetchedAt: result.fetchedAt }));
+        } catch {
+          // 缓存写入失败不影响本次使用：完整时刻表仍会写入行程与导出的 JSON
+        }
+        return result;
+      };
+      const result = navigator.locks?.request
+        ? await navigator.locks.request(`${railTimetableStoragePrefix}${key}`, requestFresh)
+        : await requestFresh();
+      dlg.railTimetableCache.set(key, result);
+      return result;
+    })();
+    dlg.railTimetableRequests.set(key, request);
+    try {
+      return await request;
+    } finally {
+      dlg.railTimetableRequests.delete(key);
+    }
+  }
+
+  function isRailStep(step) {
+    return step?.type === "national_rail" || step?.rail_timetable;
+  }
+
+  function isMoreThanOneMonthOld(value, now = new Date()) {
+    const timestamp = Date.parse(value || "");
+    if (!Number.isFinite(timestamp)) return true;
+    const fetched = new Date(timestamp);
+    const day = fetched.getDate();
+    fetched.setDate(1);
+    fetched.setMonth(fetched.getMonth() + 1);
+    const lastDay = new Date(fetched.getFullYear(), fetched.getMonth() + 1, 0).getDate();
+    fetched.setDate(Math.min(day, lastDay));
+    return fetched.getTime() <= now.getTime();
+  }
+
+  function importedRailDate(step, tripDate) {
+    const extraDate = (step.extras || []).find((field) => field.label === "乘车日期")?.value;
+    const date = step.rail_timetable?.date || extraDate || tripDate || "";
+    return /^\d{4}-\d{2}-\d{2}$/.test(date) ? date : "";
+  }
+
+  async function refreshImportedRailStep(step, tripDate) {
+    const trainNo = step.train_no || step.line_name || step.timetable?.[0]?.[0] || "";
+    const date = importedRailDate(step, tripDate);
+    const fromTime = step.start_time || step.timetable?.[0]?.[1] || "";
+    const toTime = step.end_time || step.timetable?.[0]?.[2] || "";
+    let durationMinutes = Number(step.run_minutes);
+    if (!Number.isFinite(durationMinutes) && railTimeMinutes(fromTime) != null && railTimeMinutes(toTime) != null) {
+      durationMinutes = (railTimeMinutes(toTime) - railTimeMinutes(fromTime) + 24 * 60) % (24 * 60);
+    }
+    if (!trainNo || !date || !validRailTime(fromTime) || !validRailTime(toTime)
+      || !Number.isFinite(durationMinutes)) {
+      throw new Error(`车次 ${trainNo || "（未知）"} 缺少可用于更新的日期、乘降时刻或运行时长`);
+    }
+    const train = { trainNo, date, fromTime, toTime, durationMinutes };
+    const result = await loadRailTimetable(train, date, { forceRefresh: true });
+    const leg = matchRailTimetableLeg(train, result.timetable);
+    if (!leg) throw new Error(`车次 ${trainNo} 的经停时刻无法唯一匹配原乘降区间`);
+    return {
+      ...step,
+      from_station: leg.stops[0].stationName,
+      to_station: leg.stops[leg.stops.length - 1].stationName,
+      run_minutes: leg.duration,
+      stops_text: leg.stops.map((stop) => stop.stationName).join("、"),
+      rail_timetable: result.timetable,
+      rail_timetable_fetched_at: result.fetchedAt,
+    };
+  }
+
+  /** 导入时若国铁数据超过一个月（或没有更新时间），询问是否重新查询；失败时保留原数据。 */
+  async function updateStaleImportedRailData(tripData, exportedAt) {
+    const staleIndexes = tripData.steps
+      .map((step, index) => ({ step, index }))
+      .filter(({ step }) => isRailStep(step)
+        && isMoreThanOneMonthOld(step.rail_timetable_fetched_at || exportedAt));
+    if (!staleIndexes.length) return { asked: false, updated: 0, failed: [] };
+    const yes = confirm(
+      `该文件中的 ${staleIndexes.length} 段国铁行程数据已超过一个月或没有更新时间。是否现在重新查询并更新完整经停时刻表？\n选择“取消”将保留文件中的原数据。`,
+    );
+    if (!yes) return { asked: true, updated: 0, failed: [] };
+
+    const updatedSteps = [...tripData.steps];
+    const failed = [];
+    for (const { step, index } of staleIndexes) {
+      try {
+        updatedSteps[index] = await refreshImportedRailStep(step, tripData.date);
+      } catch (error) {
+        failed.push(`第 ${index + 1} 段：${error.message}`);
+      }
+    }
+    tripData.steps = updatedSteps;
+    return { asked: true, updated: staleIndexes.length - failed.length, failed };
+  }
+
+  async function queryRailTrains() {
+    const from = $("rail-from").value.trim();
+    const to = $("rail-to").value.trim();
+    const date = $("rail-date").value;
+    const status = $("rail-query-status");
+    if (!from || !to) {
+      status.className = "err";
+      status.textContent = "请填写国铁起点站和终点站。";
+      return;
+    }
+    if (from === to) {
+      status.className = "err";
+      status.textContent = "起点站和终点站不能相同。";
+      return;
+    }
+
+    resetRailQuery();
+    const requestId = dlg.railQuerySeq;
+    const button = $("btn-rail-query");
+    button.disabled = true;
+    button.textContent = "查询中…";
+    status.className = "hint";
+    status.textContent = "正在查询车次…";
+
+    try {
+      const payload = await fetchRailJson("getTrains", date ? { from, to, date } : { from, to });
+      if (!payload || payload.success !== true || !Array.isArray(payload.trains)) {
+        throw new Error(payload?.message || payload?.error || "接口未能完成车次查询");
+      }
+      const trains = payload.trains.map((train) => {
+        if (!train || typeof train !== "object"
+          || typeof train.trainNo !== "string" || !train.trainNo
+          || typeof train.fromStation !== "string" || !train.fromStation
+          || typeof train.toStation !== "string" || !train.toStation
+          || typeof train.fromTime !== "string" || !validRailTime(train.fromTime)
+          || typeof train.toTime !== "string" || !validRailTime(train.toTime)
+          || typeof train.duration !== "string") {
+          throw new Error("接口返回的车次信息格式不完整");
+        }
+        return {
+          trainNo: train.trainNo,
+          fromStation: train.fromStation,
+          toStation: train.toStation,
+          toStationName: railArrivalStation(train, to),
+          date: payload.date || date || localDateValue(),
+          fromTime: train.fromTime,
+          toTime: train.toTime,
+          duration: train.duration,
+          durationMinutes: parseRailDuration(train.duration),
+        };
+      });
+      if (requestId !== dlg.railQuerySeq || dlg.mode !== "rail" || !$("step-dialog").open) return;
+      dlg.railTrains = trains;
+      $("rail-query-results").hidden = false;
+      $("rail-query-results").innerHTML = trains.length
+        ? trains.map((train, index) => `
+          <article class="rail-train">
+            <div class="rail-train-overview">
+              <div class="rail-train-main">
+                <strong>${esc(train.trainNo)}</strong>
+                <span>查询区间：${esc(from)} → ${esc(to)} · ${esc(train.fromTime)}–${esc(train.toTime)}</span>
+                <span class="hint">选中车次后，点击「确认并加入」时才读取经停站</span>
+              </div>
+              <div class="rail-train-actions">
+                <button type="button" class="ghost" data-rail-train="${index}">预填此车次</button>
+              </div>
+            </div>
+          </article>`).join("")
+        : '<p class="hint">该日期未查询到车次。</p>';
+      status.textContent = `查询日期：${payload.date || date || "接口未提供"} · 共 ${trains.length} 趟`;
+    } catch (error) {
+      if (requestId !== dlg.railQuerySeq || dlg.mode !== "rail" || !$("step-dialog").open) return;
+      status.className = "err";
+      status.textContent = `车次查询失败：${error.message}`;
+      $("rail-query-results").hidden = true;
+      $("rail-query-results").innerHTML = "";
+      dlg.railTrains = [];
+    } finally {
+      if (requestId === dlg.railQuerySeq) {
+        button.disabled = false;
+        button.textContent = "查询车次";
+      }
+    }
   }
 
   async function openStepDialog(index, { prefillFrom = currentStation() } = {}) {
@@ -1175,6 +1692,10 @@
     $("m-color2").value = "#ffffff";
     $("m-color2").disabled = true;
     $("m-color2-on").checked = false;
+    $("rail-from").value = dlg.prefillFrom;
+    $("rail-to").value = "";
+    $("rail-date").value = state.trip.date || localDateValue();
+    resetRailQuery();
     $("price").value = "";
     $("walk-minutes").value = "";
     $("note").value = "";
@@ -1228,7 +1749,7 @@
     $("line-candidates").hidden = true;
     $("line-picked").innerHTML =
       `<span class="swatch" style="display:inline-block;vertical-align:-1px;background:${swatch(line.color, line.color2)}"></span>
-       ${esc(line.name)} · ${esc(line.typeLabel)} · ${esc(line.headwayText)}`;
+       ${esc(line.name)}${line.system ? ` · ${esc(line.system)}` : ""} · ${esc(line.typeLabel)} · ${esc(line.headwayText)}`;
     fillServiceSelect(line, step ? step.service || "" : "");
     fillStationSelects(step);
     $("direction").innerHTML = line.directions.map((d) => `<option value="${esc(d)}">${esc(d)}</option>`).join("");
@@ -1313,7 +1834,7 @@
     if (!kw) { $("line-candidates").hidden = true; return; }
     $("line-candidates").hidden = res.lines.length === 0;
     $("line-candidates").innerHTML = res.lines
-      .map((ln) => `<option value="${esc(ln.id)}">${esc(ln.name)} · ${esc(ln.typeLabel)} · ${esc(ln.headwayText)}</option>`)
+      .map((ln) => `<option value="${esc(ln.id)}">${esc(ln.name)}${ln.system ? ` · ${esc(ln.system)}` : ""} · ${esc(ln.typeLabel)} · ${esc(ln.headwayText)}</option>`)
       .join("");
   }, 260);
 
@@ -1350,7 +1871,42 @@
   $("direction").addEventListener("change", () => refreshRunHint());
 
   $("mode-db").addEventListener("change", () => setMode("db"));
+  $("mode-rail").addEventListener("change", () => setMode("rail"));
   $("mode-manual").addEventListener("change", () => setMode("manual"));
+  $("btn-rail-query").addEventListener("click", queryRailTrains);
+  $("btn-rail-swap").addEventListener("click", () => {
+    const from = $("rail-from").value;
+    $("rail-from").value = $("rail-to").value;
+    $("rail-to").value = from;
+    resetRailQuery();
+  });
+  ["rail-from", "rail-to", "rail-date"].forEach((id) => {
+    $(id).addEventListener("input", resetRailQuery);
+    $(id).addEventListener("change", resetRailQuery);
+  });
+  function selectRailTrain(train, card) {
+    dlg.railTrain = train;
+    $("rail-query-results").querySelectorAll(".rail-train").forEach((row) => {
+      const selected = row === card;
+      row.classList.toggle("selected", selected);
+      row.querySelector("[data-rail-train]").textContent = selected ? "已预填" : "预填此车次";
+    });
+    const from = train.fromStationName || $("rail-from").value.trim();
+    $("rail-selected").hidden = false;
+    $("rail-selected").className = "rail-selected";
+    $("rail-selected").textContent = `${train.trainNo} 已预填：${from} ${train.fromTime} → ${train.toStationName} ${train.toTime}，运行 ${train.duration}。确认后点击「确认并加入」，届时才会读取并保存完整经停时刻表。`;
+    $("btn-dlg-save").textContent = "确认并加入";
+    setDialogError("");
+  }
+
+  $("rail-query-results").addEventListener("click", (ev) => {
+    const button = ev.target.closest("[data-rail-train]");
+    if (!button) return;
+    const index = Number(button.dataset.railTrain);
+    const train = dlg.railTrains[index];
+    if (!train) return;
+    selectRailTrain(train, button.closest(".rail-train"));
+  });
   $("m-color2-on").addEventListener("change", (ev) => { $("m-color2").disabled = !ev.target.checked; });
 
   // 时刻表
@@ -1442,6 +1998,60 @@
         transfer: prev ? prev.transfer : null,
         service: dialogService(),
       };
+    } else if (dlg.mode === "rail") {
+      const train = dlg.railTrain;
+      if (!train) { setDialogError("请先查询并选择一趟国铁车次"); return; }
+      if (dlg.railConfirming) return;
+      dlg.railConfirming = true;
+      const saveButton = $("btn-dlg-save");
+      saveButton.disabled = true;
+      saveButton.textContent = "读取并核验经停…";
+      try {
+        const result = await loadRailTimetable(train, train.date);
+        const leg = matchRailTimetableLeg(train, result.timetable);
+        if (!leg) throw new Error("无法根据车次与时刻唯一核验该乘降区间，未加入行程");
+        train.timetable = result.timetable;
+        train.timetableFetchedAt = result.fetchedAt;
+        train.leg = leg;
+        train.fromStationName = leg.stops[0].stationName;
+        train.toStationName = leg.stops[leg.stops.length - 1].stationName;
+      } catch (error) {
+        setDialogError(`获取并核验国铁经停失败：${error.message}`);
+        return;
+      } finally {
+        dlg.railConfirming = false;
+        saveButton.disabled = false;
+        saveButton.textContent = "确认并加入";
+      }
+      const from = train.fromStationName;
+      const to = train.toStationName;
+      if (!from || !to || from === to) { setDialogError("请填写不同的国铁起点站和终点站"); return; }
+      step = {
+        line_id: "",
+        direction_label: `${to}方向`,
+        from_station: from,
+        to_station: to,
+        walk_minutes: walkMinutes,
+        manual: true,
+        type: "national_rail",
+        line_name: train.trainNo,
+        run_minutes: train.durationMinutes,
+        stops_text: train.leg.stops.map((stop) => stop.stationName).join("、"),
+        color: "#333333",
+        color2: "",
+        note,
+        headway_text: "按车次时刻",
+        timetable: [[train.trainNo, train.fromTime, train.toTime]],
+        use_timetable: false,
+        price,
+        transfer: prev ? prev.transfer : null,
+        train_no: train.trainNo,
+        start_time: train.fromTime,
+        end_time: train.toTime,
+        extras: train.date ? [{ label: "乘车日期", value: train.date }] : [],
+        rail_timetable: train.timetable,
+        rail_timetable_fetched_at: train.timetableFetchedAt,
+      };
     } else {
       const name = $("m-line-name").value.trim();
       const from = $("m-from").value.trim();
@@ -1481,7 +2091,7 @@
 
   // ---------------- 导出图纸（打印 / 另存为 PDF） ----------------
 
-  $("btn-print").addEventListener("click", () => {
+  function printPlan() {
     if (!state.result || !state.result.segments.length) {
       setStatus("还没有可导出的行程", true);
       return;
@@ -1498,12 +2108,21 @@
     }, { once: true });
 
     window.print();
-  });
+  }
 
   /** 另存为 PDF 时的默认文件名（不含扩展名）：方案名，剔除文件名非法字符。 */
   function printFileTitle() {
     const name = (state.trip.name || "我的运转方案").replace(/[\\/:*?"<>|]/g, "_").trim();
     return name || "我的运转方案";
+  }
+
+  /** 含时刻表或国铁车次的段落，导出时强调时长。 */
+  function stepHasTimetable(step) {
+    const type = String(step?.type || "");
+    return type === "national_rail"
+      || type.includes("国铁")
+      || Boolean(step?.use_timetable)
+      || (step?.timetable || []).length > 0;
   }
 
   function buildPrintSheet() {
@@ -1516,6 +2135,8 @@
     }).join("");
 
     const segs = res.segments.map((s, i) => {
+      const step = trip.steps[i] || {};
+      const emphasizeDuration = stepHasTimetable(step);
       const tt = (s.timetable || []).length
         ? `<table><thead><tr><th>车次</th><th>发时</th><th>到时</th></tr></thead><tbody>${
             s.timetable.map((r) => `<tr><td>${esc(r[0] || "")}</td><td>${esc(r[1] || "")}</td><td>${esc(r[2] || "")}</td></tr>`).join("")
@@ -1524,9 +2145,9 @@
       return `
         <div class="seg">
           <div class="ribbon" style="background:${swatch(s.color, s.color2)}"></div>
-          <div class="hd">${i + 1}. ${esc(s.lineName)}（${esc(s.typeLabel)}）${s.serviceName ? ` · ${esc(s.serviceName)}` : ""}${s.transfer ? " · 转乘（跨付费区）" : ""}</div>
+          <div class="hd">${i + 1}. ${esc(s.lineName)}（${esc(s.typeLabel)}）${s.serviceName ? ` · ${esc(s.serviceName)}` : ""}${s.transfer ? " · 跨系统转乘" : ""}</div>
           <div class="ln">${esc(s.from)} → ${esc(s.direction)} → ${esc(s.to)}
-            · 运行 ${fmtMin(s.run)}${s.walk > 0 ? ` · 上车前步行 ${fmtMin(s.walk)}` : ""} · ${s.stopCount} 站
+            · 运行 <b class="${emphasizeDuration ? "duration-emphasis" : ""}">${fmtMin(s.run)}</b>${s.walk > 0 ? ` · 上车前步行 ${fmtMin(s.walk)}` : ""} · ${s.stopCount} 站
             · 班次 ${esc(s.headway)}
             ${s.firstTrain || s.lastTrain ? ` · 首末 ${esc(s.firstTrain || "—")} / ${esc(s.lastTrain || "—")}` : ""}
             ${s.price != null ? ` · 票价 ¥${esc(s.price)}` : ""}
@@ -1542,6 +2163,7 @@
           `付费区 ${z.index}：${esc(z.entry)} → ${esc(z.exit)}（${z.segmentCount} 段 · 运行 ${fmtMin(z.run)}${z.price != null ? ` · ¥${z.price}` : ""}）`
         ).join("<br>")}</div>`
       : "";
+    const hasConfirmedTimetable = trip.steps.some((step) => stepHasTimetable(step));
 
     return `
       <div class="sheet">
@@ -1549,7 +2171,7 @@
         <div class="sub">${state.cityInfo ? `${esc(state.cityInfo.name)} · ` : ""}${esc(trip.date || "")}
           · 生成于 ${new Date().toLocaleString("zh-CN")}${trip.paid_zone_mode ? " · 付费区模式" : ""}</div>
         <div class="sum">
-          <span>总时长 <b>${fmtMin(t.minutes)}</b></span>
+          <span>总时长 <b class="${hasConfirmedTimetable ? "duration-emphasis" : ""}">${fmtMin(t.minutes)}</b></span>
           <span>运行 ${fmtMin(t.run)}</span>
           <span>换乘/步行 ${fmtMin(t.walk)}</span>
           <span>换乘 ${t.transferCount} 次</span>

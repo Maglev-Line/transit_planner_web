@@ -58,6 +58,24 @@ export function validateCityDoc(doc) {
   if (doc.lines.length === 0) errors.push("至少需要一条线路");
   if (doc.lines.length > MAX_LINES) errors.push(`线路数量超过上限（${MAX_LINES}）`);
 
+  let systemCatalog = null;
+  if (Object.hasOwn(doc, "systems")) {
+    if (!Array.isArray(doc.systems)) {
+      errors.push("systems 必须是字符串数组");
+    } else {
+      systemCatalog = new Set();
+      doc.systems.forEach((system, i) => {
+        if (typeof system !== "string" || !system.trim()) {
+          errors.push(`第 ${i + 1} 个系统名称必须是非空字符串`);
+        } else if (systemCatalog.has(system.trim())) {
+          errors.push(`系统名称「${system.trim()}」重复`);
+        } else {
+          systemCatalog.add(system.trim());
+        }
+      });
+    }
+  }
+
   const idSeen = new Map();
   const nameSeen = new Set();
   const allStations = new Set();
@@ -79,6 +97,14 @@ export function validateCityDoc(doc) {
     if (!lineName) errors.push(`${tag}缺少线路名称（name）`);
     else if (nameSeen.has(lineName)) warnings.push(`线路名称「${lineName}」重复`);
     nameSeen.add(lineName);
+    if (line.system != null && typeof line.system !== "string") {
+      errors.push(`${label}的 system 必须是字符串`);
+    } else if (systemCatalog && (
+      (systemCatalog.size && !systemCatalog.has(String(line.system || "").trim()))
+      || (!systemCatalog.size && String(line.system || "").trim())
+    )) {
+      errors.push(`${label}所属系统「${line.system || ""}」未在 systems 中声明`);
+    }
 
     if (!Array.isArray(line.stations)) {
       errors.push(`${label}缺少站表（stations 必须是数组）`);
@@ -210,6 +236,152 @@ export function validateCityDoc(doc) {
     stats.stations += line.stations.length;
   });
 
+  if (doc.through_services != null) {
+    if (!Array.isArray(doc.through_services)) {
+      errors.push("through_services 必须是数组");
+    } else {
+      const lineById = new Map(doc.lines
+        .filter((line) => line && typeof line === "object" && !Array.isArray(line))
+        .map((line) => [line.id, line]));
+      const seenIds = new Set(lineById.keys());
+      doc.through_services.forEach((service, i) => {
+        const label = `第 ${i + 1} 个贯通交路`;
+        if (!service || typeof service !== "object" || Array.isArray(service)) {
+          errors.push(`${label}必须是对象`);
+          return;
+        }
+        const id = typeof service.id === "string" ? service.id.trim() : "";
+        if (!id) errors.push(`${label}缺少 id`);
+        else if (seenIds.has(id)) errors.push(`贯通交路 ID「${id}」重复`);
+        else seenIds.add(id);
+        if (typeof service.name !== "string" || !service.name.trim()) errors.push(`${label}缺少 name`);
+        if (!Array.isArray(service.segments) || service.segments.length === 0) {
+          errors.push(`${label}至少需要一个线路区段（segments）`);
+          return;
+        }
+
+        const routeStations = [];
+        let previousStation = "";
+        service.segments.forEach((section, j) => {
+          const sectionLabel = `${label}第 ${j + 1} 个区段`;
+          const source = section && typeof section.line_id === "string" ? lineById.get(section.line_id) : null;
+          if (!source) {
+            errors.push(`${sectionLabel}引用了不存在的线路`);
+            return;
+          }
+          if (!Array.isArray(source.stations)) return;
+          const ring = source.ring === true;
+          const closesRing = ring && source.stations.length > 1
+            && source.stations[0] === source.stations[source.stations.length - 1];
+          const stationCount = source.stations.length - (closesRing ? 1 : 0);
+          const stations = source.stations.slice(0, stationCount);
+          const start = stations.indexOf(section.from_station);
+          const end = stations.indexOf(section.to_station);
+          if (start < 0 || end < 0 || start === end) {
+            errors.push(`${sectionLabel}的起终站无效`);
+            return;
+          }
+          if (section.reverse != null && typeof section.reverse !== "boolean") {
+            errors.push(`${sectionLabel}的 reverse 必须是布尔值`);
+            return;
+          }
+          if (previousStation && previousStation !== section.from_station) {
+            errors.push(`${sectionLabel}未与前一区段在同一车站衔接`);
+          }
+          if (!ring && section.reverse === true) {
+            errors.push(`${sectionLabel}的 reverse 仅适用于环线区段`);
+          }
+          const sign = ring
+            ? (section.reverse === true ? -1 : 1)
+            : (start < end ? 1 : -1);
+          const sectionStations = [stations[start]];
+          const minuteIndexes = [];
+          let current = start;
+          while (current !== end) {
+            const next = ring
+              ? (current + sign + stationCount) % stationCount
+              : current + sign;
+            minuteIndexes.push(sign > 0 ? current : (ring ? (current - 1 + stationCount) % stationCount : current - 1));
+            current = next;
+            sectionStations.push(stations[current]);
+            if (sectionStations.length > stationCount + 1) {
+              errors.push(`${sectionLabel}无法沿线路到达终点`);
+              return;
+            }
+          }
+          if (!Array.isArray(source.travel_minutes)
+            || minuteIndexes.some((index) => index < 0 || index >= source.travel_minutes.length)) {
+            errors.push(`${sectionLabel}的线路区间时长不完整`);
+          }
+          routeStations.push(...(routeStations.length ? sectionStations.slice(1) : sectionStations));
+          previousStation = section.to_station;
+        });
+
+        for (const key of ["headway_rush", "headway_normal"]) {
+          if (service[key] != null && (typeof service[key] !== "number" || !Number.isFinite(service[key]) || service[key] < 0)) {
+            errors.push(`${label}的 ${key} 必须是不小于 0 的数字`);
+          }
+        }
+        if (service.express != null) {
+          if (!Array.isArray(service.express)) {
+            errors.push(`${label}的 express 必须是数组`);
+          } else {
+            const seenExpressIds = new Set();
+            service.express.forEach((express, j) => {
+              const expressLabel = `${label}的第 ${j + 1} 个快车服务`;
+              if (!express || typeof express !== "object") {
+                errors.push(`${expressLabel}必须是对象`);
+                return;
+              }
+              if (typeof express.name !== "string" || !express.name.trim()) errors.push(`${expressLabel}缺少 name`);
+              if (express.id != null && typeof express.id !== "string") {
+                errors.push(`${expressLabel}的 id 必须是字符串`);
+              }
+              const expressId = typeof express.id === "string" ? express.id.trim() : "";
+              if (expressId) {
+                if (seenExpressIds.has(expressId)) errors.push(`${label}快车服务 ID「${expressId}」重复`);
+                seenExpressIds.add(expressId);
+              }
+              if (!Array.isArray(express.stops) || express.stops.length < 2) {
+                errors.push(`${expressLabel}至少需要 2 个停靠站`);
+                return;
+              }
+              let previous = -1;
+              express.stops.forEach((station) => {
+                const index = routeStations.indexOf(station);
+                if (index < 0) errors.push(`${expressLabel}的停靠站「${station}」不在贯通交路内`);
+                else if (index <= previous) errors.push(`${expressLabel}的停靠站需按交路顺序列出且不重复`);
+                else previous = index;
+              });
+              if (express.section_minutes != null
+                && (!Array.isArray(express.section_minutes)
+                  || (express.section_minutes.length > 0 && express.section_minutes.length !== express.stops.length - 1)
+                  || express.section_minutes.some((value) => typeof value !== "number" || !Number.isFinite(value) || value < 0))) {
+                errors.push(`${expressLabel}的 section_minutes 长度或数值无效`);
+              }
+              if (express.skip_minutes != null
+                && (typeof express.skip_minutes !== "number" || !Number.isFinite(express.skip_minutes) || express.skip_minutes < 0)) {
+                errors.push(`${expressLabel}的 skip_minutes 必须是不小于 0 的数字`);
+              }
+              if (express.headway_text != null && typeof express.headway_text !== "string") {
+                errors.push(`${expressLabel}的 headway_text 必须是字符串`);
+              }
+            });
+          }
+        }
+      });
+    }
+  }
+
+  const knownSystemStations = new Set();
+  doc.lines.forEach((line) => {
+    if (!line || typeof line !== "object" || !Array.isArray(line.stations)) return;
+    const system = typeof line.system === "string" ? line.system.trim() : "";
+    line.stations.forEach((station) => {
+      if (typeof station === "string") knownSystemStations.add(`${system}\u0000${station.trim()}`);
+    });
+  });
+
   for (const key of ["transfers", "aliases"]) {
     const groups = doc[key];
     if (groups == null) continue;
@@ -218,8 +390,35 @@ export function validateCityDoc(doc) {
       continue;
     }
     groups.forEach((group, i) => {
-      if (!Array.isArray(group) || group.length < 2) errors.push(`${key} 第 ${i + 1} 组至少需要 2 个站名`);
-      else if (group.some((name) => typeof name !== "string" || !name.trim())) {
+      if (!Array.isArray(group) || group.length < 2) {
+        errors.push(`${key} 第 ${i + 1} 组至少需要 2 个${key === "transfers" ? "站点端点" : "站名"}`);
+      } else if (key === "transfers") {
+        const explicitSystems = new Set();
+        let hasLegacyEndpoint = false;
+        group.forEach((endpoint) => {
+          if (typeof endpoint === "string") {
+            hasLegacyEndpoint = true;
+            if (!endpoint.trim()) errors.push(`${key} 第 ${i + 1} 组包含空站名`);
+            else warnings.push(`${key} 第 ${i + 1} 组仍使用旧格式站名「${endpoint}」`);
+            return;
+          }
+          if (!endpoint || typeof endpoint !== "object" || Array.isArray(endpoint)) {
+            errors.push(`${key} 第 ${i + 1} 组的端点必须是对象`);
+            return;
+          }
+          const station = typeof endpoint.station === "string" ? endpoint.station.trim() : "";
+          const system = typeof endpoint.system === "string" ? endpoint.system.trim() : "";
+          if (!station) errors.push(`${key} 第 ${i + 1} 组的端点缺少 station`);
+          if (!system) errors.push(`${key} 第 ${i + 1} 组的「${station}」端点缺少 system`);
+          else explicitSystems.add(system);
+          if (station && system && !knownSystemStations.has(`${system}\u0000${station}`)) {
+            errors.push(`${key} 第 ${i + 1} 组的端点「${system}|${station}」无法匹配到线路`);
+          }
+        });
+        if (!hasLegacyEndpoint && explicitSystems.size < 2) {
+          errors.push(`${key} 第 ${i + 1} 组的端点必须跨越至少 2 个系统`);
+        }
+      } else if (group.some((name) => typeof name !== "string" || !name.trim())) {
         errors.push(`${key} 第 ${i + 1} 组包含空的站名`);
       }
     });

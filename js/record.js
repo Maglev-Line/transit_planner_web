@@ -46,6 +46,9 @@
       type: "", color: "", color2: "", prefillFrom: "",
     },
   };
+  const history = { current: null, undo: [], redo: [], lastChangeAt: 0, ready: false, restoring: false };
+  const maxHistoryEntries = 100;
+  const historyCoalesceMs = 700;
 
   // ---------------- 小工具 ----------------
 
@@ -86,6 +89,15 @@
     const h = Math.floor(total / 60);
     const m = total % 60;
     return m ? `${h} 小时 ${m} 分` : `${h} 小时`;
+  }
+
+  /** 含时刻表或国铁车次的段落，导出时强调用时。 */
+  function hasTimetable(step) {
+    const type = String(step?.type || "");
+    return type === "national_rail"
+      || type.includes("国铁")
+      || Boolean(step?.use_timetable)
+      || (step?.timetable || []).length > 0;
   }
 
   function typeColor(type) {
@@ -136,6 +148,7 @@
       manual: s.manual === undefined ? !s.line_id : Boolean(s.manual),
       type: String(s.type ?? ""),
       line_name: String(s.line_name ?? s.line ?? ""),
+      system: String(s.system ?? ""),
       run_minutes: num(s.run_minutes),
       stops_text: String(s.stops_text ?? ""),
       color: String(s.color ?? ""),
@@ -152,6 +165,12 @@
       train_no: String(s.train_no ?? s.train ?? ""),
       train_model: String(s.train_model ?? s.model ?? ""),
       extras: (Array.isArray(s.extras) ? s.extras : []).map(normalizeField),
+      ...(s.rail_timetable && typeof s.rail_timetable === "object"
+        ? { rail_timetable: s.rail_timetable }
+        : {}),
+      ...(typeof s.rail_timetable_fetched_at === "string"
+        ? { rail_timetable_fetched_at: s.rail_timetable_fetched_at }
+        : {}),
     };
   }
 
@@ -178,6 +197,72 @@
 
   let saveTimer = null;
 
+  function updateHistoryButtons() {
+    $("btn-rec-undo").disabled = history.undo.length === 0 || history.restoring;
+    $("btn-rec-redo").disabled = history.redo.length === 0 || history.restoring;
+  }
+
+  function resetHistory() {
+    history.current = JSON.stringify(state.record);
+    history.undo = [];
+    history.redo = [];
+    history.lastChangeAt = 0;
+    history.ready = true;
+    updateHistoryButtons();
+  }
+
+  function recordHistoryChange() {
+    if (!history.ready) return;
+    const next = JSON.stringify(state.record);
+    if (next === history.current) return;
+    const now = Date.now();
+    if (!history.lastChangeAt || now - history.lastChangeAt > historyCoalesceMs) {
+      history.undo.push(history.current);
+      if (history.undo.length > maxHistoryEntries) history.undo.shift();
+    }
+    history.current = next;
+    history.lastChangeAt = now;
+    history.redo = [];
+    updateHistoryButtons();
+  }
+
+  async function restoreHistory(source, destination) {
+    if (history.restoring) return;
+    const target = source.pop();
+    if (!target) return;
+    history.restoring = true;
+    updateHistoryButtons();
+    destination.push(JSON.stringify(state.record));
+    if (destination.length > maxHistoryEntries) destination.shift();
+    try {
+      const previousCity = state.city;
+      state.record = JSON.parse(target);
+      history.current = JSON.stringify(state.record);
+      history.lastChangeAt = 0;
+      syncRecordTopbar();
+      if (previousCity !== state.record.city) {
+        await setCity(state.record.city, { silent: true });
+      } else {
+        state.city = state.record.city;
+      }
+      renderAll();
+      scheduleSave();
+      flushSave();
+      history.current = JSON.stringify(state.record);
+    } finally {
+      history.restoring = false;
+      updateHistoryButtons();
+    }
+  }
+
+  function syncRecordTopbar() {
+    $("rec-title").value = state.record.name || "";
+    $("rec-date").value = state.record.date || "";
+    $("rec-note").value = state.record.note || "";
+    $("rec-paid-zone").checked = !!state.record.paid_zone_mode;
+    fillCitySelect();
+  }
+
   function initDraft() {
     D.migrateLegacy();
     const requestedId = new URLSearchParams(location.search).get("id");
@@ -193,18 +278,17 @@
     if (draft.title && !state.record.name) state.record.name = draft.title;
     if (!state.record.date) state.record.date = D.todayISO();
 
-    $("rec-title").value = state.record.name;
-    $("rec-date").value = state.record.date;
-    $("rec-note").value = state.record.note;
-    fillCitySelect();
+    syncRecordTopbar();
 
     markSaved(draft.updatedAt);
     renderAll();
     syncKernelButton();
     if (state.record.city) warmKernel();
+    resetHistory();
   }
 
   function scheduleSave() {
+    recordHistoryChange();
     clearTimeout(saveTimer);
     saveTimer = setTimeout(flushSave, 350);
   }
@@ -294,6 +378,7 @@
 
   async function setCity(name, { silent = false } = {}) {
     state.record.city = name || "";
+    recordHistoryChange();
     state.city = state.record.city;
     $("rec-city").value = state.record.city;
     state.lines = [];
@@ -372,11 +457,14 @@
   function segmentCardHtml(step, index) {
     const duration = durationOf(step);
     const color = step.color || typeColor(step.type);
-    const lineText = [step.line_name || step.line_id, step.train_no].filter(Boolean).join(" · ") || "未命名线路";
+    const lineText = [step.line_name || step.line_id, step.train_no && step.train_no !== step.line_name ? step.train_no : ""]
+      .filter(Boolean).join(" · ") || "未命名线路";
+    const system = step.system || state.lines.find((line) => line.id === step.line_id)?.system || "";
     const extras = (step.extras || []).filter((f) => f.label || f.value);
     const hasMeta = step.price != null || step.note || extras.length;
     const badges = [
       step.service ? `<span class="rec-train rec-express">${esc(serviceName(step))}</span>` : "",
+      system ? `<span class="rec-train">${esc(system)}</span>` : "",
       step.manual ? '<span class="rec-train">手动</span>' : "",
       step.train_model ? `<span class="rec-train">${esc(step.train_model)}</span>` : "",
     ].filter(Boolean).join("");
@@ -551,6 +639,12 @@
     state.record.date = ev.target.value;
     scheduleSave();
   });
+  $("rec-paid-zone").addEventListener("change", (ev) => {
+    state.record.paid_zone_mode = ev.target.checked;
+    scheduleSave();
+  });
+  $("btn-rec-undo").addEventListener("click", () => restoreHistory(history.undo, history.redo));
+  $("btn-rec-redo").addEventListener("click", () => restoreHistory(history.redo, history.undo));
 
   $("rec-note").addEventListener("input", (ev) => {
     state.record.note = ev.target.value;
@@ -744,6 +838,7 @@
       steps: [{
         line_id: line.id, direction_label: $("seg-direction").value, from_station: from, to_station: to,
         manual: false, type: line.type, line_name: line.name, service: dialogService(),
+        system: line.system,
       }],
     });
     if (res.ok && res.segments.length) {
@@ -777,7 +872,7 @@
     $("seg-line-name").value = line.name;
     $("rec-line-candidates").hidden = true;
     $("seg-line-picked").textContent =
-      `${line.name} · ${line.typeLabel} · ${line.headwayText}`
+      `${line.name}${line.system ? ` · ${line.system}` : ""} · ${line.typeLabel} · ${line.headwayText}`
       + (lineServices(line).length ? ` · 含 ${lineServices(line).length} 种快车` : "");
     fillServiceSelect(line, step ? step.service || "" : "");
     fillStationSelects(step ? step.from_station : state.dialog.prefillFrom);
@@ -805,7 +900,7 @@
     }
     $("rec-line-candidates").hidden = res.lines.length === 0;
     $("rec-line-candidates").innerHTML = res.lines
-      .map((ln) => `<option value="${esc(ln.id)}">${esc(ln.name)} · ${esc(ln.typeLabel)} · ${esc(ln.headwayText)}</option>`)
+      .map((ln) => `<option value="${esc(ln.id)}">${esc(ln.name)}${ln.system ? ` · ${esc(ln.system)}` : ""} · ${esc(ln.typeLabel)} · ${esc(ln.headwayText)}</option>`)
       .join("");
   }, 260);
 
@@ -882,6 +977,13 @@
   }
 
   function finishStep(seg) {
+    const previous = state.editing >= 0 ? state.record.steps[state.editing] : null;
+    const keepRailData = previous?.rail_timetable
+      && previous.train_no === $("seg-train").value.trim()
+      && previous.start_time === $("seg-start").value
+      && previous.end_time === $("seg-end").value
+      && previous.from_station === seg.from_station
+      && previous.to_station === seg.to_station;
     return normalizeStep({
       ...seg,
       note: $("seg-note").value.trim(),
@@ -893,6 +995,10 @@
       extras: state.dialogExtras
         .map((f) => ({ label: f.label.trim(), value: f.value.trim() }))
         .filter((f) => f.label || f.value),
+      ...(keepRailData ? {
+        rail_timetable: previous.rail_timetable,
+        rail_timetable_fetched_at: previous.rail_timetable_fetched_at,
+      } : {}),
     });
   }
 
@@ -907,6 +1013,7 @@
         manual: false,
         type: state.dialog.type || line?.type || "",
         line_name: line?.name || "",
+        system: line?.system || "",
         run_minutes: state.dialog.runMinutes,
         stops_text: (state.dialog.stops || []).join("、"),
         color: state.dialog.color || line?.color || "",
@@ -1073,6 +1180,34 @@
     };
   }
 
+  $("btn-rec-import").addEventListener("click", () => $("rec-file-import").click());
+  $("rec-file-import").addEventListener("change", async (ev) => {
+    const file = ev.target.files?.[0];
+    if (!file) return;
+    try {
+      const raw = JSON.parse(await file.text());
+      const data = raw && Array.isArray(raw.steps) ? raw : (raw?.record || raw?.trip);
+      if (!data || typeof data !== "object" || !Array.isArray(data.steps)) {
+        throw new Error("文件中没有找到 steps 数组，可能不是方案或记录文件");
+      }
+      const { kind: _kind, version: _version, exportedAt: _exported, ...recordData } = data;
+      state.record = normalizeRecord(recordData);
+      recordHistoryChange();
+      if (state.city !== state.record.city) await setCity(state.record.city, { silent: true });
+      else state.city = state.record.city;
+      syncRecordTopbar();
+      syncKernelButton();
+      renderAll();
+      scheduleSave();
+      flushSave();
+      toast("已导入 JSON 运转方案");
+    } catch (error) {
+      toast(`导入失败：${error.message}`);
+    } finally {
+      ev.target.value = "";
+    }
+  });
+
   $("btn-switch-plan").addEventListener("click", (ev) => {
     ev.preventDefault();
     flushSave();
@@ -1092,14 +1227,16 @@
       toast("当前没有行程记录可清除");
       return;
     }
-    if (!confirm(`确定清除当前记录的 ${state.record.steps.length} 段行程吗？\n记录名、日期、城市与备注会保留，此操作不可撤销。`)) return;
+    if (!confirm(`确定清除当前记录的 ${state.record.steps.length} 段行程吗？\n记录名、日期、城市与备注会保留，可通过撤销恢复。`)) return;
     state.record.steps = [];
     touch();
     flushSave();
     toast("已清除当前记录");
   });
 
-  $("btn-rec-export").addEventListener("click", () => {
+  $("btn-rec-export").addEventListener("click", () => $("rec-export-dialog").showModal());
+  $("btn-rec-export-json").addEventListener("click", () => {
+    $("rec-export-dialog").close();
     flushSave();
     if (!state.record.steps.length) {
       toast("还没有可导出的行程记录");
@@ -1108,8 +1245,13 @@
     D.downloadJSON(D.safeFileName(state.record.name, DEFAULT_TITLE), exportData());
     toast("已导出数据文件（与规划方案互通）");
   });
+  $("btn-rec-export-pdf").addEventListener("click", () => {
+    $("rec-export-dialog").close();
+    printRecord();
+  });
+  $("rec-export-dialog").querySelector("[data-close-export]").addEventListener("click", () => $("rec-export-dialog").close());
 
-  $("btn-rec-print").addEventListener("click", () => {
+  function printRecord() {
     flushSave();
     if (!state.record.steps.length) {
       toast("还没有可导出的行程记录");
@@ -1125,7 +1267,7 @@
       document.title = savedTitle;
     }, { once: true });
     window.print();
-  });
+  }
 
   function buildPrintSheet() {
     const record = state.record;
@@ -1139,6 +1281,7 @@
         .map((f) => `${f.label || "字段"}：${f.value || ""}`)
         .join("；");
       const detail = [step.note, extras].filter(Boolean).join("；");
+      const emphasizeDuration = hasTimetable(step);
       const lineCell = [step.line_name || step.line_id, step.train_no].filter(Boolean).map(esc).join("<br>")
         + (step.service ? `<br><i>${esc(serviceName(step))}</i>` : "");
       return `<tr>
@@ -1149,26 +1292,30 @@
         <td>${esc(step.start_time || "")}</td>
         <td>${esc(step.to_station || "")}</td>
         <td>${esc(step.end_time || "")}</td>
-        <td>${duration == null ? "—" : esc(formatDuration(duration))}${isOvernight(step) ? "<br>跨天" : ""}</td>
+        <td class="${emphasizeDuration ? "duration-emphasis" : ""}">${duration == null ? "—" : esc(formatDuration(duration))}${isOvernight(step) ? "<br>跨天" : ""}</td>
         <td>${esc(step.train_model || "")}</td>
         <td>${step.price != null ? esc(step.price) : ""}</td>
         <td>${esc(detail)}</td>
       </tr>`;
     }).join("");
 
-    const summary = [
+    const summaryParts = [
       `共 ${stats.count} 段`,
       `乘车 ${formatDuration(stats.totalRun)}`,
       stats.span != null ? `全程 ${formatDuration(stats.span)}` : "",
       stats.price ? `票价 ¥${Number(stats.price.toFixed(2))}` : "",
       record.city ? `线路库 ${record.city}` : "",
-    ].filter(Boolean).join(" · ");
+    ].filter(Boolean).map(esc);
+    const emphasizeTotal = record.steps.some((step) => hasTimetable(step));
+    const summary = emphasizeTotal && summaryParts.length > 1
+      ? `${summaryParts[0]} · <span class="duration-emphasis">${summaryParts[1]}</span> · ${summaryParts.slice(2).join(" · ")}`
+      : summaryParts.join(" · ");
 
     return `
       <div class="rec-sheet">
         <h1>${esc(record.name || DEFAULT_TITLE)}</h1>
         <div class="rec-sub">${esc(record.date || "")}${record.date ? " · " : ""}生成于 ${esc(new Date().toLocaleString("zh-CN"))}</div>
-        <div class="rec-sum">${esc(summary)}</div>
+        <div class="rec-sum">${summary}</div>
         ${fields.length ? `<div class="rec-fields-print">${fields.map((f) => `<span><b>${esc(f.label || "字段")}</b>：${esc(f.value || "")}</span>`).join("　")}</div>` : ""}
         <table class="rec-table">
           <thead>

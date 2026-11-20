@@ -12,6 +12,7 @@
   const LINE_FIELDS = [
     ["name", "线路名称"],
     ["short_name", "线路简称"],
+    ["system", "所属系统"],
     ["type", "交通类型"],
     ["color", "主色"],
     ["color2", "副色"],
@@ -178,7 +179,19 @@
   }
 
   function groupKey(group) {
-    return JSON.stringify([...group].map((x) => String(x)).sort());
+    return JSON.stringify([...group].map((endpoint) => (
+      endpoint && typeof endpoint === "object"
+        ? `${String(endpoint.system || "")}|${String(endpoint.station || "")}`
+        : String(endpoint)
+    )).sort());
+  }
+
+  function groupLabel(group) {
+    return group.map((endpoint) => (
+      endpoint && typeof endpoint === "object"
+        ? `${endpoint.system ? `${endpoint.system}|` : ""}${endpoint.station || ""}`
+        : String(endpoint)
+    )).join(" ↔ ");
   }
 
   function diffGroups(beforeGroups, afterGroups) {
@@ -205,11 +218,24 @@
     return result;
   }
 
-  function buildSummary({ isNew, city, meta, lines, groups, walks }) {
+  function diffSystems(beforeSystems, afterSystems) {
+    const before = new Set((beforeSystems || []).map(String));
+    const after = new Set((afterSystems || []).map(String));
+    return {
+      added: [...after].filter((system) => !before.has(system)),
+      removed: [...before].filter((system) => !after.has(system)),
+    };
+  }
+
+  function buildSummary({ isNew, city, meta, systems, lines, groups, walks }) {
     const parts = [];
     if (isNew) {
       parts.push(`新建城市「${city}」：${lines.counts.addedLines} 条线路`);
+      if (systems.added.length) parts.push(`${systems.added.length} 个线路系统`);
       return parts.join("，");
+    }
+    if (systems.added.length || systems.removed.length) {
+      parts.push(`线路系统 ${systems.added.length + systems.removed.length} 项变更`);
     }
     if (lines.counts.addedLines) parts.push(`新增 ${lines.counts.addedLines} 条线路`);
     if (lines.counts.removedLines) parts.push(`删除 ${lines.counts.removedLines} 条线路`);
@@ -242,9 +268,10 @@
       transfers: diffGroups(b.transfers || [], n.transfers || []),
       aliases: diffGroups(b.aliases || [], n.aliases || []),
     };
+    const systems = diffSystems(b.systems, n.systems);
     const walks = diffWalks(b.external_walks, n.external_walks);
-    const summary = buildSummary({ isNew, city: n.city || b.city || "未命名", meta, lines, groups, walks });
-    return { isNew, meta, lines, groups, walks, summary };
+    const summary = buildSummary({ isNew, city: n.city || b.city || "未命名", meta, systems, lines, groups, walks });
+    return { isNew, meta, systems, lines, groups, walks, summary };
   }
 
   // ---------------- HTML 渲染 ----------------
@@ -279,6 +306,10 @@
     blocks.push(`<p class="diff-summary"><b>${esc(result.summary)}</b></p>`);
 
     if (result.meta.length) blocks.push(fieldsTable(result.meta));
+    const systemBlocks = [];
+    result.systems.added.forEach((system) => systemBlocks.push(`<li class="add">＋ 线路系统：${esc(system)}</li>`));
+    result.systems.removed.forEach((system) => systemBlocks.push(`<li class="del">－ 线路系统：${esc(system)}</li>`));
+    if (systemBlocks.length) blocks.push(`<ul class="diff-ops">${systemBlocks.join("")}</ul>`);
 
     if (result.isNew) {
       result.lines.added.forEach((line) => {
@@ -315,10 +346,10 @@
     }
 
     const groupBlocks = [];
-    [["transfers", "转乘站组"], ["aliases", "同站异名组"]].forEach(([key, label]) => {
+    [["transfers", "转乘站对"], ["aliases", "同站异名组"]].forEach(([key, label]) => {
       const group = result.groups[key];
-      group.added.forEach((g) => groupBlocks.push(`<li class="add">＋ ${esc(label)}：${esc(g.join(" ↔ "))}</li>`));
-      group.removed.forEach((g) => groupBlocks.push(`<li class="del">－ ${esc(label)}：${esc(g.join(" ↔ "))}</li>`));
+      group.added.forEach((g) => groupBlocks.push(`<li class="add">＋ ${esc(label)}：${esc(groupLabel(g))}</li>`));
+      group.removed.forEach((g) => groupBlocks.push(`<li class="del">－ ${esc(label)}：${esc(groupLabel(g))}</li>`));
     });
     if (groupBlocks.length) blocks.push(`<ul class="diff-ops">${groupBlocks.join("")}</ul>`);
 

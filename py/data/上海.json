@@ -2,6 +2,13 @@
   "city": "上海",
   "region": "华东",
   "version": "1.0",
+  "systems": [
+    "地铁系统",
+    "磁浮系统",
+    "松江有轨电车系统",
+    "金山铁路系统",
+    "公交系统"
+  ],
   "lines": [
     {
       "id": "sh_m1",
@@ -86,7 +93,8 @@
           "terminal": "莘庄",
           "reverse": false
         }
-      ]
+      ],
+      "system": "地铁系统"
     },
     {
       "id": "sh_m2",
@@ -177,7 +185,8 @@
           "terminal": "蟠祥路·国家会计学院",
           "reverse": false
         }
-      ]
+      ],
+      "system": "地铁系统"
     },
     {
       "id": "sh_m3",
@@ -264,7 +273,8 @@
           "terminal": "上海南站",
           "reverse": false
         }
-      ]
+      ],
+      "system": "地铁系统"
     },
     {
       "id": "sh_m4",
@@ -348,7 +358,8 @@
           "terminal": null,
           "reverse": true
         }
-      ]
+      ],
+      "system": "地铁系统"
     },
     {
       "id": "sh_m5",
@@ -407,7 +418,8 @@
           "terminal": "莘庄",
           "reverse": false
         }
-      ]
+      ],
+      "system": "地铁系统"
     },
     {
       "id": "sh_m5b",
@@ -458,7 +470,8 @@
           "terminal": "东川路",
           "reverse": false
         }
-      ]
+      ],
+      "system": "地铁系统"
     },
     {
       "id": "sh_m6",
@@ -543,7 +556,8 @@
           "terminal": "港城路",
           "reverse": false
         }
-      ]
+      ],
+      "system": "地铁系统"
     },
     {
       "id": "sh_m7",
@@ -638,7 +652,8 @@
           "terminal": "美兰湖",
           "reverse": false
         }
-      ]
+      ],
+      "system": "地铁系统"
     },
     {
       "id": "sh_m8",
@@ -727,7 +742,8 @@
           "terminal": "市光路",
           "reverse": false
         }
-      ]
+      ],
+      "system": "地铁系统"
     },
     {
       "id": "sh_m9",
@@ -826,7 +842,8 @@
           "terminal": "曹路",
           "reverse": false
         }
-      ]
+      ],
+      "system": "地铁系统"
     },
     {
       "id": "sh_m10",
@@ -923,7 +940,8 @@
           "terminal": "虹桥火车站",
           "reverse": false
         }
-      ]
+      ],
+      "system": "地铁系统"
     },
     {
       "id": "sh_m10b",
@@ -1019,7 +1037,8 @@
           "terminal": "基隆路",
           "reverse": false
         }
-      ]
+      ],
+      "system": "地铁系统"
     },
     {
       "id": "sh_m11",
@@ -1114,7 +1133,8 @@
           "terminal": "嘉定北",
           "reverse": false
         }
-      ]
+      ],
+      "system": "地铁系统"
     },
     {
       "id": "sh_m11b",
@@ -1217,7 +1237,8 @@
           "terminal": "花桥",
           "reverse": false
         }
-      ]
+      ],
+      "system": "地铁系统"
     },
     {
       "id": "sh_m12",
@@ -1310,7 +1331,8 @@
           "terminal": "七莘路",
           "reverse": false
         }
-      ]
+      ],
+      "system": "地铁系统"
     },
     {
       "id": "sh_m13",
@@ -1402,7 +1424,8 @@
           "terminal": "金运路",
           "reverse": false
         }
-      ]
+      ],
+      "system": "地铁系统"
     },
     {
       "id": "sh_m14",
@@ -1491,7 +1514,8 @@
           "terminal": "封浜",
           "reverse": false
         }
-      ]
+      ],
+      "system": "地铁系统"
     },
     {
       "id": "sh_m15",
@@ -1580,7 +1604,8 @@
           "terminal": "顾村公园",
           "reverse": false
         }
-      ]
+      ],
+      "system": "地铁系统"
     },
     {
       "id": "sh_m16",
@@ -1635,7 +1660,36 @@
           "terminal": "龙阳路",
           "reverse": false
         }
-      ]
+      ],
+      "express": [
+        {
+          "id": "rapid",
+          "name": "大站车",
+          "stops": [
+            "龙阳路",
+            "罗山路",
+            "新场",
+            "惠南",
+            "临港大道",
+            "滴水湖"
+          ],
+          "section_minutes": [],
+          "skip_minutes": 0.4,
+          "headway_text": ""
+        },
+        {
+          "id": "direct",
+          "name": "直达车",
+          "stops": [
+            "龙阳路",
+            "滴水湖"
+          ],
+          "section_minutes": [],
+          "skip_minutes": 0.4,
+          "headway_text": ""
+        }
+      ],
+      "system": "地铁系统"
     },
     {
       "id": "sh_m17",
@@ -1692,7 +1746,8 @@
           "terminal": "虹桥火车站",
           "reverse": false
         }
-      ]
+      ],
+      "system": "地铁系统"
     },
     {
       "id": "sh_m18",
@@ -1783,7 +1838,8 @@
           "terminal": "康文路",
           "reverse": false
         }
-      ]
+      ],
+      "system": "地铁系统"
     },
     {
       "id": "sh_sub_airport",
@@ -1826,7 +1882,8 @@
           "terminal": "虹桥2号航站楼",
           "reverse": false
         }
-      ]
+      ],
+      "system": "地铁系统"
     },
     {
       "id": "sh_maglev",
@@ -1859,7 +1916,8 @@
           "terminal": "龙阳路",
           "reverse": false
         }
-      ]
+      ],
+      "system": "磁浮系统"
     },
     {
       "id": "sh_rail_jinshan",
@@ -1906,7 +1964,8 @@
           "terminal": "上海南",
           "reverse": false
         }
-      ]
+      ],
+      "system": "金山铁路系统"
     },
     {
       "id": "sh_tram_t1",
@@ -1981,7 +2040,8 @@
           "terminal": "仓华路",
           "reverse": false
         }
-      ]
+      ],
+      "system": "松江有轨电车系统"
     },
     {
       "id": "sh_tram_t2",
@@ -2084,7 +2144,8 @@
           "terminal": null,
           "reverse": true
         }
-      ]
+      ],
+      "system": "松江有轨电车系统"
     },
     {
       "id": "sh_bus_71",
@@ -2161,34 +2222,81 @@
           "terminal": "延安东路外滩",
           "reverse": false
         }
-      ]
+      ],
+      "system": "公交系统"
     }
   ],
   "external_walks": {},
   "transfers": [
     [
-      "上海南站",
-      "上海南"
+      {
+        "station": "莘庄",
+        "system": "地铁系统"
+      },
+      {
+        "station": "莘庄",
+        "system": "金山铁路系统"
+      }
     ],
     [
-      "上海火车站",
-      "上海"
+      {
+        "station": "龙阳路",
+        "system": "地铁系统"
+      },
+      {
+        "station": "龙阳路",
+        "system": "磁浮系统"
+      }
     ],
     [
-      "虹桥火车站",
-      "上海虹桥"
+      {
+        "station": "浦东1号2号航站楼",
+        "system": "地铁系统"
+      },
+      {
+        "station": "浦东1号2号航站楼",
+        "system": "磁浮系统"
+      }
     ],
     [
-      "上海西站",
-      "上海西"
+      {
+        "station": "松江大学城",
+        "system": "地铁系统"
+      },
+      {
+        "station": "松江大学城",
+        "system": "松江有轨电车系统"
+      }
     ],
     [
-      "上海松江站",
-      "上海松江"
+      {
+        "station": "松江体育中心",
+        "system": "地铁系统"
+      },
+      {
+        "station": "松江体育中心",
+        "system": "松江有轨电车系统"
+      }
     ],
     [
-      "新桥火车站",
-      "新桥"
+      {
+        "station": "上海南站",
+        "system": "地铁系统"
+      },
+      {
+        "station": "上海南",
+        "system": "金山铁路系统"
+      }
+    ],
+    [
+      {
+        "station": "新桥火车站",
+        "system": "松江有轨电车系统"
+      },
+      {
+        "station": "新桥",
+        "system": "金山铁路系统"
+      }
     ]
   ],
   "aliases": []

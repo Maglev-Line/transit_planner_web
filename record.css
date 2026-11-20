@@ -20,8 +20,8 @@
 .record-list-panel { min-height: 240px; }
 .record-side {
   position: sticky;
-  top: 68px;
-  max-height: calc(100vh - 90px);
+  top: 108px;
+  max-height: calc(100vh - 130px);
   overflow: auto;
 }
 .record-side textarea { width: 100%; resize: vertical; }
@@ -173,6 +173,7 @@
   vertical-align: top;
 }
 #rec-print-view .rec-table th { background: #eef1f6; font-weight: 700; }
+#rec-print-view .duration-emphasis { font-weight: 800; text-decoration: underline; text-decoration-thickness: 1.5px; text-underline-offset: 2px; }
 #rec-print-view .rec-note-print {
   margin-top: 8px;
   font-size: 12px;

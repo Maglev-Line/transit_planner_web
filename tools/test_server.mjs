@@ -7,8 +7,10 @@
  * 用法：node tools/test_server.mjs
  */
 import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
 
 import { createApi } from "../netlify/lib/api-core.mjs";
+import { validateCityDoc } from "../netlify/lib/city.mjs";
 
 const ADMIN_TOKEN = "test-admin-token";
 
@@ -41,11 +43,67 @@ function memoryStoreFactory() {
 }
 
 const api = createApi({ getStore: memoryStoreFactory(), adminToken: () => ADMIN_TOKEN });
+const beijingDoc = JSON.parse(await readFile(new URL("../py/data/北京.json", import.meta.url), "utf8"));
+const throughValidation = validateCityDoc(beijingDoc);
+assert.ok(throughValidation.ok, `北京贯通交路应通过服务端校验：${throughValidation.errors.join("；")}`);
+const invalidThroughDoc = structuredClone(beijingDoc);
+invalidThroughDoc.through_services[0].segments[1].from_station = "不存在的站";
+assert.ok(!validateCityDoc(invalidThroughDoc).ok, "不存在衔接站的贯通交路应被服务端拒绝");
+const chongqingDoc = JSON.parse(await readFile(new URL("../py/data/重庆.json", import.meta.url), "utf8"));
+const chongqingThroughValidation = validateCityDoc(chongqingDoc);
+assert.ok(
+  chongqingThroughValidation.ok,
+  `包含环线区段及跨线快车的重庆贯通车应通过服务端校验：${chongqingThroughValidation.errors.join("；")}`,
+);
+const invalidRingDirectionDoc = structuredClone(chongqingDoc);
+invalidRingDirectionDoc.through_services[0].segments[1].reverse = "顺时针";
+assert.ok(
+  !validateCityDoc(invalidRingDirectionDoc).ok,
+  "环线贯通区段的 reverse 必须为布尔值",
+);
+const invalidThroughExpressDoc = structuredClone(chongqingDoc);
+invalidThroughExpressDoc.through_services[0].express[0].skip_minutes = -1;
+assert.ok(
+  !validateCityDoc(invalidThroughExpressDoc).ok,
+  "贯通快车的 skip_minutes 必须为非负数",
+);
+const shanghaiDoc = JSON.parse(await readFile(new URL("../py/data/上海.json", import.meta.url), "utf8"));
+assert.ok(
+  validateCityDoc(shanghaiDoc).ok,
+  "上海线路系统与系统限定的转乘站对应通过服务端校验",
+);
+const incompleteTransferEndpoint = structuredClone(shanghaiDoc);
+incompleteTransferEndpoint.transfers[0][0].system = "";
+assert.ok(
+  !validateCityDoc(incompleteTransferEndpoint).ok,
+  "转乘站对未声明端点系统时应被服务端拒绝",
+);
+const suzhouDoc = JSON.parse(await readFile(new URL("../py/data/苏州.json", import.meta.url), "utf8"));
+assert.ok(
+  validateCityDoc(suzhouDoc).ok,
+  "苏州线路系统分类与转乘站对通过服务端校验",
+);
+assert.deepEqual(
+  new Set(suzhouDoc.systems),
+  new Set(["地铁系统", "有轨电车系统", "智轨系统"]),
+  "苏州只保留地铁、有轨电车和智轨系统",
+);
+assert.ok(
+  suzhouDoc.lines.every((line) => line.type !== "national_rail"),
+  "苏州不应包含国铁线路数据",
+);
+const unlistedLineSystem = structuredClone(suzhouDoc);
+unlistedLineSystem.lines[0].system = "未声明系统";
+assert.ok(
+  !validateCityDoc(unlistedLineSystem).ok,
+  "所属系统未登记在线路系统清单时应被服务端拒绝",
+);
 
-async function call(path, { method = "GET", body, token = "", ip = "10.0.0.1" } = {}) {
+async function call(path, { method = "GET", body, token = "", inboxToken = "", ip = "10.0.0.1" } = {}) {
   const headers = {};
   if (body !== undefined) headers["content-type"] = "application/json";
   if (token) headers["x-admin-token"] = token;
+  if (inboxToken) headers["x-inbox-token"] = inboxToken;
   const response = await api(
     new Request(`http://localhost${path}`, {
       method,
@@ -411,6 +469,152 @@ ok(res.body.announcements.length === 0, "删除后公告列表清空");
 
 res = await call(`/api/announcements/${announcementId}`, { method: "DELETE", token: ADMIN_TOKEN });
 ok(res.status === 404, "删除不存在的公告返回 404");
+
+res = await call("/api/messages", {
+  method: "POST",
+  token: ADMIN_TOKEN,
+  body: { title: "全站站信", body: "所有访客可见。" },
+});
+const broadcastMessageId = res.body.message?.id;
+res = await call("/api/messages");
+ok(
+  res.body.messages.some((item) => item.id === broadcastMessageId && item.scope === "all"),
+  "管理员发布的全站站信对所有访客可见",
+);
+await call(`/api/messages/${broadcastMessageId}`, { method: "DELETE", token: ADMIN_TOKEN });
+
+const approvalInboxToken = "a".repeat(64);
+res = await call("/api/submissions", {
+  method: "POST",
+  inboxToken: approvalInboxToken,
+  ip: "10.0.0.31",
+  body: {
+    city: "站信通过城",
+    kind: "new",
+    summary: "增加站信收件测试城市",
+    doc: cityDoc("站信通过城"),
+  },
+});
+const approvedSubmissionId = res.body.id;
+ok(res.status === 201 && approvedSubmissionId, "提交时可关联匿名浏览器收件凭证");
+
+res = await call(`/api/submissions/${approvedSubmissionId}/approve`, { method: "POST", token: ADMIN_TOKEN });
+ok(res.status === 200, "管理员通过提交");
+
+res = await call("/api/messages", { inboxToken: approvalInboxToken });
+ok(
+  res.body.messages.some((item) => item.scope === "private" && item.title === "提交内容已通过"),
+  "提交通过后向原浏览器发送私密站信",
+);
+
+res = await call("/api/messages", { inboxToken: "c".repeat(64) });
+ok(
+  !res.body.messages.some((item) => item.scope === "private"),
+  "其他浏览器无法读取该用户的私密站信",
+);
+
+res = await call(`/api/submissions/${approvedSubmissionId}`);
+ok(
+  res.status === 200 && !("inboxRecipientHash" in res.body.submission),
+  "匿名公开提交详情不泄露站信收件凭证",
+);
+
+const rejectionInboxToken = "b".repeat(64);
+res = await call("/api/submissions", {
+  method: "POST",
+  inboxToken: rejectionInboxToken,
+  ip: "10.0.0.32",
+  body: {
+    city: "站信驳回城",
+    kind: "new",
+    summary: "增加驳回通知测试城市",
+    doc: cityDoc("站信驳回城"),
+  },
+});
+const rejectedSubmissionId = res.body.id;
+res = await call(`/api/submissions/${rejectedSubmissionId}/reject`, {
+  method: "POST",
+  token: ADMIN_TOKEN,
+  body: { reason: "测试驳回原因" },
+});
+ok(res.status === 200, "管理员驳回提交");
+
+res = await call("/api/messages", { inboxToken: rejectionInboxToken });
+ok(
+  res.body.messages.some((item) => item.scope === "private" && item.body.includes("测试驳回原因")),
+  "驳回后向原浏览器发送包含原因的私密站信",
+);
+
+let scheduleNow = new Date("2026-03-01T10:00:00.000Z");
+const scheduledApi = createApi({
+  getStore: memoryStoreFactory(),
+  adminToken: () => ADMIN_TOKEN,
+  clock: () => new Date(scheduleNow),
+});
+async function callScheduled(path, { method = "GET", body, token = "" } = {}) {
+  const headers = {};
+  if (body !== undefined) headers["content-type"] = "application/json";
+  if (token) headers["x-admin-token"] = token;
+  const response = await scheduledApi(new Request(`http://localhost${path}`, {
+    method,
+    headers,
+    body: body === undefined ? undefined : JSON.stringify(body),
+  }));
+  return { status: response.status, body: await response.json() };
+}
+const scheduledAt = "2026-03-01T10:05:00.000Z";
+res = await callScheduled("/api/messages", {
+  method: "POST",
+  token: ADMIN_TOKEN,
+  body: { title: "定时站信", body: "到时公开", scheduledAt },
+});
+const scheduledMessageId = res.body.message?.id;
+ok(
+  res.status === 201 && res.body.message?.status === "scheduled",
+  "管理员可创建未来定时站信",
+);
+
+res = await callScheduled("/api/messages?includeScheduled=1");
+ok(
+  res.status === 200
+    && res.body.messages.length === 0
+    && res.body.nextPublicationAt === scheduledAt,
+  "定时站信对匿名用户隐藏并返回下一发布时间",
+);
+
+res = await callScheduled("/api/messages?manage=1", { token: ADMIN_TOKEN });
+ok(res.body.messages.length === 0, "管理员默认列表也隐藏定时站信");
+
+res = await callScheduled("/api/messages?manage=1");
+ok(res.status === 403, "匿名用户不能访问全站站信管理列表");
+
+res = await callScheduled("/api/messages?manage=1&includeScheduled=1", { token: ADMIN_TOKEN });
+ok(
+  res.body.messages.some((item) => item.id === scheduledMessageId && item.status === "scheduled"),
+  "管理员可查询未发布的定时站信",
+);
+
+res = await callScheduled("/api/messages", {
+  method: "POST",
+  token: ADMIN_TOKEN,
+  body: { title: "过期站信", body: "无效", scheduledAt: "2026-03-01T09:59:00.000Z" },
+});
+ok(res.status === 400, "过去的发布时间会被拒绝");
+
+res = await callScheduled("/api/messages", {
+  method: "POST",
+  token: ADMIN_TOKEN,
+  body: { title: "无效站信", body: "无效", scheduledAt: "not-a-date" },
+});
+ok(res.status === 400, "无效的发布时间会被拒绝");
+
+scheduleNow = new Date(scheduledAt);
+res = await callScheduled("/api/messages");
+ok(
+  res.body.messages.some((item) => item.id === scheduledMessageId)
+    && res.body.nextPublicationAt === "",
+  "到达计划时间后定时站信自动公开",
+);
 
 let lastStatus = 0;
 for (let i = 0; i < 9; i += 1) {

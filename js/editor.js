@@ -164,6 +164,7 @@
       id: String(line.id ?? ""),
       name: String(line.name ?? ""),
       short_name: String(line.short_name ?? ""),
+      system: String(line.system ?? ""),
       type: String(line.type || "metro"),
       color: String(line.color || "#888888"),
       color2: String(line.color2 || ""),
@@ -206,16 +207,26 @@
   function normalizeDoc(raw, fallbackName) {
     const doc = raw && typeof raw === "object" ? raw : {};
     const groups = (list) => (Array.isArray(list) ? list.map((g) => (Array.isArray(g) ? g.map(String) : [])).filter((g) => g.length) : []);
+    const transferGroups = (list) => (Array.isArray(list) ? list.map((group) => (
+      Array.isArray(group) ? group.map((endpoint) => (
+        typeof endpoint === "string"
+          ? endpoint
+          : { station: String(endpoint?.station ?? ""), system: String(endpoint?.system ?? "") }
+      )) : []
+    )).filter((group) => group.length) : []);
+    const lines = Array.isArray(doc.lines) ? doc.lines.map(normalizeLine) : [];
+    const systems = Array.isArray(doc.systems) ? doc.systems.map(String) : [];
     return {
       ...doc,
       city: String(doc.city || fallbackName || "未命名"),
       region: String(doc.region || ""),
       version: String(doc.version || "1.0"),
-      lines: Array.isArray(doc.lines) ? doc.lines.map(normalizeLine) : [],
+      systems: [...new Set([...systems, ...lines.map((line) => line.system).filter(Boolean)])],
+      lines,
       external_walks: doc.external_walks && typeof doc.external_walks === "object" && !Array.isArray(doc.external_walks)
         ? { ...doc.external_walks }
         : {},
-      transfers: groups(doc.transfers),
+      transfers: transferGroups(doc.transfers),
       aliases: groups(doc.aliases),
     };
   }
@@ -353,6 +364,7 @@
     renderLineList();
     renderWorkspace();
     renderCityMeta();
+    renderSystemMeta();
     renderGroupMeta();
     renderWalkMeta();
     renderValidation();
@@ -440,7 +452,7 @@
         <span class="ed-line-mini">${group.branches.length ? miniMapGroup(group) : miniMap(main)}</span>
         <span class="ed-line-info">
           <span class="ed-line-name">${esc(main.name || "未命名线路")}</span>
-          <span class="ed-line-sub">${esc(typeLabel(main.type))} · ${main.ring ? ringSize(main) : count} 站${main.ring ? " · 环线" : ""}${branchNote}</span>
+          <span class="ed-line-sub">${esc(typeLabel(main.type))}${main.system ? ` · ${esc(main.system)}` : ""} · ${main.ring ? ringSize(main) : count} 站${main.ring ? " · 环线" : ""}${branchNote}</span>
         </span>
         <span class="ed-line-ops">
           <button type="button" class="ghost" data-move="-1" title="上移">↑</button>
@@ -1263,6 +1275,10 @@
           <div class="field"><span>线路 ID（同一城市内唯一）</span><input data-field="id" type="text" value="${esc(line.id)}"></div>
           <div class="field"><span>线路名称</span><input data-field="name" type="text" value="${esc(line.name)}"></div>
           <div class="field"><span>简称</span><input data-field="short_name" type="text" value="${esc(line.short_name)}"></div>
+          <div class="field"><span>所属系统</span><select data-field="system">
+            <option value="">未设置</option>
+            ${(state.doc?.systems || []).map((system) => `<option value="${esc(system)}" ${system === line.system ? "selected" : ""}>${esc(system)}</option>`).join("")}
+          </select></div>
           <div class="field"><span>交通类型</span><select data-field="type">${types.map((key) => `<option value="${esc(key)}" ${key === line.type ? "selected" : ""}>${esc(typeLabel(key))}</option>`).join("")}</select></div>
           <div class="field"><span>运营方</span><input data-field="operator" type="text" value="${esc(line.operator)}"></div>
           <div class="field"><span>标志色</span>
@@ -1386,6 +1402,23 @@
       <div class="hint">数据来源：${esc(originLabel())}</div>`;
   }
 
+  function renderSystemMeta() {
+    const doc = state.doc;
+    if (!doc) {
+      $("system-meta").innerHTML = "";
+      return;
+    }
+    $("system-meta").innerHTML = `
+      <div class="ed-group-block">
+        <div class="hint">管理本城市的线路系统；重命名会同步更新线路和转乘站端点，仍被引用的系统不能删除。</div>
+        ${doc.systems.map((system, i) => `<div class="ed-group-row">
+          <input data-system-index="${i}" type="text" value="${esc(system)}" aria-label="系统名称">
+          <button type="button" data-del-system="${i}" title="删除未使用的系统">✕</button>
+        </div>`).join("")}
+        <button type="button" class="ed-add-btn" data-add-system="1">＋ 添加系统</button>
+      </div>`;
+  }
+
   function splitNames(text) {
     return String(text || "").split(/[、,，;；|/]+/).map((s) => s.trim()).filter(Boolean);
   }
@@ -1398,17 +1431,38 @@
     }
     const block = (kind, label, hint) => {
       const groups = doc[kind] || [];
+      const groupText = (group) => kind === "transfers"
+        ? group.map((endpoint) => typeof endpoint === "string"
+          ? endpoint
+          : `${endpoint.system ? `${endpoint.system}|` : ""}${endpoint.station}`).join("、")
+        : group.join("、");
       return `<div class="ed-group-block">
         <div class="hint"><b>${label}</b>：${hint}</div>
         ${groups.map((group, i) => `<div class="ed-group-row">
-          <input data-group="${kind}" data-index="${i}" type="text" value="${esc(group.join("、"))}" placeholder="站名1、站名2">
+          <input data-group="${kind}" data-index="${i}" type="text" value="${esc(groupText(group))}" placeholder="${kind === "transfers" ? "系统1|站名1、系统2|站名2" : "站名1、站名2"}">
           <button type="button" data-del-group="${kind}" data-index="${i}" title="删除这一组">✕</button>
         </div>`).join("")}
         <button type="button" class="ed-add-btn" data-add-group="${kind}">＋ 添加${label}</button>
       </div>`;
     };
-    $("group-meta").innerHTML = block("transfers", "转乘站组", "同地点、不同付费系统，换乘需出闸")
+    $("group-meta").innerHTML = block("transfers", "转乘站对", "每个端点写成「系统|站名」，只有声明的跨系统站对可转乘")
       + block("aliases", "同站异名", "同一车站、仅名称不同，不出闸");
+  }
+
+  function parseTransferGroup(text, previousGroup = []) {
+    return String(text || "").split(/[、,，;；]+/).map((token) => {
+      const value = token.trim();
+      const separator = value.indexOf("|");
+      if (separator >= 0) {
+        return { system: value.slice(0, separator).trim(), station: value.slice(separator + 1).trim() };
+      }
+      if (previousGroup.some((endpoint) => typeof endpoint === "string" && endpoint === value)) {
+        return value;
+      }
+      return { station: value, system: "" };
+    }).filter((endpoint) => (
+      typeof endpoint === "string" ? endpoint : endpoint.station
+    ));
   }
 
   function renderWalkMeta() {
@@ -2029,18 +2083,79 @@
       touch();
     });
 
+    $("system-meta").addEventListener("change", (ev) => {
+      const input = ev.target.closest("[data-system-index]");
+      if (!input || !state.doc) return;
+      const index = Number(input.dataset.systemIndex);
+      const previous = state.doc.systems[index];
+      const next = input.value.trim();
+      if (!next) {
+        input.value = previous;
+        toast("系统名称不能为空");
+        return;
+      }
+      if (state.doc.systems.some((system, i) => i !== index && system === next)) {
+        input.value = previous;
+        toast("系统名称不能重复");
+        return;
+      }
+      if (next === previous) return;
+      state.doc.systems[index] = next;
+      state.doc.lines.forEach((line) => {
+        if (line.system === previous) line.system = next;
+      });
+      state.doc.transfers.forEach((group) => group.forEach((endpoint) => {
+        if (endpoint && typeof endpoint === "object" && endpoint.system === previous) endpoint.system = next;
+      }));
+      touch();
+      renderAll();
+    });
+    $("system-meta").addEventListener("click", (ev) => {
+      const add = ev.target.closest("[data-add-system]");
+      if (add && state.doc) {
+        let name = "新系统";
+        let suffix = 2;
+        while (state.doc.systems.includes(name)) name = `新系统${suffix++}`;
+        state.doc.systems.push(name);
+        touch();
+        renderAll();
+        return;
+      }
+      const del = ev.target.closest("[data-del-system]");
+      if (!del || !state.doc) return;
+      const index = Number(del.dataset.delSystem);
+      const name = state.doc.systems[index];
+      const usedByLine = state.doc.lines.some((line) => line.system === name);
+      const usedByTransfer = state.doc.transfers.some((group) => group.some(
+        (endpoint) => endpoint && typeof endpoint === "object" && endpoint.system === name,
+      ));
+      if (usedByLine || usedByTransfer) {
+        toast("该系统仍被线路或转乘站引用，不能删除");
+        return;
+      }
+      state.doc.systems.splice(index, 1);
+      touch();
+      renderAll();
+    });
+
     $("group-meta").addEventListener("input", (ev) => {
       const el = ev.target.closest("[data-group]");
       if (!el || !state.doc) return;
       const kind = el.dataset.group;
       const inputs = [...$("group-meta").querySelectorAll(`input[data-group="${kind}"]`)];
-      state.doc[kind] = inputs.map((input) => splitNames(input.value));
+      state.doc[kind] = inputs.map((input) => (
+        kind === "transfers"
+          ? parseTransferGroup(input.value, state.doc[kind][Number(input.dataset.index)])
+          : splitNames(input.value)
+      ));
       touch();
     });
     $("group-meta").addEventListener("click", (ev) => {
       const add = ev.target.closest("[data-add-group]");
       if (add) {
-        state.doc[add.dataset.addGroup].push(["站名1", "站名2"]);
+        state.doc[add.dataset.addGroup].push(add.dataset.addGroup === "transfers"
+          ? [{ station: "站名1", system: "系统1" }, { station: "站名2", system: "系统2" }]
+          : ["站名1", "站名2"]);
         touch();
         renderGroupMeta();
         return;
@@ -2138,7 +2253,7 @@
     line[field] = el.type === "number" ? Number(el.value) : el.value;
     touch();
     renderMap();
-    if (["id", "name", "short_name", "type", "color", "color2"].includes(field)) refreshLineListSoon();
+    if (["id", "name", "short_name", "system", "type", "color", "color2"].includes(field)) refreshLineListSoon();
   }
 
   function onPropsChange(ev) {

@@ -8,6 +8,8 @@
 
   const BASE = "/api";
   const TOKEN_KEY = "transit-planner-web.admin-token";
+  const INBOX_TOKEN_KEY = "transit-planner-web.inbox-token.v1";
+  let memoryInboxToken = "";
 
   function getToken() {
     try { return sessionStorage.getItem(TOKEN_KEY) || ""; } catch { return ""; }
@@ -20,9 +22,32 @@
     } catch { /* 隐私模式下忽略 */ }
   }
 
-  async function request(path, { method = "GET", body } = {}) {
+  function getInboxToken() {
+    try {
+      const saved = localStorage.getItem(INBOX_TOKEN_KEY) || "";
+      if (/^[a-f0-9]{64}$/i.test(saved)) return saved;
+    } catch { /* 隐私模式下使用当前页面内的临时收件凭证 */ }
+    try {
+      const saved = sessionStorage.getItem(INBOX_TOKEN_KEY) || "";
+      if (/^[a-f0-9]{64}$/i.test(saved)) return saved;
+    } catch { /* 当前页面内的临时凭证仍可使用 */ }
+    if (!memoryInboxToken) {
+      const bytes = new Uint8Array(32);
+      window.crypto.getRandomValues(bytes);
+      memoryInboxToken = Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("");
+    }
+    try {
+      localStorage.setItem(INBOX_TOKEN_KEY, memoryInboxToken);
+    } catch {
+      try { sessionStorage.setItem(INBOX_TOKEN_KEY, memoryInboxToken); } catch { /* 当前页面仍可收取站信 */ }
+    }
+    return memoryInboxToken;
+  }
+
+  async function request(path, { method = "GET", body, inboxToken = false } = {}) {
     const headers = { accept: "application/json" };
     if (body !== undefined) headers["content-type"] = "application/json";
+    if (inboxToken) headers["x-inbox-token"] = getInboxToken();
     // 同源接口：有口令就带上，管理员能看到联系方式与隐藏记录；匿名请求会被服务端忽略
     const token = getToken();
     if (token) headers["x-admin-token"] = token;
@@ -77,7 +102,8 @@
 
     submissions: (status = "all") => request(`/submissions${q({ status })}`),
     submission: (id) => request(`/submissions/${encodeURIComponent(id)}`),
-    submit: (payload) => request("/submissions", { method: "POST", body: payload }),
+    submit: (payload) =>
+      request("/submissions", { method: "POST", body: payload, inboxToken: true }),
 
     approve: (id) => request(`/submissions/${encodeURIComponent(id)}/approve`, { method: "POST", body: {} }),
     reject: (id, reason) =>
@@ -91,7 +117,18 @@
 
     rollbacks: () => request("/rollbacks"),
 
-    announcements: () => request("/announcements"),
+    messages: (options = {}) =>
+      request(`/messages${q({
+        manage: options.manage ? "1" : "",
+        includeScheduled: options.includeScheduled ? "1" : "",
+      })}`, { inboxToken: !options.manage }),
+    createMessage: (payload) => request("/messages", { method: "POST", body: payload }),
+    deleteMessage: (id) =>
+      request(`/messages/${encodeURIComponent(id)}`, { method: "DELETE" }),
+
+    // 保留旧接口别名，兼容仍缓存旧版静态页面的访问者。
+    announcements: (options = {}) =>
+      request(`/announcements${options.includeScheduled ? "?includeScheduled=1" : ""}`),
     createAnnouncement: (payload) => request("/announcements", { method: "POST", body: payload }),
     deleteAnnouncement: (id) =>
       request(`/announcements/${encodeURIComponent(id)}`, { method: "DELETE" }),

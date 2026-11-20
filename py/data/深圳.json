@@ -94,8 +94,8 @@
     },
     {
       "id": "szn_m2",
-      "name": "深圳地铁2号线",
-      "short_name": "2号线",
+      "name": "深圳地铁2/8号线",
+      "short_name": "2/8号线",
       "type": "metro",
       "color": "#B8591F",
       "color2": "",
@@ -700,59 +700,6 @@
         {
           "label": "深大丽湖方向",
           "terminal": "深大丽湖",
-          "reverse": false
-        }
-      ]
-    },
-    {
-      "id": "szn_m8",
-      "name": "深圳地铁8号线",
-      "short_name": "8号线",
-      "type": "metro",
-      "color": "#B8591F",
-      "color2": "",
-      "operator": "",
-      "stations": [
-        "莲塘",
-        "梧桐山南",
-        "沙头角",
-        "海山",
-        "盐田港西",
-        "深外高中",
-        "盐田路",
-        "鸿安围",
-        "盐田墟",
-        "大梅沙",
-        "小梅沙",
-        "溪涌"
-      ],
-      "travel_minutes": [
-        4.0,
-        3.0,
-        3.0,
-        3.0,
-        3.0,
-        3.0,
-        3.0,
-        3.0,
-        4.0,
-        4.0,
-        4.0
-      ],
-      "headway_rush": 5,
-      "headway_normal": 9,
-      "first_train": "06:30",
-      "last_train": "23:00",
-      "ring": false,
-      "directions": [
-        {
-          "label": "溪涌方向",
-          "terminal": "溪涌",
-          "reverse": false
-        },
-        {
-          "label": "莲塘方向",
-          "terminal": "莲塘",
           "reverse": false
         }
       ]

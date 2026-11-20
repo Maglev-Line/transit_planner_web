@@ -90,6 +90,48 @@ class ExpressService:
 
 
 @dataclass
+class ThroughSection:
+    """贯通交路使用的一段既有线路区间。"""
+    line_id: str
+    from_station: str
+    to_station: str
+    reverse: bool = False
+
+
+@dataclass
+class ThroughService:
+    """跨越多条线路连续运行的贯通交路。"""
+    id: str
+    name: str
+    segments: list[ThroughSection] = field(default_factory=list)
+    short_name: str = ""
+    type: str = TYPE_METRO
+    color: str = ""
+    color2: str = ""
+    operator: str = ""
+    headway_rush: float = 10.0
+    headway_normal: float = 15.0
+    express: list[ExpressService] = field(default_factory=list)
+
+    @classmethod
+    def from_dict(cls, data: dict) -> "ThroughService":
+        data = dict(data)
+        data["segments"] = [
+            segment if isinstance(segment, ThroughSection) else ThroughSection(**segment)
+            for segment in data.get("segments", [])
+        ]
+        known = {f.name for f in dc_fields(ExpressService)}
+        data["express"] = [
+            service if isinstance(service, ExpressService)
+            else ExpressService(**{k: v for k, v in service.items() if k in known})
+            for service in data.get("express", [])
+            if isinstance(service, (dict, ExpressService))
+        ]
+        allowed = {f.name for f in dc_fields(cls)}
+        return cls(**{k: v for k, v in data.items() if k in allowed})
+
+
+@dataclass
 class Line:
     """一条线路。stations 为有序站表，travel_minutes[i] 为 stations[i]->stations[i+1] 的时长(分钟)。"""
     id: str
@@ -108,6 +150,7 @@ class Line:
     ring: bool = False
     directions: list[Direction] = field(default_factory=list)
     express: list[ExpressService] = field(default_factory=list)  # 快车服务（可空）
+    system: str = ""             # 线路所属系统；空值用于兼容旧数据的单一系统
 
     def __post_init__(self) -> None:
         if not self.directions and len(self.stations) >= 2:
@@ -194,13 +237,14 @@ class City:
     version: str = "1.0"
     lines: list[Line] = field(default_factory=list)
     external_walks: dict[str, float] = field(default_factory=dict)  # "A|B" -> 步行分钟
-    transfers: list[list[str]] = field(default_factory=list)
-    # 转乘站组：同一地点、不同名称、分属不同付费系统（如地铁"上海南站"↔国铁"上海南"），
-    # 换乘必须出闸/换系统，应标记为「转乘」。
+    transfers: list[list["TransferEndpoint"]] = field(default_factory=list)
+    # 转乘站对：每个端点用站名和系统共同定位；空系统仅用于兼容旧格式。
     aliases: list[list[str]] = field(default_factory=list)
     # 同站异名组：同一车站、同一付费系统、仅名称不同（如广州"西塱"↔广佛线"西朗"），
     # 换乘不出闸，按同站换乘（步行 0 分钟）处理。
     line_cities: dict[str, str] = field(default_factory=dict, repr=False)
+    through_services: list[ThroughService] = field(default_factory=list)
+    systems: list[str] = field(default_factory=list)
 
     def line(self, line_id: str) -> Line:
         for ln in self.lines:
@@ -216,23 +260,71 @@ class City:
             "city": self.name,
             "region": self.region,
             "version": self.version,
+            "systems": list(self.systems),
             "lines": [ln.to_dict() for ln in self.lines],
             "external_walks": self.external_walks,
-            "transfers": self.transfers,
+            "transfers": [
+                [
+                    endpoint.station if endpoint.legacy else {
+                        "station": endpoint.station,
+                        "system": endpoint.system,
+                    }
+                    for endpoint in group
+                ]
+                for group in self.transfers
+            ],
             "aliases": self.aliases,
+            "through_services": [asdict(service) for service in self.through_services],
         }
 
     @classmethod
     def from_dict(cls, data: dict) -> "City":
+        systems = data.get("systems")
+        if isinstance(systems, list):
+            systems = list(dict.fromkeys(str(system) for system in systems))
+        else:
+            systems = list(dict.fromkeys(
+                str(line.get("system", "")).strip()
+                for line in data.get("lines", [])
+                if isinstance(line, dict) and str(line.get("system", "")).strip()
+            ))
+        transfers = []
+        for group in data.get("transfers", []):
+            endpoints = []
+            if not isinstance(group, list):
+                continue
+            for endpoint in group:
+                if isinstance(endpoint, dict):
+                    endpoints.append(TransferEndpoint(
+                        station=str(endpoint.get("station", "")),
+                        system=str(endpoint.get("system", "")),
+                        legacy=bool(endpoint.get("legacy", False)),
+                    ))
+                elif isinstance(endpoint, str):
+                    endpoints.append(TransferEndpoint(station=endpoint, legacy=True))
+            transfers.append(endpoints)
         return cls(
             name=data.get("city", "未命名"),
             region=data.get("region", ""),
             version=data.get("version", "1.0"),
             lines=[Line.from_dict(x) for x in data.get("lines", [])],
             external_walks=data.get("external_walks", {}),
-            transfers=data.get("transfers", []),
+            transfers=transfers,
             aliases=data.get("aliases", []),
+            through_services=[
+                ThroughService.from_dict(service)
+                for service in data.get("through_services", [])
+            ],
+            systems=systems,
         )
+
+
+@dataclass
+class TransferEndpoint:
+    """转乘关系中的一个站点，由站名与所属系统共同定位。"""
+    station: str
+    system: str = ""
+    legacy: bool = False
 
 
 def merge_lines(first: Line, second: Line) -> Line:
@@ -247,6 +339,7 @@ def merge_lines(first: Line, second: Line) -> Line:
         id=primary.id,
         name=primary.name or secondary.name,
         short_name=primary.short_name or secondary.short_name,
+        system=primary.system or secondary.system,
         type=primary.type or secondary.type,
         color=color,
         color2=primary.color2 or secondary.color2,
@@ -318,9 +411,117 @@ class CityLibrary:
             raise FileNotFoundError(f"未找到城市线路库：{path}")
         with path.open("r", encoding="utf-8") as f:
             c = City.from_dict(json.load(f))
+        c = self.with_through_services(c)
         if city in self.SHARED_CITY_FILES:
             c.name = city
         return c
+
+    @staticmethod
+    def with_through_services(city: City) -> City:
+        """以派生线路形式展开跨线交路，供规划搜索和线路详情共用。"""
+        if not city.through_services:
+            return city
+
+        expanded = City(
+            name=city.name,
+            region=city.region,
+            version=city.version,
+            lines=list(city.lines),
+            external_walks=dict(city.external_walks),
+            transfers=list(city.transfers),
+            aliases=list(city.aliases),
+            line_cities=dict(city.line_cities),
+            through_services=list(city.through_services),
+            systems=list(city.systems),
+        )
+        for service in expanded.through_services:
+            if not service.id or any(line.id == service.id for line in expanded.lines):
+                raise LineError(f"贯通交路 ID「{service.id}」为空或与现有线路重复")
+            stations: list[str] = []
+            travel_minutes: list[float] = []
+            for section in service.segments:
+                source = next((line for line in expanded.lines if line.id == section.line_id), None)
+                if source is None:
+                    raise LineError(f"贯通交路「{service.name}」引用了不存在的线路「{section.line_id}」")
+                try:
+                    start = source.stations.index(section.from_station)
+                    end = source.stations.index(section.to_station)
+                except ValueError as exc:
+                    raise LineError(
+                        f"贯通交路「{service.name}」区段车站不在线路「{source.name}」内"
+                    ) from exc
+                if start == end:
+                    raise LineError(f"贯通交路「{service.name}」区段起终站不能相同")
+                if source.ring:
+                    count = (
+                        len(source.stations) - 1
+                        if len(source.stations) > 1 and source.stations[0] == source.stations[-1]
+                        else len(source.stations)
+                    )
+                    start %= count
+                    end %= count
+                    sign = -1 if section.reverse else 1
+                    indices = [start]
+                    while indices[-1] != end:
+                        indices.append((indices[-1] + sign) % count)
+                        if len(indices) > count:
+                            raise LineError(f"贯通交路「{service.name}」环线区段无法到达终点")
+                    minute_indices = [
+                        index if sign > 0 else (index - 1) % count
+                        for index in indices[:-1]
+                    ]
+                else:
+                    if section.reverse:
+                        raise LineError(
+                            f"贯通交路「{service.name}」的 reverse 仅适用于环线区段"
+                        )
+                    sign = 1 if end > start else -1
+                    indices = list(range(start, end + sign, sign))
+                    minute_indices = [
+                        index if sign > 0 else index - 1
+                        for index in indices[:-1]
+                    ]
+                segment_stations = [source.stations[index] for index in indices]
+                segment_minutes = [
+                    float(source.travel_minutes[index])
+                    for index in minute_indices
+                    if 0 <= index < len(source.travel_minutes)
+                ]
+                if len(segment_minutes) != len(segment_stations) - 1:
+                    raise LineError(f"贯通交路「{service.name}」区段缺少区间时长")
+                if stations and stations[-1] != segment_stations[0]:
+                    raise LineError(
+                        f"贯通交路「{service.name}」相邻区段未在同一车站衔接"
+                    )
+                stations.extend(segment_stations if not stations else segment_stations[1:])
+                travel_minutes.extend(segment_minutes)
+            if len(stations) < 2:
+                raise LineError(f"贯通交路「{service.name}」至少需要两个连续区段车站")
+            expanded.lines.append(Line(
+                id=service.id,
+                name=service.name,
+                short_name=service.short_name or service.name,
+                system=next(
+                    (source.system for section in service.segments
+                     if (source := next((line for line in expanded.lines if line.id == section.line_id), None))
+                     and source.system),
+                    "",
+                ),
+                type=service.type,
+                color=service.color or "#888888",
+                color2=service.color2,
+                operator=service.operator,
+                stations=stations,
+                travel_minutes=travel_minutes,
+                headway_rush=service.headway_rush,
+                headway_normal=service.headway_normal,
+                directions=[
+                    Direction(label=f"{stations[-1]}方向", terminal=stations[-1]),
+                    Direction(label=f"{stations[0]}方向", terminal=stations[0]),
+                ],
+                express=list(service.express),
+            ))
+        return expanded
 
     @staticmethod
     def _qualify_stations(city: City, names: dict[str, str]) -> None:
@@ -338,7 +539,10 @@ class CityLibrary:
             line.directions = [
                 Direction(
                     label=qualify_label(direction.label),
-                    terminal=names.get(direction.terminal, direction.terminal),
+                    terminal=(
+                        names.get(direction.terminal, direction.terminal)
+                        if direction.terminal is not None else None
+                    ),
                     reverse=direction.reverse,
                 )
                 for direction in line.directions
@@ -346,7 +550,17 @@ class CityLibrary:
             for service in line.express:
                 service.stops = [names.get(station, station) for station in service.stops]
 
-        city.transfers = [[names.get(station, station) for station in group] for group in city.transfers]
+        city.transfers = [
+            [
+                TransferEndpoint(
+                    station=names.get(endpoint.station, endpoint.station),
+                    system=endpoint.system,
+                    legacy=endpoint.legacy,
+                )
+                for endpoint in group
+            ]
+            for group in city.transfers
+        ]
         city.aliases = [[names.get(station, station) for station in group] for group in city.aliases]
         city.external_walks = {
             "|".join(names.get(station, station) for station in key.split("|", 1)): minutes
@@ -380,6 +594,14 @@ class CityLibrary:
         shared_stations = set(self.COMBINED_SHARED_STATIONS.get(key, ()))
 
         for part, c in parts:
+            for line in c.lines:
+                line.system = f"{part}::{line.system or 'default'}"
+                if line.system not in merged.systems:
+                    merged.systems.append(line.system)
+            for group in c.transfers:
+                for endpoint in group:
+                    if endpoint.system:
+                        endpoint.system = f"{part}::{endpoint.system}"
             isolated_names = {
                 station: f"{station}（{part}）"
                 for station, owners in station_owners.items()
@@ -407,6 +629,15 @@ class CityLibrary:
             for grp in c.aliases:
                 if grp not in merged.aliases:
                     merged.aliases.append(grp)
+        for station in shared_stations:
+            endpoints = []
+            for line in merged.lines:
+                if station in line.stations:
+                    endpoint = TransferEndpoint(station=station, system=line.system)
+                    if endpoint not in endpoints:
+                        endpoints.append(endpoint)
+            if len({endpoint.system for endpoint in endpoints}) > 1 and endpoints not in merged.transfers:
+                merged.transfers.append(endpoints)
         return merged
 
     def _shared_siblings(self, city: str) -> tuple[str, ...]:
@@ -438,6 +669,8 @@ class CityLibrary:
         transfers += [g for g in city.transfers if g not in transfers]
         aliases = list(existing.aliases)
         aliases += [g for g in city.aliases if g not in aliases]
+        systems = list(existing.systems)
+        systems += [system for system in city.systems if system not in systems]
         walks = dict(existing.external_walks)
         walks.update(city.external_walks)
         return City(
@@ -448,6 +681,7 @@ class CityLibrary:
             external_walks=walks,
             transfers=transfers,
             aliases=aliases,
+            systems=systems,
         )
 
     def save(self, city: City) -> None:
@@ -501,8 +735,8 @@ class Step:
     timetable: list = field(default_factory=list)  # 时刻表：[[车次, 发时, 到时], ...]
     use_timetable: bool = False       # 按时刻表乘坐列车（勾选后启用时刻表编辑）
     price: float | None = None        # 票价(元)，手动输入
-    transfer: bool | None = None      # 跨付费区转乘（转乘）：上车前需出闸/换系统。
-                                     # None=自动（按数据中的转乘站组判定）；True/False=用户强制指定。
+    transfer: bool | None = None      # 跨系统转乘（兼容手动强制指定）。
+                                     # None=自动；True/False=用户强制指定。
     service: str = ""                 # 车种（线路 express 服务 id）；空串 = 各站停
     start_time: str = ""              # 实际乘车时刻（运转记录用，规划忽略）
     end_time: str = ""                # 实际到达时刻（运转记录用，规划忽略）
@@ -580,7 +814,7 @@ class Trip:
     city: str = "上海"
     note: str = ""
     transfer_walk_default: float = 5.0   # 默认换乘/站外步行分钟
-    paid_zone_mode: bool = False         # 付费区模式：按进闸站→出闸站计费，跨付费区转车标记「转乘」
+    paid_zone_mode: bool = False         # 付费区模式：按进闸站→出闸站计费，跨系统转车开启新付费区
     steps: list[Step] = field(default_factory=list)
     fields: list = field(default_factory=list)  # 整次运转自定义字段（运转记录用）
 

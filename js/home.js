@@ -11,16 +11,18 @@
 
   let kind = "plan";
 
-  const ANN_READ_KEY = "transit-planner-web.announcements-read.v1";
-  const annState = { items: [], offline: false, read: loadReadIds() };
+  const MESSAGE_READ_KEY = "transit-planner-web.announcements-read.v1";
+  const messageState = { items: [], offline: false, read: loadReadIds() };
+  const closingDialogs = new WeakMap();
+  let messageRefreshTimer = 0;
 
   D.migrateLegacy();
 
-  // ---------------- 公告 ----------------
+  // ---------------- 站信 ----------------
 
   function loadReadIds() {
     try {
-      const raw = JSON.parse(localStorage.getItem(ANN_READ_KEY) || "[]");
+      const raw = JSON.parse(localStorage.getItem(MESSAGE_READ_KEY) || "[]");
       return new Set(Array.isArray(raw) ? raw.filter((id) => typeof id === "string") : []);
     } catch {
       return new Set();
@@ -29,87 +31,180 @@
 
   function saveReadIds() {
     try {
-      localStorage.setItem(ANN_READ_KEY, JSON.stringify([...annState.read].slice(-200)));
+      localStorage.setItem(MESSAGE_READ_KEY, JSON.stringify([...messageState.read].slice(-200)));
     } catch { /* 隐私模式下忽略 */ }
   }
 
-  async function loadAnnouncements() {
+  async function loadMessages() {
     if (!window.DataApi) return;
-    const res = await DataApi.announcements();
+    const res = await DataApi.messages();
     if (!res.ok) {
-      annState.items = [];
-      annState.offline = Boolean(res.offline);
-      renderAnnouncementBadge();
+      scheduleMessageRefresh("");
+      messageState.items = [];
+      messageState.offline = Boolean(res.offline);
+      renderMessageBadge();
       return;
     }
-    annState.items = Array.isArray(res.announcements) ? res.announcements : [];
-    annState.offline = false;
-    renderAnnouncementBadge();
+    scheduleMessageRefresh(res.nextPublicationAt);
+    messageState.items = Array.isArray(res.messages) ? res.messages : [];
+    messageState.offline = false;
+    renderMessageBadge();
   }
 
-  function renderAnnouncementBadge() {
-    const unread = annState.items.filter((item) => !annState.read.has(item.id)).length;
-    const badge = $("ann-badge");
+  function scheduleMessageRefresh(nextPublicationAt) {
+    if (messageRefreshTimer) window.clearTimeout(messageRefreshTimer);
+    messageRefreshTimer = 0;
+    const publishTime = Date.parse(nextPublicationAt || "");
+    if (!Number.isFinite(publishTime)) return;
+    const delay = Math.max(0, publishTime - Date.now() + 100);
+    messageRefreshTimer = window.setTimeout(() => {
+      messageRefreshTimer = 0;
+      loadMessages();
+      window.addEventListener("focus", loadMessages);
+    }, Math.min(delay, 2147483647));
+  }
+
+  function renderMessageBadge() {
+    const unread = messageState.items.filter((item) => !messageState.read.has(item.id)).length;
+    const badge = $("message-badge");
     badge.textContent = String(unread);
     badge.hidden = unread === 0;
-    $("btn-announcements").title = unread
-      ? `${unread} 条未读公告`
-      : (annState.items.length ? "查看公告" : "暂无公告");
+    $("btn-messages").title = unread
+      ? `${unread} 条未读站信`
+      : (messageState.items.length ? "查看站信" : "暂无站信");
   }
 
-  function formatAnnouncementTime(iso) {
+  function formatMessageTime(iso) {
     const date = new Date(iso);
     return Number.isNaN(date.getTime()) ? String(iso || "") : date.toLocaleString("zh-CN", { hour12: false });
   }
 
-  function renderAnnouncementList() {
-    const list = $("ann-list");
-    if (!annState.items.length) {
-      $("ann-sub").textContent = "";
-      list.innerHTML = annState.offline
-        ? '<p class="empty-hint">公告服务未启用。</p>'
-        : '<p class="empty-hint">暂无公告。</p>';
+  function renderMessageList() {
+    const list = $("messages-list");
+    if (!messageState.items.length) {
+      $("messages-sub").textContent = "";
+      list.innerHTML = messageState.offline
+        ? '<p class="empty-hint">站信服务未启用。</p>'
+        : '<p class="empty-hint">暂无站信。</p>';
       return;
     }
-    $("ann-sub").textContent = `共 ${annState.items.length} 条`;
-    list.innerHTML = annState.items.map((item) => {
+    $("messages-sub").textContent = `共 ${messageState.items.length} 条`;
+    list.innerHTML = messageState.items.map((item) => {
       const level = ["info", "important", "warning"].includes(item.level) ? item.level : "info";
-      const label = { info: "公告", important: "重要", warning: "提醒" }[level];
+      const label = item.scope === "private"
+        ? "审核通知"
+        : { info: "全站站信", important: "重要站信", warning: "提醒站信" }[level];
       return `<article class="ann-item ${level}">
         <div class="ann-item-head">
           <span class="ann-level">${label}</span>
           <b>${esc(item.title)}</b>
-          <span class="ann-time">${esc(formatAnnouncementTime(item.publishedAt))}</span>
+          <span class="ann-time">${esc(formatMessageTime(item.publishedAt))}</span>
         </div>
         <div class="ann-body">${esc(item.body)}</div>
       </article>`;
     }).join("");
   }
 
-  function markAnnouncementsRead() {
-    if (!annState.items.length) return;
-    for (const item of annState.items) annState.read.add(item.id);
+  function markMessagesRead() {
+    if (!messageState.items.length) return;
+    for (const item of messageState.items) messageState.read.add(item.id);
     saveReadIds();
-    renderAnnouncementBadge();
+    renderMessageBadge();
   }
 
-  async function openAnnouncements() {
-    renderAnnouncementList();
-    $("ann-dialog").showModal();
-    await loadAnnouncements();
-    if (!$("ann-dialog").open) return;
-    renderAnnouncementList();
-    markAnnouncementsRead();
+  function showAnimatedDialog(dialog) {
+    const pending = closingDialogs.get(dialog);
+    if (pending) {
+      clearTimeout(pending.timer);
+      dialog.removeEventListener("animationend", pending.onEnd);
+      closingDialogs.delete(dialog);
+    }
+    dialog.classList.remove("is-closing");
+    if (!dialog.open) dialog.showModal();
   }
 
-  $("btn-announcements").addEventListener("click", openAnnouncements);
-  $("btn-ann-close").addEventListener("click", () => $("ann-dialog").close());
-  $("btn-ann-ok").addEventListener("click", () => $("ann-dialog").close());
-  $("ann-dialog").addEventListener("click", (ev) => {
-    if (ev.target === $("ann-dialog")) $("ann-dialog").close();
+  function closeAnimatedDialog(dialog) {
+    if (!dialog.open || dialog.classList.contains("is-closing")) return;
+    dialog.classList.add("is-closing");
+
+    const finish = () => {
+      const pending = closingDialogs.get(dialog);
+      if (pending) clearTimeout(pending.timer);
+      dialog.removeEventListener("animationend", onEnd);
+      closingDialogs.delete(dialog);
+      if (dialog.open) dialog.close();
+      dialog.classList.remove("is-closing");
+    };
+    const onEnd = (event) => {
+      if (event.target === dialog && event.animationName === "home-dialog-exit") finish();
+    };
+    dialog.addEventListener("animationend", onEnd);
+
+    const duration = getComputedStyle(dialog).animationDuration.split(",").pop().trim();
+    const durationMs = Number.parseFloat(duration) * (duration.endsWith("ms") ? 1 : 1000);
+    const timer = setTimeout(finish, Number.isFinite(durationMs) ? durationMs + 80 : 260);
+    closingDialogs.set(dialog, { timer, onEnd });
+  }
+
+  async function openMessages() {
+    renderMessageList();
+    showAnimatedDialog($("messages-dialog"));
+    await loadMessages();
+    if (!$("messages-dialog").open || $("messages-dialog").classList.contains("is-closing")) return;
+    renderMessageList();
+    markMessagesRead();
+  }
+
+  $("btn-messages").addEventListener("click", openMessages);
+  $("btn-messages-close").addEventListener("click", () => closeAnimatedDialog($("messages-dialog")));
+  $("btn-messages-ok").addEventListener("click", () => closeAnimatedDialog($("messages-dialog")));
+  $("messages-dialog").addEventListener("click", (ev) => {
+    if (ev.target === $("messages-dialog")) closeAnimatedDialog($("messages-dialog"));
+  });
+  $("messages-dialog").addEventListener("cancel", (ev) => {
+    ev.preventDefault();
+    closeAnimatedDialog($("messages-dialog"));
   });
 
-  loadAnnouncements();
+  let guideLoaded = false;
+  let guideLoading = false;
+
+  async function loadGuide() {
+    if (guideLoaded || guideLoading) return;
+    guideLoading = true;
+    const preview = $("readme-preview");
+    preview.innerHTML = '<p class="hint">正在加载说明…</p>';
+    try {
+      if (!window.MarkdownPreview) throw new Error("Markdown 渲染器未加载");
+      const response = await fetch(new URL("README.md", document.baseURI), { cache: "no-cache" });
+      if (!response.ok) throw new Error(`读取 README 失败（HTTP ${response.status}）`);
+      preview.innerHTML = window.MarkdownPreview.render(await response.text());
+      guideLoaded = true;
+    } catch (error) {
+      preview.innerHTML = `<p>说明暂时无法加载：${esc(error.message || error)}</p>
+        <button type="button" class="ghost" data-guide-retry>重新加载</button>`;
+    } finally {
+      guideLoading = false;
+    }
+  }
+
+  $("btn-guide").addEventListener("click", () => {
+    showAnimatedDialog($("readme-dialog"));
+    loadGuide();
+  });
+  $("btn-guide-close").addEventListener("click", () => closeAnimatedDialog($("readme-dialog")));
+  $("readme-dialog").addEventListener("click", (ev) => {
+    if (ev.target === $("readme-dialog")) closeAnimatedDialog($("readme-dialog"));
+  });
+  $("readme-dialog").addEventListener("cancel", (ev) => {
+    ev.preventDefault();
+    closeAnimatedDialog($("readme-dialog"));
+  });
+  $("readme-preview").addEventListener("click", (ev) => {
+    if (ev.target.closest("[data-guide-retry]")) loadGuide();
+  });
+
+  loadMessages();
 
   // ---------------- 弹窗 ----------------
 

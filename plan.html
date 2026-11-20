@@ -22,38 +22,47 @@
   <div id="app" hidden>
     <div class="topstack">
       <header class="topbar">
-        <a class="home-nav" href="index.html" title="返回首页">首页</a>
-        <div class="brand">规划模式</div>
-        <span class="draft-chip" id="draft-chip" title="当前规划会自动保存，可在首页「最近」中找回">草稿已自动保存</span>
-
-        <label>城市
-        <select id="city-select" title="选择城市线路库；也可选「纯手动」不使用线路库"></select>
-      </label>
-
-      <label>方案名 <input id="trip-name" type="text" size="14" placeholder="我的运转方案"></label>
-      <label>日期 <input id="trip-date" type="date"></label>
-
-      <label class="check" title="不出闸的连续行程视为一段付费区，票价按进闸→出闸一次计费">
-        <input type="checkbox" id="paid-zone"> 付费区模式
-      </label>
-      <label title="段间未单独指定的换乘/站外步行分钟；同站换乘自动记 0">
-        默认换乘步行 <input id="walk-default" type="number" min="0" step="1" value="5"> 分
-      </label>
-
-      <div class="spacer"></div>
-      <a class="btn-link" id="btn-switch-record" href="record.html" title="切换到记录模式，并继承当前已规划行程">
-        <img class="ico" src="assets/icons/switch.svg" alt=""> 切换为记录模式
-      </a>
-      <a class="btn-link" id="btn-editor" href="editor.html" title="编辑城市线路数据、提交审核">
-        数据工坊
-      </a>
-      <button id="btn-import" title="载入本地规划方案文件"><img class="ico" src="assets/icons/folder.svg" alt=""> 导入方案</button>
-      <input type="file" id="file-import" accept=".json,application/json" hidden>
-      <button id="btn-export" title="保存为方案文件"><span class="ico ico-mono" style="--icon:url(assets/icons/download.svg)" aria-hidden="true"></span> 导出方案</button>
-      <button id="btn-clear" class="danger top-delete" title="一键清除当前方案的全部行程段（城市与方案设置保留）">清空规划</button>
-      <button id="btn-print" class="primary" title="生成 A4 运转图纸并调用打印（可选另存为 PDF）"><span class="ico ico-mono" style="--icon:url(assets/icons/download.svg)" aria-hidden="true"></span> 导出图纸 (PDF)</button>
+        <div class="topbar-row topbar-row-primary">
+          <a class="home-nav" href="index.html" title="返回首页">首页</a>
+          <div class="brand">规划模式</div>
+          <label>城市
+            <select id="city-select" title="选择城市线路库；也可选「纯手动」不使用线路库"></select>
+          </label>
+          <label>方案名 <input id="trip-name" type="text" size="14" placeholder="我的运转方案"></label>
+          <label>日期 <input id="trip-date" type="date"></label>
+          <label class="check" title="不出闸的连续行程视为一段付费区，票价按进闸→出闸一次计费">
+            <input type="checkbox" id="paid-zone"> 付费区模式
+          </label>
+          <span class="draft-chip" id="draft-chip" title="当前规划会自动保存，可在首页「最近」中找回">草稿已自动保存</span>
+        </div>
+        <nav class="topbar-row topbar-row-actions" aria-label="规划操作">
+          <a class="btn-link" id="btn-switch-record" href="record.html" aria-label="切换到记录模式" title="切换到记录模式，并继承当前已规划行程">
+            <span class="ico ico-mono" style="--icon:url(assets/icons/switch.svg)" aria-hidden="true"></span>
+          </a>
+          <button id="btn-import" aria-label="导入 JSON" title="导入 JSON 规划或记录文件"><span class="ico ico-mono" style="--icon:url(assets/icons/upload.svg)" aria-hidden="true"></span></button>
+          <input type="file" id="file-import" accept=".json,application/json" hidden>
+          <button id="btn-export" aria-label="导出" aria-haspopup="dialog" aria-controls="export-dialog" title="选择导出 JSON 或 PDF"><span class="ico ico-mono" style="--icon:url(assets/icons/download.svg)" aria-hidden="true"></span></button>
+          <button id="btn-clear" class="danger top-delete" aria-label="清空规划" title="清空全部行程段，可通过撤销恢复"><span class="ico ico-mono" style="--icon:url(assets/icons/trash.svg)" aria-hidden="true"></span></button>
+          <button id="btn-undo" type="button" aria-label="撤销" title="撤销上一步" disabled><span class="ico ico-mono" style="--icon:url(assets/icons/undo.svg)" aria-hidden="true"></span></button>
+          <button id="btn-redo" type="button" aria-label="重做" title="重做上一步" disabled><span class="ico ico-mono" style="--icon:url(assets/icons/redo.svg)" aria-hidden="true"></span></button>
+          <a class="btn-link topbar-editor-link" id="btn-editor" href="editor.html" aria-label="数据工坊" title="编辑城市线路数据、提交审核">
+            <span class="ico ico-mono" style="--icon:url(assets/icons/edit.svg)" aria-hidden="true"></span>
+          </a>
+        </nav>
       </header>
     </div>
+
+    <dialog id="export-dialog" class="export-dialog" aria-labelledby="export-dialog-title">
+      <div class="modal-head">
+        <h3 id="export-dialog-title">选择导出格式</h3>
+        <div class="spacer"></div>
+        <button type="button" class="ghost" data-close-export title="关闭">✕</button>
+      </div>
+      <div class="modal-body export-options">
+        <button type="button" id="btn-export-json"><span class="ico ico-mono" style="--icon:url(assets/icons/download.svg)" aria-hidden="true"></span> 导出JSON</button>
+        <button type="button" id="btn-export-pdf"><span class="ico ico-mono" style="--icon:url(assets/icons/download.svg)" aria-hidden="true"></span> 导出PDF</button>
+      </div>
+    </dialog>
 
     <main>
       <!-- 左：线路库 -->
@@ -165,7 +174,38 @@
           <fieldset>
             <legend>录入方式</legend>
             <label class="check"><input type="radio" name="mode" id="mode-db" value="db" checked> 数据库线路（自动算时长与经停站）</label>
+            <label class="check"><input type="radio" name="mode" id="mode-rail" value="rail"> 国铁车次查询（RailKale: Next）</label>
             <label class="check"><input type="radio" name="mode" id="mode-manual" value="manual"> 手动自选（自定义线路名 / 时长 / 经停站）</label>
+          </fieldset>
+
+          <!-- 国铁车次查询 -->
+          <fieldset id="rail-fields" hidden>
+            <legend>国铁车次查询</legend>
+            <p class="hint rail-query-note">输入车站名称和乘车日期，通过 RailKale: Next 查询车次。选中车次并点击「确认并加入」后，才会读取并缓存该车次的完整经停时刻表。每个接口每分钟最多请求 3 次。</p>
+            <div class="rail-station-row">
+              <div class="field">
+                <span>起点站</span>
+                <input id="rail-from" type="text" autocomplete="off" placeholder="如：北京南">
+              </div>
+              <button type="button" class="ghost rail-swap" id="btn-rail-swap" title="交换起点站和终点站" aria-label="交换起点站和终点站">⇄</button>
+              <div class="field">
+                <span>终点站</span>
+                <input id="rail-to" type="text" autocomplete="off" placeholder="如：上海虹桥">
+              </div>
+            </div>
+            <div class="grid2">
+              <div class="field">
+                <span>乘车日期</span>
+                <input id="rail-date" type="date">
+              </div>
+              <div class="field rail-query-action">
+                <span>&nbsp;</span>
+                <button type="button" class="primary" id="btn-rail-query">查询车次</button>
+              </div>
+            </div>
+            <div class="hint" id="rail-query-status" aria-live="polite"></div>
+            <div id="rail-query-results" class="rail-query-results" aria-live="polite" hidden></div>
+            <div id="rail-selected" class="rail-selected" aria-live="polite" hidden></div>
           </fieldset>
 
           <!-- 数据库线路 -->
@@ -258,7 +298,7 @@
           </fieldset>
 
           <!-- 时刻表 -->
-          <fieldset>
+          <fieldset id="timetable-fields">
             <legend>国铁时刻表（选填）</legend>
             <label class="check"><input type="checkbox" id="use-timetable"> 按时刻表乘坐列车（勾选后自动按发时/到时计算运行时长）</label>
             <div id="timetable-rows" style="margin-top:8px"></div>
@@ -332,7 +372,7 @@
 
         <div class="smart-actions">
           <button type="button" class="primary" id="btn-smart-run">生成方案</button>
-          <span class="hint">按换乘次数与时间综合排序，规划将覆盖所有勾选目标。</span>
+          <span class="hint">按换乘、转乘次数与时间综合排序，规划将覆盖所有勾选目标。</span>
         </div>
 
         <div class="err" id="smart-error" hidden></div>

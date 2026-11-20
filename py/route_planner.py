@@ -7,7 +7,7 @@
 搜索模型：
 - 节点 = （线路, 站表下标）；
 - 乘车边 = 线路上相邻两站，耗时取 travel_minutes；
-- 换乘边 = 同一车站（含同站异名）换乘耗时 0；跨付费系统转乘按默认步行分钟计；
+- 换乘边 = 同一系统内同站或同站异名换乘耗时 0；跨系统转乘按默认步行分钟计；
 - 状态额外记录已换乘次数，从而得到「不同换乘次数下的最短时间」，
   再按 (时间 + 换乘折算分钟 × 换乘次数) 排序，并提供最快 / 少换乘等方案。
 """
@@ -33,7 +33,8 @@ class _Edge:
     end: tuple[str, int]
     minutes: float
     sign: int = 0                   # 乘车边：+1 沿站表向前，-1 沿站表向后
-    is_transfer: bool = False       # 换乘边是否跨付费系统
+    is_transfer: bool = False       # 换乘边是否跨线路系统
+    service: str = ""               # 快车服务 ID；空串表示各站停
 
 
 _Last = tuple[str, int]
@@ -55,19 +56,29 @@ def _unique_count(line: Line) -> int:
     return n
 
 
+def _through_service_ids(city: City) -> set[str]:
+    return {service.id for service in city.through_services}
+
+
 def _station_lines(city: City) -> dict[str, list[tuple[Line, int]]]:
     """站名 → 停靠线路与站表下标（环线闭合站只保留一个下标）。"""
     out: dict[str, list[tuple[Line, int]]] = {}
+    through_ids = _through_service_ids(city)
     for line in city.lines:
+        if line.id in through_ids:
+            continue
         for idx in range(_unique_count(line)):
             out.setdefault(line.stations[idx], []).append((line, idx))
     return out
 
 
 def _ride_edges(city: City) -> dict[tuple[str, int], list[_Edge]]:
-    """构建相邻车站之间的双向乘车边。"""
+    """构建普通车和快车停靠站之间的双向乘车边。"""
     edges: dict[tuple[str, int], list[_Edge]] = {}
+    through_ids = _through_service_ids(city)
     for line in city.lines:
+        if line.id in through_ids:
+            continue
         count = _unique_count(line)
         if count < 2:
             continue
@@ -92,6 +103,18 @@ def _ride_edges(city: City) -> dict[tuple[str, int], list[_Edge]]:
                 start, end = (line.id, i), (line.id, i + 1)
                 edges.setdefault(start, []).append(_Edge("ride", start, end, minutes, 1))
                 edges.setdefault(end, []).append(_Edge("ride", end, start, minutes, -1))
+            for service in line.express:
+                for start_station, end_station in zip(service.stops, service.stops[1:]):
+                    start_index = line.station_index(start_station)
+                    end_index = line.station_index(end_station)
+                    minutes = engine.express_section_minutes(line, service, start_station, end_station)
+                    start, end = (line.id, start_index), (line.id, end_index)
+                    edges.setdefault(start, []).append(
+                        _Edge("ride", start, end, minutes, 1, service=service.id)
+                    )
+                    edges.setdefault(end, []).append(
+                        _Edge("ride", end, start, minutes, -1, service=service.id)
+                    )
     return edges
 
 
@@ -99,9 +122,6 @@ def _transfer_options(city: City, station_lines: dict[str, list[tuple[Line, int]
                       line_by_id: dict[str, Line], default_walk: float):
     """返回一个函数：节点 → 可换乘的边。结果按节点缓存。"""
     cache: dict[tuple[str, int], list[_Edge]] = {}
-    transfer_groups = [set(group) for group in city.transfers]
-    alias_groups = [set(group) for group in city.aliases]
-
     def options(node: tuple[str, int]) -> list[_Edge]:
         if node in cache:
             return cache[node]
@@ -117,23 +137,17 @@ def _transfer_options(city: City, station_lines: dict[str, list[tuple[Line, int]
             if prev is None or (minutes, is_transfer) < (prev.minutes, prev.is_transfer):
                 best[target] = _Edge("transfer", node, target, minutes, 0, is_transfer)
 
-        alias_names = {station}
-        for group in alias_groups:
-            if station in group:
-                alias_names |= group
+        alias_names = set(engine.alias_names(city, station, line.system))
         for name in alias_names:
             for other_line, other_idx in station_lines.get(name, ()):
-                if other_line.id != line.id:
+                if other_line.id != line.id and other_line.system == line.system:
                     add(other_line, other_idx, 0.0, False)
-        for group in transfer_groups:
-            if station not in group:
-                continue
-            for name in group:
-                if name == station:
+        for endpoint in engine.transfer_targets(city, station, line.system):
+            for other_line, other_idx in station_lines.get(endpoint.station, ()):
+                if endpoint.system and other_line.system != endpoint.system:
                     continue
-                for other_line, other_idx in station_lines.get(name, ()):
-                    if other_line.id != line.id:
-                        add(other_line, other_idx, default_walk, True)
+                if other_line.id != line.id:
+                    add(other_line, other_idx, default_walk, True)
         cache[node] = list(best.values())
         return cache[node]
 
@@ -152,15 +166,13 @@ def _dijkstra(starts: Iterable[tuple[str, int]], ride_edges: dict, transfer_opti
     - labels 用于继续搜索；
     - ride_labels 只记录「最后一步是乘车」的标签，供方案终点使用。
     """
-    Last = tuple[str, int]
-    LabelKey = tuple[tuple[str, int], int, Last]
-    labels: dict[LabelKey, _Label] = {}
-    ride_labels: dict[LabelKey, _Label] = {}
-    heap: list[tuple[float, int, tuple[str, int], int, Last]] = []
+    labels: dict[_LabelKey, _Label] = {}
+    ride_labels: dict[_LabelKey, _Label] = {}
+    heap: list[tuple[float, int, tuple[str, int], int, _Last]] = []
     counter = itertools.count()
 
     def push(node: tuple[str, int], transfers: int, minutes: float,
-             prev: LabelKey | None, edge: _Edge | None, last: Last) -> None:
+             prev: _LabelKey | None, edge: _Edge | None, last: _Last) -> None:
         # 先记录乘车终点，即使该状态随后被同时间的换乘标签占位
         if edge is not None and edge.kind == "ride":
             ride_key = (node, transfers, last)
@@ -270,8 +282,20 @@ def _path_to_legs(city: City, line_by_id: dict[str, Line], start_node: tuple[str
         if edge.kind == "ride":
             line = line_by_id[edge.start[0]]
             if current is not None and current["line"].id == line.id and current["sign"] == edge.sign:
-                current["indices"].append(edge.end[1])
-                current["minutes"] += edge.minutes
+                if current["service"] == edge.service:
+                    current["indices"].append(edge.end[1])
+                    current["minutes"] += edge.minutes
+                else:
+                    raw.append(current)
+                    current = {
+                        "line": line,
+                        "sign": edge.sign,
+                        "indices": [edge.start[1], edge.end[1]],
+                        "minutes": edge.minutes,
+                        "walk": 0.0,
+                        "is_transfer": False,
+                        "service": edge.service,
+                    }
             else:
                 if current is not None:
                     raw.append(current)
@@ -282,6 +306,7 @@ def _path_to_legs(city: City, line_by_id: dict[str, Line], start_node: tuple[str
                     "minutes": edge.minutes,
                     "walk": pending_walk,
                     "is_transfer": pending_transfer,
+                    "service": edge.service,
                 }
                 pending_walk = 0.0
                 pending_transfer = False
@@ -306,11 +331,14 @@ def _path_to_legs(city: City, line_by_id: dict[str, Line], start_node: tuple[str
         if line.ring and from_station == to_station:
             stops, minutes = _ring_loop(line, start_idx, leg["sign"])
         else:
-            stops, minutes = engine.compute_step(line, direction, from_station, to_station)
+            stops, minutes = engine.compute_step(
+                line, direction, from_station, to_station, leg["service"]
+            )
         legs.append({
             "lineId": line.id,
             "lineName": line.name,
             "shortName": line.short_name,
+            "system": line.system,
             "type": line.type,
             "typeLabel": line.type_label,
             "color": line.color or "#888888",
@@ -323,8 +351,19 @@ def _path_to_legs(city: City, line_by_id: dict[str, Line], start_node: tuple[str
             "stopCount": max(0, len(stops) - 1),
             "stops": stops,
             "transfer": bool(leg["is_transfer"]),
+            "service": leg["service"],
+            "serviceName": line.express_service(leg["service"]).name if leg["service"] else "",
             "_first": False,
         })
+    for index, leg in enumerate(legs):
+        if index == 0:
+            leg["interchange"] = False
+            continue
+        previous = legs[index - 1]
+        changed_line = previous["lineId"] != leg["lineId"]
+        leg["interchange"] = (
+            changed_line and previous["system"] == leg["system"] and not leg["transfer"]
+        )
     if legs:
         legs[0]["_first"] = True
     return legs
@@ -352,13 +391,14 @@ def _steps_from_legs(legs: list[dict]) -> list[dict]:
             "use_timetable": False,
             "price": None,
             "transfer": True if leg["transfer"] else None,
-            "service": "",
+            "service": leg.get("service", ""),
         })
     return steps
 
 
 def _signature(legs: list[dict]) -> tuple:
-    return tuple((leg["lineId"], leg["direction"], leg["from"], leg["to"], round(leg["walk"], 1))
+    return tuple((leg["lineId"], leg["direction"], leg["from"], leg["to"],
+                  leg.get("service", ""), round(leg["walk"], 1))
                  for leg in legs)
 
 
@@ -366,11 +406,30 @@ def _make_plan(legs: list[dict], mode: str, note: str = "") -> dict:
     clean_legs = [{k: v for k, v in leg.items() if not k.startswith("_")} for leg in legs]
     if clean_legs:
         clean_legs[0]["transfer"] = False  # 第一段之前只有步行，不存在换乘
+    for index, leg in enumerate(clean_legs):
+        if index == 0:
+            leg["interchange"] = False
+            continue
+        previous = clean_legs[index - 1]
+        leg["interchange"] = (
+            previous["lineId"] != leg["lineId"]
+            and previous["system"] == leg["system"]
+            and not leg["transfer"]
+        )
     total_run = sum(leg["run"] for leg in clean_legs)
     total_walk = sum(leg["walk"] for leg in clean_legs)
     minutes = total_run + total_walk
-    # 以实际压缩后的乘车段计算换乘次数，避免搜索中的无效换乘被计入
-    transfers = max(0, len(clean_legs) - 1)
+    # 以实际压缩后的乘车段区分同系统换乘与跨系统转乘。
+    system_transfers = sum(
+        1 for previous, current in zip(clean_legs, clean_legs[1:])
+        if previous["lineId"] != current["lineId"]
+        and (previous["system"] != current["system"] or current["transfer"])
+    )
+    transfers = sum(
+        1 for previous, current in zip(clean_legs, clean_legs[1:])
+        if previous["lineId"] != current["lineId"]
+        and previous["system"] == current["system"] and not current["transfer"]
+    )
     signature = _signature(clean_legs)
     lines: list[dict] = []
     seen: set[str] = set()
@@ -379,13 +438,16 @@ def _make_plan(legs: list[dict], mode: str, note: str = "") -> dict:
             continue
         seen.add(leg["lineId"])
         lines.append({"id": leg["lineId"], "name": leg["lineName"], "color": leg["color"],
-                      "color2": leg["color2"], "from": leg["from"], "to": leg["to"]})
+                      "color2": leg["color2"], "system": leg["system"],
+                      "from": leg["from"], "to": leg["to"]})
     return {
         "mode": mode,
         "minutes": round(minutes, 1),
         "run": round(total_run, 1),
         "walk": round(total_walk, 1),
         "transfers": transfers,
+        "systemTransfers": system_transfers,
+        "totalTransfers": transfers + system_transfers,
         "lines": lines,
         "lineCount": len(lines),
         "stopCount": sum(leg["stopCount"] for leg in clean_legs),
@@ -398,7 +460,7 @@ def _make_plan(legs: list[dict], mode: str, note: str = "") -> dict:
 
 def _pareto(plans: list[dict]) -> list[dict]:
     """只保留「换乘更少且不慢于其它方案」的 Pareto 方案。"""
-    ordered = sorted(plans, key=lambda plan: (plan["transfers"], plan["minutes"]))
+    ordered = sorted(plans, key=lambda plan: (plan["totalTransfers"], plan["minutes"]))
     out: list[dict] = []
     best = float("inf")
     for plan in ordered:
@@ -425,11 +487,11 @@ def _rank(plans: list[dict], limit: int) -> list[dict]:
     if not plans:
         return []
     for plan in plans:
-        plan["score"] = round(plan["minutes"] + TRANSFER_PENALTY * plan["transfers"], 1)
+        plan["score"] = round(plan["minutes"] + TRANSFER_PENALTY * plan["totalTransfers"], 1)
 
     by_signature = {plan["_signature"]: plan for plan in plans}
-    fastest = min(plans, key=lambda p: (p["minutes"], p["transfers"]))["_signature"]
-    fewest = min(plans, key=lambda p: (p["transfers"], p["minutes"]))["_signature"]
+    fastest = min(plans, key=lambda p: (p["minutes"], p["totalTransfers"]))["_signature"]
+    fewest = min(plans, key=lambda p: (p["totalTransfers"], p["minutes"]))["_signature"]
     chosen: list[dict] = []
     for signature in (fastest, fewest):
         if len(chosen) >= limit:
@@ -437,12 +499,12 @@ def _rank(plans: list[dict], limit: int) -> list[dict]:
         plan = by_signature[signature]
         if plan not in chosen:
             chosen.append(plan)
-    for plan in sorted(plans, key=lambda p: (p["score"], p["minutes"], p["transfers"])):
+    for plan in sorted(plans, key=lambda p: (p["score"], p["minutes"], p["totalTransfers"])):
         if len(chosen) >= limit:
             break
         if plan not in chosen:
             chosen.append(plan)
-    ordered = sorted(chosen, key=lambda p: (p["score"], p["minutes"], p["transfers"]))
+    ordered = sorted(chosen, key=lambda p: (p["score"], p["minutes"], p["totalTransfers"]))
     recommended = ordered[0]["_signature"] if ordered else None
 
     for plan in ordered:
@@ -504,8 +566,8 @@ def _plan_station_mode(city: City, start_names: list[str], target: str,
     return _pareto(plans)
 
 
-def _line_boarding_options(city: City, station: str,
-                           origin_names: set[str], station_lines: dict,
+def _line_boarding_options(city: City, station: str, target_line: Line,
+                           origin_names: set[str],
                            default_walk: float) -> list[dict]:
     """从起点到目标线路某站的上车方案（不含目标线路乘车段）。"""
     options: list[dict] = []
@@ -513,12 +575,11 @@ def _line_boarding_options(city: City, station: str,
         options.append({"minutes": 0.0, "transfers": 0, "walk": 0.0,
                         "transfer": False, "key": None})
         return options
-    # 起点与目标线路车站属于同一转乘站组时，直接步行过去上车
-    for group in city.transfers:
-        if station in group and origin_names & set(group):
-            options.append({"minutes": default_walk, "transfers": 0, "walk": default_walk,
-                            "transfer": True, "key": None})
-            break
+    # 起点与目标线路车站属于已声明的转乘站对时，直接步行过去上车。
+    if any(endpoint.station in origin_names
+           for endpoint in engine.transfer_targets(city, station, target_line.system)):
+        options.append({"minutes": default_walk, "transfers": 0, "walk": default_walk,
+                        "transfer": True, "key": None})
     return options
 
 
@@ -527,6 +588,8 @@ def _plan_line_mode(city: City, origin: str, line_id: str, default_walk: float) 
     target_line = line_by_id.get(line_id)
     if target_line is None:
         raise LineError("所选线路不在当前线路库中")
+    if line_id in _through_service_ids(city):
+        raise LineError("跨线交路不参与智能规划")
     station_lines = _station_lines(city)
     ride_edges = _ride_edges(city)
     transfer_options = _transfer_options(city, station_lines, line_by_id, default_walk)
@@ -552,23 +615,21 @@ def _plan_line_mode(city: City, origin: str, line_id: str, default_walk: float) 
 
     for station in target_stations:
         pre_options: list[dict] = _line_boarding_options(
-            city, station, origin_names, station_lines, default_walk
+            city, station, target_line, origin_names, default_walk
         )
         # 从前置路径的终点换乘 / 同站换乘到目标线路
-        station_aliases = set(engine.alias_names(city, station))
-        station_transfer_group: set[str] = set()
-        for group in city.transfers:
-            if station in group:
-                station_transfer_group |= set(group)
+        station_aliases = set(engine.alias_names(city, station, target_line.system))
         for key, label in ride_labels.items():
             node, transfers, _ = key
             source_line = line_by_id[node[0]]
             if node[1] >= len(source_line.stations):
                 continue
             source_station = source_line.stations[node[1]]
-            if source_station in station_aliases:
+            if source_line.system == target_line.system and source_station in station_aliases:
                 walk, is_transfer = 0.0, False
-            elif source_station in station_transfer_group:
+            elif engine.is_known_transfer(
+                city, source_station, station, source_line.system, target_line.system
+            ):
                 walk, is_transfer = default_walk, True
             else:
                 continue
@@ -588,71 +649,78 @@ def _plan_line_mode(city: City, origin: str, line_id: str, default_walk: float) 
                 best_pre[option["transfers"]] = option
 
         board_idx = target_line.stations.index(station)
+        services = [("", None), *((service.id, service) for service in target_line.express)]
         for direction in target_line.directions:
             try:
                 sign = engine.direction_sign(target_line, direction)
             except LineError:
                 continue
-            if target_line.ring:
-                stops, run = _ring_loop(target_line, board_idx, sign)
-                to_station = station
-                direction_label = direction.label
-            else:
-                terminal = direction.terminal
-                if not terminal:
-                    terminal = target_line.stations[-1] if sign > 0 else target_line.stations[0]
-                if station == terminal:
+            for service_id, service in services:
+                if service is not None and station not in service.stops:
                     continue
-                if terminal in origin_names:
-                    continue  # 坐到起点站没有意义
-                stops, run = engine.compute_step(target_line, direction, station, terminal)
-                to_station = terminal
-                direction_label = direction.label
-            final_leg = {
-                "lineId": target_line.id,
-                "lineName": target_line.name,
-                "shortName": target_line.short_name,
-                "type": target_line.type,
-                "typeLabel": target_line.type_label,
-                "color": target_line.color or "#888888",
-                "color2": target_line.color2 or "",
-                "direction": direction_label,
-                "from": station,
-                "to": to_station,
-                "run": round(run, 1),
-                "walk": 0.0,
-                "stopCount": max(0, len(stops) - 1),
-                "stops": stops,
-                "transfer": False,
-                "_first": False,
-            }
-            for transfers, option in best_pre.items():
-                if transfers > MAX_TRANSFERS:
-                    continue
-                if option["key"] is None:
-                    pre_legs: list[dict] = []
-                    start_node = None
+                if target_line.ring:
+                    stops, run = _ring_loop(target_line, board_idx, sign)
+                    to_station = station
                 else:
-                    start_node, edges = _edges_from_ride(labels, ride_labels, option["key"])
-                    pre_legs = _path_to_legs(city, line_by_id, start_node, edges, default_walk)
-                walk = option["walk"]
-                if pre_legs:
-                    final_leg_copy = dict(final_leg)
-                    final_leg_copy["walk"] = round(walk, 1)
-                    final_leg_copy["transfer"] = bool(option["transfer"])
-                    legs = pre_legs + [final_leg_copy]
-                else:
-                    if walk > 0:
-                        # 起点头部步行到目标线路：记在第一段之前，不增加换乘次数
+                    terminal = direction.terminal
+                    if not terminal:
+                        terminal = target_line.stations[-1] if sign > 0 else target_line.stations[0]
+                    if station == terminal or terminal in origin_names:
+                        continue  # 坐到起点站没有意义
+                    try:
+                        stops, run = engine.compute_step(
+                            target_line, direction, station, terminal, service_id
+                        )
+                    except LineError:
+                        continue
+                    to_station = terminal
+                final_leg = {
+                    "lineId": target_line.id,
+                    "lineName": target_line.name,
+                    "shortName": target_line.short_name,
+                    "system": target_line.system,
+                    "type": target_line.type,
+                    "typeLabel": target_line.type_label,
+                    "color": target_line.color or "#888888",
+                    "color2": target_line.color2 or "",
+                    "direction": direction.label,
+                    "from": station,
+                    "to": to_station,
+                    "run": round(run, 1),
+                    "walk": 0.0,
+                    "stopCount": max(0, len(stops) - 1),
+                    "stops": stops,
+                    "transfer": False,
+                    "service": service_id,
+                    "serviceName": service.name if service is not None else "",
+                    "_first": False,
+                }
+                for transfers, option in best_pre.items():
+                    if transfers > MAX_TRANSFERS:
+                        continue
+                    if option["key"] is None:
+                        pre_legs: list[dict] = []
+                    else:
+                        start_node, edges = _edges_from_ride(labels, ride_labels, option["key"])
+                        pre_legs = _path_to_legs(city, line_by_id, start_node, edges, default_walk)
+                    walk = option["walk"]
+                    if pre_legs:
                         final_leg_copy = dict(final_leg)
                         final_leg_copy["walk"] = round(walk, 1)
                         final_leg_copy["transfer"] = bool(option["transfer"])
-                        legs = [final_leg_copy]
+                        legs = pre_legs + [final_leg_copy]
                     else:
-                        legs = [dict(final_leg)]
-                if legs:
-                    legs[0]["_first"] = True
-                candidates.append(_make_plan(legs, "line", note="乘坐 " + target_line.name))
+                        if walk > 0:
+                            # 起点头部步行到目标线路：记在第一段之前，不增加换乘次数
+                            final_leg_copy = dict(final_leg)
+                            final_leg_copy["walk"] = round(walk, 1)
+                            final_leg_copy["transfer"] = bool(option["transfer"])
+                            legs = [final_leg_copy]
+                        else:
+                            legs = [dict(final_leg)]
+                    if legs:
+                        legs[0]["_first"] = True
+                    candidates.append(_make_plan(legs, "line", note="乘坐 " + target_line.name))
 
     # 乘坐线路模式下，「坐到哪个终点」本身就是有意义的选择：
     # 先按终点/环行方向分组，再在各组内做换乘次数与时间的 Pareto 筛选，

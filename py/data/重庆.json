@@ -542,7 +542,7 @@
         "中梁山",
         "金建路",
         "华岩中心",
-        "跳蹬"
+        "跳磴"
       ],
       "travel_minutes": [
         3.0,
@@ -584,8 +584,8 @@
       "ring": false,
       "directions": [
         {
-          "label": "跳蹬方向",
-          "terminal": "跳蹬",
+          "label": "跳磴方向",
+          "terminal": "跳磴",
           "reverse": false
         },
         {
@@ -938,13 +938,38 @@
           "terminal": "兰花路",
           "reverse": false
         }
+      ],
+      "express": [
+        {
+          "id": "direct_fast",
+          "name": "快速车",
+          "stops": [
+            "兰花路",
+            "万寿路",
+            "七星岗",
+            "大礼堂",
+            "曾家岩",
+            "鲤鱼池",
+            "红土地",
+            "重庆北站南广场",
+            "重庆北站北广场",
+            "上湾路",
+            "江北机场T3航站楼",
+            "江北机场T2航站楼",
+            "中央公园西",
+            "王家庄"
+          ],
+          "section_minutes": [],
+          "skip_minutes": 0.4,
+          "headway_text": ""
+        }
       ]
     },
     {
       "id": "cq_m15",
       "name": "重庆轨道交通15号线",
       "short_name": "15号线",
-      "type": "metro",
+      "type": "suburban",
       "color": "#0077C8",
       "color2": "",
       "operator": "",
@@ -1015,7 +1040,7 @@
       "operator": "",
       "stations": [
         "跳磴南",
-        "跳蹬",
+        "跳磴",
         "金鳌山",
         "伏牛溪",
         "白居寺",
@@ -1081,7 +1106,7 @@
       "color2": "",
       "operator": "",
       "stations": [
-        "跳蹬",
+        "跳磴",
         "石林寺",
         "九龙园",
         "双福",
@@ -1109,8 +1134,8 @@
           "reverse": false
         },
         {
-          "label": "跳蹬方向",
-          "terminal": "跳蹬",
+          "label": "跳磴方向",
+          "terminal": "跳磴",
           "reverse": false
         }
       ]
@@ -1284,5 +1309,59 @@
       "璧山"
     ]
   ],
-  "aliases": []
+  "aliases": [],
+  "through_services": [
+    {
+      "id": "cq_through_m5_m0_m4",
+      "name": "重庆轨道交通5号线—环线—4号线直快车",
+      "short_name": "跨线直快车",
+      "type": "metro",
+      "color": "#B35A20",
+      "color2": "",
+      "operator": "",
+      "headway_rush": 30,
+      "headway_normal": 30,
+      "segments": [
+        {
+          "line_id": "cq_m5",
+          "from_station": "跳磴",
+          "to_station": "重庆西站"
+        },
+        {
+          "line_id": "cq_m0",
+          "from_station": "重庆西站",
+          "to_station": "民安大道",
+          "reverse": false
+        },
+        {
+          "line_id": "cq_m4",
+          "from_station": "民安大道",
+          "to_station": "唐家沱"
+        }
+      ],
+      "express": [
+        {
+          "id": "cq_direct_fast",
+          "name": "直快车",
+          "stops": [
+            "跳磴",
+            "华岩中心",
+            "金建路",
+            "重庆西站",
+            "上桥",
+            "重庆图书馆",
+            "沙坪坝",
+            "冉家坝",
+            "民安大道",
+            "重庆北站北广场",
+            "头塘",
+            "唐家沱"
+          ],
+          "section_minutes": [],
+          "skip_minutes": 0.4,
+          "headway_text": "30分钟一班"
+        }
+      ]
+    }
+  ]
 }

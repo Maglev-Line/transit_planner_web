@@ -12,7 +12,8 @@
  *   rb/<id>             回滚记录
  *   ip/<hash>           匿名提交限流
  *   ban/<hash>          匿名 IP 指纹封禁
- *   ann/<id>            管理员公告
+ *   ann/<id>            全站站信
+ *   inbox/<hash>        用户站信
  */
 import { createHash, timingSafeEqual } from "node:crypto";
 
@@ -25,6 +26,7 @@ const STORE_ROLLBACKS = "transit-planner-rollbacks";
 const STORE_THROTTLE = "transit-planner-throttle";
 const STORE_BANS = "transit-planner-bans";
 const STORE_ANNOUNCEMENTS = "transit-planner-announcements";
+const STORE_INBOX_MESSAGES = "transit-planner-inboxes";
 
 const MAX_SUBMISSIONS = 1200;
 const MAX_LIST = 200;
@@ -33,6 +35,7 @@ const MAX_VERSIONS = 15;
 const MAX_BANS = 500;
 const MAX_BAN_DAYS = 3650;
 const MAX_ANNOUNCEMENTS = 50;
+const MAX_INBOX_MESSAGES = 100;
 const MAX_ANNOUNCEMENT_TITLE = 120;
 const MAX_ANNOUNCEMENT_BODY = 4000;
 const SUBMIT_LIMIT = 8;
@@ -239,6 +242,36 @@ export function createApi({ getStore, adminToken = () => process.env.ADMIN_TOKEN
     return createHash("sha256").update(`transit-planner:${ip}`).digest("hex").slice(0, length);
   }
 
+  function hashInboxToken(value) {
+    const token = String(value || "").trim();
+    if (!/^[a-f0-9]{64}$/i.test(token)) return "";
+    return createHash("sha256").update(`transit-planner-inbox:${token.toLowerCase()}`).digest("hex");
+  }
+
+  async function sendInboxMessage(recipientHash, { title, body, level = "info" }) {
+    if (!recipientHash) return;
+    const messagesStore = store(STORE_INBOX_MESSAGES);
+    const key = `inbox/${recipientHash}`;
+    const current = await messagesStore.get(key, { type: "json" });
+    const messages = Array.isArray(current) ? current : [];
+    messages.unshift({
+      id: newId("msg"),
+      title,
+      body,
+      level,
+      scope: "private",
+      publishedAt: nowIso(),
+    });
+    await messagesStore.setJSON(key, messages.slice(0, MAX_INBOX_MESSAGES));
+  }
+
+  async function listInboxMessages(req) {
+    const recipientHash = hashInboxToken(req.headers.get("x-inbox-token"));
+    if (!recipientHash) return [];
+    const messages = await store(STORE_INBOX_MESSAGES).get(`inbox/${recipientHash}`, { type: "json" });
+    return Array.isArray(messages) ? messages : [];
+  }
+
   function isBanActive(ban, at = clock().getTime()) {
     if (!ban) return false;
     if (!ban.until) return true; // 空 until = 永久
@@ -276,11 +309,17 @@ export function createApi({ getStore, adminToken = () => process.env.ADMIN_TOKEN
       const record = await s.get(key, { type: "json" });
       if (record?.id) records.push(record);
     }
-    records.sort((a, b) => String(b.publishedAt || "").localeCompare(String(a.publishedAt || "")));
+    records.sort((a, b) => String(b.scheduledAt || b.publishedAt || "").localeCompare(String(a.scheduledAt || a.publishedAt || "")));
     return records.slice(0, MAX_ANNOUNCEMENTS);
   }
 
-  function serializeAnnouncement(record) {
+  function isFutureAnnouncement(record, now) {
+    const timestamp = Date.parse(record.scheduledAt || "");
+    return Number.isFinite(timestamp) && timestamp > now;
+  }
+
+  function serializeAnnouncement(record, admin = false, now = clock().getTime()) {
+    const scheduled = isFutureAnnouncement(record, now);
     return {
       id: record.id,
       title: record.title,
@@ -288,6 +327,11 @@ export function createApi({ getStore, adminToken = () => process.env.ADMIN_TOKEN
       level: record.level || "info",
       publishedAt: record.publishedAt || record.createdAt || "",
       updatedAt: record.updatedAt || record.publishedAt || "",
+      scope: "all",
+      ...(admin ? {
+        status: scheduled ? "scheduled" : "published",
+        scheduledAt: record.scheduledAt || "",
+      } : {}),
     };
   }
 
@@ -344,10 +388,31 @@ export function createApi({ getStore, adminToken = () => process.env.ADMIN_TOKEN
       return ok({ cities, updatedAt, count: records.length });
     }
 
-    if (path === "/announcements") {
+    if (path === "/announcements" || path === "/messages") {
       if (method === "GET") {
+        const url = new URL(req.url);
+        const inboxEndpoint = path === "/messages";
+        const manageMessages = inboxEndpoint && url.searchParams.get("manage") === "1";
+        const admin = isAdmin(req);
+        if (manageMessages && !admin) return fail(403, "只有管理员可以管理全站站信。");
         const records = await listAnnouncementRecords();
-        return ok({ announcements: records.map(serializeAnnouncement), count: records.length });
+        const now = clock().getTime();
+        const future = records
+          .filter((record) => isFutureAnnouncement(record, now))
+          .sort((a, b) => Date.parse(a.scheduledAt) - Date.parse(b.scheduledAt));
+        const nextPublicationAt = future[0]?.scheduledAt || "";
+        const includeScheduled = admin && url.searchParams.get("includeScheduled") === "1";
+        const visible = includeScheduled
+          ? records
+          : records.filter((record) => !isFutureAnnouncement(record, now));
+        const broadcasts = visible.map((record) => serializeAnnouncement(record, admin, now));
+        const messages = inboxEndpoint && !manageMessages
+          ? [...broadcasts, ...await listInboxMessages(req)]
+              .sort((a, b) => String(b.publishedAt || "").localeCompare(String(a.publishedAt || "")))
+          : broadcasts;
+        return inboxEndpoint
+          ? ok({ messages, count: messages.length, nextPublicationAt })
+          : ok({ announcements: broadcasts, count: broadcasts.length, nextPublicationAt });
       }
       if (method === "POST") {
         const denied = requireAdmin(req);
@@ -355,27 +420,45 @@ export function createApi({ getStore, adminToken = () => process.env.ADMIN_TOKEN
         const body = await readJson(req);
         const title = String(body.title ?? "").trim().slice(0, MAX_ANNOUNCEMENT_TITLE);
         const content = String(body.body ?? "").trim().slice(0, MAX_ANNOUNCEMENT_BODY);
-        if (title.length < 2) throw new HttpError(400, "公告标题至少需要 2 个字。");
-        if (!content) throw new HttpError(400, "公告内容不能为空。");
+        if (title.length < 2) throw new HttpError(400, "站信标题至少需要 2 个字。");
+        if (!content) throw new HttpError(400, "站信内容不能为空。");
         const level = ["info", "important", "warning"].includes(body.level) ? body.level : "info";
-        const at = nowIso();
+        const now = clock();
+        const at = now.toISOString();
+        if (body.scheduledAt != null && typeof body.scheduledAt !== "string") {
+          throw new HttpError(400, "站信发布时间无效。");
+        }
+        const scheduleInput = String(body.scheduledAt ?? "").trim();
+        let scheduledAt = "";
+        if (scheduleInput) {
+          const scheduleTime = Date.parse(scheduleInput);
+          if (!Number.isFinite(scheduleTime)) throw new HttpError(400, "站信发布时间无效。");
+          if (scheduleTime <= now.getTime()) {
+            throw new HttpError(400, "定时发布时间必须晚于当前时间；立即发布请留空。");
+          }
+          scheduledAt = new Date(scheduleTime).toISOString();
+        }
         const record = {
-          id: newId("ann"),
+          id: newId(path === "/messages" ? "msg" : "ann"),
           title,
           body: content,
           level,
-          publishedAt: at,
+          publishedAt: scheduledAt || at,
+          scheduledAt,
           createdAt: at,
           updatedAt: at,
           schema: 1,
         };
         await store(STORE_ANNOUNCEMENTS).setJSON(`ann/${record.id}`, record);
-        return jsonResponse(201, { ok: true, announcement: serializeAnnouncement(record) });
+        const serialized = serializeAnnouncement(record, true, now.getTime());
+        return path === "/messages"
+          ? jsonResponse(201, { ok: true, message: serialized })
+          : jsonResponse(201, { ok: true, announcement: serialized });
       }
       return fail(405, "不支持的方法");
     }
 
-    const announcementMatch = path.match(/^\/announcements\/([A-Za-z0-9_-]{1,80})$/);
+    const announcementMatch = path.match(/^\/(?:announcements|messages)\/([A-Za-z0-9_-]{1,80})$/);
     if (announcementMatch) {
       const denied = requireAdmin(req);
       if (denied) return denied;
@@ -383,7 +466,7 @@ export function createApi({ getStore, adminToken = () => process.env.ADMIN_TOKEN
       if (method !== "DELETE") return fail(405, "不支持的方法");
       const s = store(STORE_ANNOUNCEMENTS);
       const existing = await s.get(`ann/${id}`, { type: "json" });
-      if (!existing) return fail(404, "没有找到这条公告。");
+      if (!existing) return fail(404, "没有找到这条站信。");
       await s.delete(`ann/${id}`);
       return ok({ removed: true, id });
     }
@@ -492,6 +575,7 @@ export function createApi({ getStore, adminToken = () => process.env.ADMIN_TOKEN
           revertedAt: "",
           reason: "",
           ipHash,
+          inboxRecipientHash: hashInboxToken(req.headers.get("x-inbox-token")),
           cityVersion: String(body.doc.version || ""),
           hasBase: Boolean(base),
           docBytes: JSON.stringify(body.doc).length,
@@ -564,6 +648,11 @@ export function createApi({ getStore, adminToken = () => process.env.ADMIN_TOKEN
         };
         await store(STORE_PUBLISHED).setJSON(`city/${record.city}`, published);
         await markSubmission(record.id, { status: "approved", reviewedAt: publishedAt, revertedAt: "", reason: "" });
+        await sendInboxMessage(record.inboxRecipientHash, {
+          title: "提交内容已通过",
+          body: `你提交的「${record.city}」${record.kind === "new" ? "新城市数据" : "修改"}已审核通过并生效。\n修改说明：${record.summary}`,
+          level: "important",
+        });
         return ok({ published: { ...published, doc: undefined }, versions: versions.length });
       }
 
@@ -573,6 +662,11 @@ export function createApi({ getStore, adminToken = () => process.env.ADMIN_TOKEN
         const reason = String(body.reason ?? "").trim().slice(0, 300);
         const reviewedAt = nowIso();
         await markSubmission(record.id, { status: "rejected", reviewedAt, reason });
+        await sendInboxMessage(record.inboxRecipientHash, {
+          title: "提交内容已驳回",
+          body: `你提交的「${record.city}」修改未通过审核。\n修改说明：${record.summary}\n驳回原因：${reason || "管理员未填写原因。"}`,
+          level: "warning",
+        });
         return ok({ id: record.id, status: "rejected", reason });
       }
 

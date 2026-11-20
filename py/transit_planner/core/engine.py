@@ -7,12 +7,12 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass, field
 
-from .models import City, Line, Direction, Step, Trip, LineError, TYPE_METRO
+from .models import City, Line, Direction, Step, Trip, TransferEndpoint, LineError, TYPE_METRO
 
 
 # ---------------- 转乘 / 同站异名 / 付费区 ----------------
 
-def alias_names(city: City | None, station: str) -> list[str]:
+def alias_names(city: City | None, station: str, system: str | None = None) -> list[str]:
     """返回与某站同站异名的全部站名（含自身）。"""
     if city is None:
         return [station]
@@ -22,9 +22,35 @@ def alias_names(city: City | None, station: str) -> list[str]:
     return [station]
 
 
-def related_station_names(city: City, station: str) -> list[str]:
-    """返回同站异名及可转乘站组中关联的站名。"""
-    groups = city.aliases + city.transfers
+def _endpoint_matches(endpoint: TransferEndpoint, station: str, system: str | None) -> bool:
+    return endpoint.station == station and (
+        system is None or not endpoint.system or endpoint.system == system
+    )
+
+
+def transfer_targets(city: City | None, station: str, system: str | None) -> list[TransferEndpoint]:
+    """返回明确关联的跨系统站点；空系统端点仅用于读取旧版数据。"""
+    if city is None:
+        return []
+    targets: list[TransferEndpoint] = []
+    for group in city.transfers:
+        sources = [endpoint for endpoint in group if _endpoint_matches(endpoint, station, system)]
+        for source in sources:
+            for target in group:
+                if target is source or target.station == "" or target.station == station and (
+                    not target.system or system is not None and target.system == system
+                ):
+                    continue
+                if source.system and target.system and source.system == target.system:
+                    continue
+                if target not in targets:
+                    targets.append(target)
+    return targets
+
+
+def related_station_names(city: City, station: str, system: str | None = None) -> list[str]:
+    """返回同站异名及已声明转乘站中关联的站名。"""
+    groups = city.aliases
     names = [station]
     seen = {station}
     pending = [station]
@@ -37,19 +63,25 @@ def related_station_names(city: City, station: str) -> list[str]:
                         seen.add(name)
                         names.append(name)
                         pending.append(name)
+    for endpoint in transfer_targets(city, station, system):
+        if endpoint.station not in seen:
+            names.append(endpoint.station)
     return names
 
 
 def station_name_on_line(city: City, line: Line, station: str) -> str:
     """返回关联站名中在线路上实际使用的名称。"""
     return next(
-        (name for name in related_station_names(city, station) if name in line.stations),
+        (name for name in related_station_names(city, station, line.system) if name in line.stations),
         station,
     )
 
 
-def stations_same(city: City | None, a: str, b: str) -> bool:
+def stations_same(city: City | None, a: str, b: str,
+                  a_system: str | None = None, b_system: str | None = None) -> bool:
     """两站是否为同一车站（同名或同站异名），同付费系统不出闸。"""
+    if a_system is not None and b_system is not None and a_system != b_system:
+        return False
     if a == b:
         return True
     if city is None:
@@ -60,21 +92,40 @@ def stations_same(city: City | None, a: str, b: str) -> bool:
     return False
 
 
-def is_known_transfer(city: City | None, a: str, b: str) -> bool:
-    """两站是否为『转乘站』：同一地点但名称不同、分属不同付费系统（需出闸/换系统）。"""
-    if city is None or a == b:
+def is_known_transfer(city: City | None, a: str, b: str,
+                      a_system: str | None = None, b_system: str | None = None) -> bool:
+    """判断两个系统限定的车站是否在数据中声明为跨系统转乘站对。"""
+    if city is None:
         return False
     for grp in city.transfers:
-        if a in grp and b in grp:
-            return True
+        sources = [endpoint for endpoint in grp if _endpoint_matches(endpoint, a, a_system)]
+        destinations = [endpoint for endpoint in grp if _endpoint_matches(endpoint, b, b_system)]
+        for source in sources:
+            for destination in destinations:
+                if source is destination:
+                    continue
+                if source.system and destination.system and source.system == destination.system:
+                    continue
+                if a_system is not None and b_system is not None and a_system == b_system:
+                    if source.system and destination.system:
+                        continue
+                return True
     return False
 
 
-def step_is_transfer(city: City | None, prev_arrival: str | None, step: Step) -> bool:
-    """本段上车前是否跨付费区转乘（转乘）：用户强制指定优先，否则按转乘站组自动判定。"""
+def step_is_transfer(city: City | None, prev_arrival: str | None, step: Step,
+                     prev_system: str | None = None, current_system: str | None = None) -> bool:
+    """本段上车前是否跨系统转乘；用户强制指定优先。"""
     if step.transfer is not None:
         return bool(step.transfer)
-    if prev_arrival is not None and is_known_transfer(city, prev_arrival, step.from_station):
+    if prev_system is not None and current_system is not None and prev_system != current_system:
+        return True
+    if (
+        prev_arrival is not None
+        and prev_system is not None
+        and current_system is not None
+        and is_known_transfer(city, prev_arrival, step.from_station, prev_system, current_system)
+    ):
         return True
     return False
 
@@ -233,7 +284,7 @@ class SegmentResult:
     walk_minutes: float = 0.0
     stop_count: int = 0
     manual: bool = False
-    transfer: bool = False        # 跨付费区转乘（转乘）：上车前需出闸/换系统
+    transfer: bool = False        # 跨系统转乘
     paid_zone_index: int = 0      # 所属付费区编号（从 0 开始）
     service_name: str = ""        # 快车服务名（各站停为空）
 
@@ -275,13 +326,19 @@ class TripResult:
 
     @property
     def transfer_count(self) -> int:
-        # 按"更换线路"次数统计（含同站换乘）；首段不计
+        # 仅统计同一系统内的换线；跨系统单独计为转乘。
         return sum(1 for i in range(1, len(self.segments))
-                   if self.segments[i].line.id != self.segments[i - 1].line.id)
+                   if self.segments[i].line.id != self.segments[i - 1].line.id
+                   and (
+                       self.segments[i].manual
+                       or self.segments[i - 1].manual
+                       or self.segments[i].line.system == self.segments[i - 1].line.system
+                   )
+                   and not self.segments[i].transfer)
 
     @property
     def fare_transfer_count(self) -> int:
-        # 「转乘」次数（跨付费区，需出闸/换系统）
+        # 「转乘」次数（跨线路系统）
         return sum(1 for s in self.segments if s.transfer)
 
     @property
@@ -316,20 +373,32 @@ def parse_stops(text: str) -> list[str]:
 
 
 def _resolve_walk(step: Step, prev_arrival: str | None, default_walk: float,
-                  city: City | None = None) -> float:
+                  city: City | None = None, prev_system: str | None = None,
+                  current_system: str | None = None) -> float:
     if prev_arrival is None:
         return float(step.walk_minutes) if step.walk_minutes is not None else 0.0
     if step.walk_minutes is not None:
         return float(step.walk_minutes)
-    if stations_same(city, prev_arrival, step.from_station):
+    if stations_same(city, prev_arrival, step.from_station, prev_system, current_system):
         return 0.0  # 同站换乘（含同站异名），未显式指定则记 0
     return float(default_walk)
 
 
 def resolve_walk(step: Step, prev_arrival: str | None, default_walk: float,
-                 city: City | None = None) -> float:
+                 city: City | None = None, prev_system: str | None = None,
+                 current_system: str | None = None) -> float:
     """公开版换乘步行解析（供界面显示默认值使用）。"""
-    return _resolve_walk(step, prev_arrival, default_walk, city)
+    return _resolve_walk(step, prev_arrival, default_walk, city, prev_system, current_system)
+
+
+def step_system(city: City | None, step: Step | None) -> str | None:
+    """返回数据库行程段的系统；手动段或未加载数据库时未知。"""
+    if city is None or step is None or step.manual:
+        return None
+    try:
+        return city.line(step.line_id).system
+    except LineError:
+        return None
 
 
 def pick_direction(line: Line, from_station: str, to_station: str,
@@ -359,7 +428,7 @@ def pick_direction(line: Line, from_station: str, to_station: str,
 
 
 def evaluate_manual_step(step: Step, prev_arrival: str | None, default_walk: float,
-                         city: City | None = None) -> SegmentResult:
+                         city: City | None = None, prev_system: str | None = None) -> SegmentResult:
     """手动自选行程段：不依赖任何线路数据库。"""
     line_name = step.line_name or "手动线路"
     line = Line(
@@ -374,7 +443,7 @@ def evaluate_manual_step(step: Step, prev_arrival: str | None, default_walk: flo
     if not stops:
         stops = [step.from_station, step.to_station]
     run = float(step.run_minutes or 0)
-    walk = _resolve_walk(step, prev_arrival, default_walk, city)
+    walk = _resolve_walk(step, prev_arrival, default_walk, city, prev_system, None)
     stop_count = max(0, len(stops) - 1) if len(stops) >= 2 else 0
     return SegmentResult(step=step, line=line, direction=direction, stops=stops,
                          run_minutes=run, walk_minutes=walk, stop_count=stop_count, manual=True)
@@ -387,13 +456,19 @@ def evaluate_trip(city: City | None, trip: Trip) -> TripResult:
     """
     result = TripResult()
     prev_arrival: str | None = None
+    prev_system: str | None = None
     zone = 0
     for i, step in enumerate(trip.steps):
-        transfer = i > 0 and step_is_transfer(city, prev_arrival, step)
+        current_system = step_system(city, step)
+        transfer = i > 0 and step_is_transfer(
+            city, prev_arrival, step, prev_system, current_system
+        )
         if transfer:
-            zone += 1  # 跨付费区转车 → 进入新的付费区
+            zone += 1  # 跨系统转车 → 进入新的付费区
         if step.manual:
-            seg = evaluate_manual_step(step, prev_arrival, trip.transfer_walk_default, city=city)
+            seg = evaluate_manual_step(
+                step, prev_arrival, trip.transfer_walk_default, city, prev_system
+            )
         else:
             if city is None:
                 raise LineError("未加载线路库：非手动行程段需要城市线路数据，请切换城市或使用手动自选模式。")
@@ -405,7 +480,9 @@ def evaluate_trip(city: City | None, trip: Trip) -> TripResult:
             direction = line.directions[dir_idx]
 
             stops, minutes = compute_step(line, direction, step.from_station, step.to_station, service_id)
-            walk = _resolve_walk(step, prev_arrival, trip.transfer_walk_default, city)
+            walk = _resolve_walk(
+                step, prev_arrival, trip.transfer_walk_default, city, prev_system, current_system
+            )
             seg = SegmentResult(
                 step=step, line=line, direction=direction,
                 stops=stops, run_minutes=minutes, walk_minutes=walk,
@@ -416,6 +493,7 @@ def evaluate_trip(city: City | None, trip: Trip) -> TripResult:
         seg.paid_zone_index = zone
         result.segments.append(seg)
         prev_arrival = step.to_station
+        prev_system = current_system
     return result
 
 
@@ -442,10 +520,22 @@ def price_total(trip: Trip, result: TripResult) -> float:
 def transfer_hints(city: City, station: str,
                    exclude_line_id: str | None = None) -> list[tuple[Line, list[Direction]]]:
     """换乘提示：某站关联的可换乘线路及方向，可排除刚乘坐的线路。"""
+    source_line = next((line for line in city.lines if line.id == exclude_line_id), None)
+    source_system = source_line.system if source_line else None
     seen: set[str] = set()
     out: list[tuple[Line, list[Direction]]] = []
-    for s in related_station_names(city, station):
+    for s in alias_names(city, station, source_system):
         for ln in city.lines_serving(s):
+            if source_system is not None and ln.system != source_system:
+                continue
+            if ln.id == exclude_line_id or ln.id in seen:
+                continue
+            seen.add(ln.id)
+            out.append((ln, ln.directions))
+    for endpoint in transfer_targets(city, station, source_system):
+        for ln in city.lines_serving(endpoint.station):
+            if endpoint.system and ln.system != endpoint.system:
+                continue
             if ln.id == exclude_line_id or ln.id in seen:
                 continue
             seen.add(ln.id)

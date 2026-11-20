@@ -55,6 +55,7 @@ def _line_summary(ln: Line, brief: bool = False) -> dict:
         "id": ln.id,
         "name": ln.name,
         "shortName": ln.short_name,
+        "system": ln.system,
         "type": ln.type,
         "typeLabel": type_display(ln.type),
         "color": ln.color,
@@ -118,6 +119,7 @@ def _segment_payload(seg) -> dict:
         "lineId": ln.id,
         "lineName": ln.name,
         "shortName": ln.short_name,
+        "system": ln.system,
         "type": ln.type,
         "typeLabel": type_display(ln.type),
         "color": ln.color or "#888888",
@@ -145,13 +147,21 @@ def _result_payload(trip: Trip, result) -> dict:
     segments = []
     for i, seg in enumerate(result.segments):
         payload = _segment_payload(seg)
-        prev = trip.steps[i - 1].to_station if i > 0 else None
+        previous_step = trip.steps[i - 1] if i > 0 else None
+        prev = previous_step.to_station if previous_step else None
+        prev_system = engine.step_system(_city, previous_step)
+        current_system = engine.step_system(_city, seg.step)
         # 默认换乘步行：忽略用户已填值，按「同站 0 / 其余取默认」给出建议值
         payload["walkDefault"] = round(
-            engine.resolve_walk(replace(seg.step, walk_minutes=None), prev, trip.transfer_walk_default, _city), 1
+            engine.resolve_walk(
+                replace(seg.step, walk_minutes=None), prev, trip.transfer_walk_default,
+                _city, prev_system, current_system,
+            ), 1
         )
         # 库中自动判定的转乘（与用户强制指定无关），供界面提示
-        payload["transferAuto"] = bool(prev is not None and engine.is_known_transfer(_city, prev, seg.step.from_station))
+        payload["transferAuto"] = bool(prev is not None and engine.is_known_transfer(
+            _city, prev, seg.step.from_station, prev_system, current_system
+        ))
         segments.append(payload)
     zones = [
         {
@@ -172,6 +182,7 @@ def _result_payload(trip: Trip, result) -> dict:
             "minutes": round(result.total_minutes, 1),
             "transferCount": result.transfer_count,
             "fareTransferCount": result.fare_transfer_count,
+            "systemTransferCount": result.fare_transfer_count,
             "lineCount": result.line_count,
             "stopCount": sum(s.stop_count for s in result.segments),
             "price": round(engine.price_total(trip, result), 2),
@@ -224,10 +235,12 @@ def api_load_city(name: str) -> str:
                 "region": city.region,
                 "combined": CityLibrary.is_combined(name),
                 "parts": list(CityLibrary.COMBINED_CITIES.get(name, ())),
+                "systems": list(city.systems),
                 "lineCount": len(city.lines),
                 "stationCount": len(engine.all_stations(city)),
-                "transferGroups": city.transfers,
+                "transferGroups": city.to_dict()["transfers"],
                 "aliasGroups": city.aliases,
+                "throughServiceIds": [service.id for service in city.through_services],
             },
             lines=line_summaries,
         )
@@ -286,11 +299,27 @@ def api_validate_city(doc_json: str) -> str:
         return _ok(valid=False, errors=errors[:40], warnings=[], stats=stats, city=None)
 
     try:
-        city = City.from_dict(data)
+        source_city = City.from_dict(data)
+        city = CityLibrary.with_through_services(source_city)
     except Exception as exc:  # noqa: BLE001
         return _ok(valid=False, errors=[f"数据结构错误：{exc}"], warnings=[], stats=stats, city=None)
 
     try:
+        system_catalog: set[str] | None = None
+        if "systems" in data:
+            raw_systems = data["systems"]
+            if not isinstance(raw_systems, list):
+                errors.append("systems 必须是字符串数组")
+            else:
+                system_catalog = set()
+                for i, system in enumerate(raw_systems, 1):
+                    if not isinstance(system, str) or not system.strip():
+                        errors.append(f"第 {i} 个系统名称必须是非空字符串")
+                    elif system.strip() in system_catalog:
+                        errors.append(f"系统名称「{system.strip()}」重复")
+                    else:
+                        system_catalog.add(system.strip())
+
         if not isinstance(city.name, str) or not city.name.strip():
             errors.append("缺少城市名（city 字段）")
         if not city.lines:
@@ -310,6 +339,13 @@ def api_validate_city(doc_json: str) -> str:
                 errors.append(f"第 {i} 条线路缺少线路名称（name）")
             if not isinstance(ln.type, str) or not ln.type.strip():
                 errors.append(f"{label}缺少交通类型（type）")
+            if not isinstance(ln.system, str):
+                errors.append(f"{label}所属系统（system）必须是字符串")
+            elif system_catalog is not None and (
+                (system_catalog and ln.system.strip() not in system_catalog)
+                or (not system_catalog and ln.system.strip())
+            ):
+                errors.append(f"{label}所属系统「{ln.system}」未在 systems 中声明")
 
             if not isinstance(ln.stations, list):
                 errors.append(f"{label}站表（stations）必须是数组")
@@ -383,15 +419,59 @@ def api_validate_city(doc_json: str) -> str:
             stats["lines"] += 1
             stats["segments"] += max(0, len(ln.stations) - 1)
 
-        for key, groups in (("transfers", city.transfers), ("aliases", city.aliases)):
-            if not isinstance(groups, list):
-                errors.append(f"{key} 必须是数组")
-                continue
-            for gi, group in enumerate(groups, 1):
+        raw_transfers = data.get("transfers", [])
+        if not isinstance(raw_transfers, list):
+            errors.append("transfers 必须是数组")
+        else:
+            for gi, group in enumerate(raw_transfers, 1):
                 if not isinstance(group, list) or len(group) < 2:
-                    errors.append(f"{key} 第 {gi} 组至少需要 2 个站名")
+                    errors.append(f"transfers 第 {gi} 组至少需要 2 个站点端点")
+                    continue
+                explicit_systems: set[str] = set()
+                has_legacy_endpoint = False
+                for endpoint in group:
+                    if isinstance(endpoint, str):
+                        has_legacy_endpoint = True
+                        if endpoint.strip():
+                            warnings.append(
+                                f"transfers 第 {gi} 组包含旧格式站名「{endpoint}」，"
+                                "建议补充 system 与 station 字段"
+                            )
+                        else:
+                            errors.append(f"transfers 第 {gi} 组包含空站名")
+                        continue
+                    if not isinstance(endpoint, dict):
+                        errors.append(f"transfers 第 {gi} 组的端点必须是对象")
+                        continue
+                    station = endpoint.get("station")
+                    system = endpoint.get("system")
+                    if not isinstance(station, str) or not station.strip():
+                        errors.append(f"transfers 第 {gi} 组的端点缺少 station")
+                        continue
+                    if not isinstance(system, str) or not system.strip():
+                        errors.append(f"transfers 第 {gi} 组的「{station}」端点缺少 system")
+                        continue
+                    explicit_systems.add(system)
+                    if not any(
+                        line.system == system and station in line.stations
+                        for line in city.lines
+                    ):
+                        errors.append(
+                            f"transfers 第 {gi} 组的端点「{system}|{station}」"
+                            "无法匹配到线路"
+                        )
+                if not has_legacy_endpoint and len(explicit_systems) < 2:
+                    errors.append(f"transfers 第 {gi} 组的端点必须跨越至少 2 个系统")
+
+        raw_aliases = data.get("aliases", [])
+        if not isinstance(raw_aliases, list):
+            errors.append("aliases 必须是数组")
+        else:
+            for gi, group in enumerate(raw_aliases, 1):
+                if not isinstance(group, list) or len(group) < 2:
+                    errors.append(f"aliases 第 {gi} 组至少需要 2 个站名")
                 elif any(not isinstance(x, str) or not x.strip() for x in group):
-                    errors.append(f"{key} 第 {gi} 组包含空的站名")
+                    errors.append(f"aliases 第 {gi} 组包含空的站名")
 
         if not isinstance(city.external_walks, dict):
             errors.append("external_walks 必须是对象")
@@ -412,7 +492,7 @@ def api_validate_city(doc_json: str) -> str:
         errors=errors[:40],
         warnings=warnings[:40],
         stats=stats,
-        city=city.to_dict() if not errors else None,
+        city=source_city.to_dict() if not errors else None,
     )
 
 
@@ -491,50 +571,38 @@ def api_transfer_hints(station: str, exclude_line_id: str = "") -> str:
     """某站可换乘的线路与方向。
 
     返回两类：
-    - 站内换乘（`transfer: false`）：内核 `engine.transfer_hints` 的「同站异名」结果，不出闸；
-    - 出闸转乘（`transfer: true`）：同地点但分属不同付费系统的「转乘站组」线路
-      （`city.transfers`，如地铁「上海南站」↔ 国铁「上海南」可换乘金山铁路），
-      需出闸/换系统后再进站，附带实际站名 `transferStation`。
+    - 系统内换乘（`transfer: false`）：同系统内同站或同站异名线路；
+    - 跨系统转乘（`transfer: true`）：仅按 `city.transfers` 中的系统+站名端点匹配。
     """
     try:
         city = _require_city()
         if not station:
             return _ok(hints=[])
         hints: list[dict] = []
-        seen: set[str] = set()
-        # 站内换乘只取「同站异名」组；转乘站组在下面单独标记（需出闸/换系统）
-        for name in engine.alias_names(city, station):
-            for ln in city.lines_serving(name):
-                if ln.id in seen:
-                    continue
-                seen.add(ln.id)
-                hints.append({
-                    **_line_summary(ln, brief=True),
-                    "directions": [d.label for d in ln.directions],
-                    "current": ln.id == exclude_line_id,
-                    "transfer": False,
-                    "boardStation": name,
-                    "transferStation": "",
-                })
-        for grp in city.transfers:
-            if station not in grp:
-                continue
-            for name in grp:
-                if name == station:
-                    continue
-                for ln in city.lines_serving(name):
-                    if ln.id in seen:
-                        continue
-                    seen.add(ln.id)
-                    hints.append({
-                        **_line_summary(ln, brief=True),
-                        "directions": [d.label for d in ln.directions],
-                        "current": ln.id == exclude_line_id,
-                        "transfer": True,
-                        "boardStation": name,
-                        "transferStation": name,
-                    })
-        hints.sort(key=lambda h: h["transfer"])  # 先站内换乘，再出闸转乘（稳定排序，各自保持库中顺序）
+        source_line = next((line for line in city.lines if line.id == exclude_line_id), None)
+        if source_line and station in source_line.stations:
+            hints.append({
+                **_line_summary(source_line, brief=True),
+                "directions": [direction.label for direction in source_line.directions],
+                "current": True,
+                "transfer": False,
+                "boardStation": station,
+                "transferStation": "",
+            })
+        for ln, directions in engine.transfer_hints(city, station, exclude_line_id or None):
+            board_station = engine.station_name_on_line(city, ln, station)
+            is_transfer = bool(source_line and engine.is_known_transfer(
+                city, station, board_station, source_line.system, ln.system
+            ))
+            hints.append({
+                **_line_summary(ln, brief=True),
+                "directions": [direction.label for direction in directions],
+                "current": ln.id == exclude_line_id,
+                "transfer": is_transfer,
+                "boardStation": board_station,
+                "transferStation": board_station if is_transfer else "",
+            })
+        hints.sort(key=lambda h: h["transfer"])  # 先同系统换乘，再跨系统转乘
         return _ok(hints=hints)
     except Exception as exc:  # noqa: BLE001
         return _err(str(exc))
@@ -606,7 +674,12 @@ def api_walk_suggestion(trip_json: str, index: int) -> str:
             return _ok(walk=0.0)
         prev = trip.steps[index - 1].to_station
         step = trip.steps[index]
-        return _ok(walk=engine.resolve_walk(step, prev, trip.transfer_walk_default, _city))
+        previous_step = trip.steps[index - 1]
+        return _ok(walk=engine.resolve_walk(
+            step, prev, trip.transfer_walk_default, _city,
+            engine.step_system(_city, previous_step),
+            engine.step_system(_city, step),
+        ))
     except Exception as exc:  # noqa: BLE001
         return _err(str(exc))
 

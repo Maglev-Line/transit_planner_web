@@ -82,7 +82,7 @@
           <div class="ed-json-actions">
             <button type="button" id="btn-json-apply" class="primary">从源码应用</button>
             <button type="button" id="btn-json-format">格式化</button>
-            <span class="hint">源码模式可编辑全部字段（含方向、双色等）；应用时会自动校验。</span>
+            <span class="hint">源码模式可编辑全部字段，包括跨线交路的标志色、班次、区段和快车停靠站；应用时会自动校验并保留配置。</span>
           </div>
           <div class="err" id="json-error" hidden></div>
           <textarea id="json-text" spellcheck="false" autocomplete="off"></textarea>
@@ -93,6 +93,9 @@
       <aside class="ed-panel ed-meta">
         <div class="ed-panel-head"><h2>城市信息</h2></div>
         <div id="city-meta" class="ed-form"></div>
+
+        <div class="ed-panel-head"><h2>线路系统</h2></div>
+        <div id="system-meta"></div>
 
         <div class="ed-panel-head"><h2>换乘 / 同站异名</h2></div>
         <div id="group-meta"></div>
@@ -183,7 +186,7 @@
   <script src="https://cdn.jsdelivr.net/pyodide/v0.27.2/full/pyodide.js"></script>
   <script src="js/navigation.js"></script>
   <script src="js/bridge.js"></script>
-  <script src="js/data-api.js"></script>
+  <script src="js/data-api.js?v=site-messages-1"></script>
   <script src="js/line-branches.js"></script>
   <script src="js/city-diff.js"></script>
   <script src="js/editor.js"></script>

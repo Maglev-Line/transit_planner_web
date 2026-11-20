@@ -30,7 +30,7 @@
     published: [],
     rollbacks: [],
     bans: [],
-    announcements: [],
+    messages: [],
     details: new Map(),
     banTarget: null,
     admin: false,
@@ -120,7 +120,7 @@
     $("btn-logout").hidden = !state.admin;
     $("btn-login").hidden = state.admin;
     $("tab-bans").hidden = !state.admin;
-    $("tab-announcements").hidden = !state.admin;
+    $("tab-messages").hidden = !state.admin;
     // 始终允许点击：未配置时打开弹窗给出具体排查步骤，而不是变成无法点击的灰按钮
     $("btn-login").disabled = false;
     $("btn-login").title = blocked
@@ -163,14 +163,17 @@
       return;
     }
 
-    if (tab === "announcements") {
+    if (tab === "messages") {
       if (!state.admin) {
         toast("请先登录管理员");
         return loadTab("pending");
       }
-      const [anns, counts] = await Promise.all([DataApi.announcements(), DataApi.submissions("all")]);
-      if (!anns.ok) return showError(anns);
-      state.announcements = anns.announcements || [];
+      const [messages, counts] = await Promise.all([
+        DataApi.messages({ manage: true, includeScheduled: true }),
+        DataApi.submissions("all"),
+      ]);
+      if (!messages.ok) return showError(messages);
+      state.messages = messages.messages || [];
       if (counts.ok) state.counts = { ...state.counts, ...counts.counts };
       renderSummary();
       renderTabs();
@@ -261,7 +264,7 @@
     if (state.tab === "published") return renderPublishedList();
     if (state.tab === "rollbacks") return renderRollbackList();
     if (state.tab === "bans") return renderBanList();
-    if (state.tab === "announcements") return renderAnnouncementAdminList();
+    if (state.tab === "messages") return renderMessageAdminList();
     return renderSubmissionList();
   }
 
@@ -401,110 +404,130 @@
     </article>`;
   }
 
-  function announcementLevel(level) {
+  function messageLevel(level) {
     return {
-      info: { text: "普通公告", cls: "" },
+      info: { text: "普通站信", cls: "" },
       important: { text: "重要", cls: "important" },
       warning: { text: "提醒", cls: "warning" },
-    }[level] || { text: "普通公告", cls: "" };
+    }[level] || { text: "普通站信", cls: "" };
   }
 
-  function renderAnnouncementAdminList() {
-    const items = state.announcements;
+  function renderMessageAdminList() {
+    const items = state.messages;
     const form = `
-      <article class="rv-card rv-ann-card">
+      <article class="rv-card rv-message-card">
         <div class="rv-card-head">
-          <span class="status status-pending">发布公告</span>
-          <b class="rv-city">新公告</b>
-          <span class="rv-time">发布后立即显示在首页右上角的公告图标中</span>
+          <span class="status status-pending">发布全站站信</span>
+          <b class="rv-city">新站信</b>
+          <span class="rv-time">发送给所有访客；留空立即发布，也可指定未来时间</span>
         </div>
-        <div class="rv-ann-form">
-          <label class="rv-ann-field">
+        <div class="rv-message-form">
+          <label class="rv-message-field">
             <span>标题</span>
-            <input id="ann-title" type="text" maxlength="120" placeholder="公告标题">
+            <input id="message-title" type="text" maxlength="120" placeholder="站信标题">
           </label>
-          <label class="rv-ann-field">
+          <label class="rv-message-field">
             <span>级别</span>
-            <select id="ann-level">
-              <option value="info">普通公告</option>
+            <select id="message-level">
+              <option value="info">普通站信</option>
               <option value="important">重要</option>
               <option value="warning">提醒</option>
             </select>
           </label>
-          <label class="rv-ann-field rv-ann-wide">
-            <span>内容</span>
-            <textarea id="ann-body" rows="4" maxlength="4000" placeholder="公告正文，支持换行"></textarea>
+          <label class="rv-message-field rv-message-wide">
+            <span>计划发布时间</span>
+            <input id="message-scheduled-at" type="datetime-local">
+            <span class="rv-time">按本地时间填写；留空则立即发布</span>
           </label>
-          <div class="err" id="ann-error" hidden></div>
+          <label class="rv-message-field rv-message-wide">
+            <span>内容</span>
+            <textarea id="message-body" rows="4" maxlength="4000" placeholder="站信正文，支持换行"></textarea>
+          </label>
+          <div class="err" id="message-error" hidden></div>
           <div class="rv-card-actions">
-            <button type="button" class="primary" data-act="publish-announcement">发布公告</button>
+            <button type="button" class="primary" data-act="publish-message">发布站信</button>
           </div>
         </div>
       </article>`;
     const list = items.length
-      ? items.map(announcementAdminCard).join("")
-      : empty("还没有发布公告。");
+      ? items.map(messageAdminCard).join("")
+      : empty("还没有发布全站站信。");
     $("list").innerHTML = form + list;
   }
 
-  function announcementAdminCard(item) {
-    const level = announcementLevel(item.level);
-    return `<article class="rv-card" data-ann="${esc(item.id)}">
+  function messageAdminCard(item) {
+    const level = messageLevel(item.level);
+    const scheduled = item.status === "scheduled";
+    return `<article class="rv-card" data-message="${esc(item.id)}">
       <div class="rv-card-head">
-        <span class="status status-approved">已发布</span>
+        <span class="status ${scheduled ? "status-pending" : "status-approved"}">${scheduled ? "定时待发布" : "已发布"}</span>
         <span class="badge">${esc(level.text)}</span>
         <b class="rv-city">${esc(item.title)}</b>
-        <span class="rv-time">${fmtTime(item.publishedAt)}</span>
+        <span class="rv-time">${scheduled ? `计划于 ${fmtTime(item.scheduledAt)}` : `发布于 ${fmtTime(item.publishedAt)}`}</span>
         <div class="spacer"></div>
-        <button type="button" class="danger" data-act="delete-announcement">删除公告</button>
+        <button type="button" class="danger" data-act="delete-message">删除站信</button>
       </div>
-      <p class="rv-desc rv-ann-body">${esc(item.body)}</p>
+      <p class="rv-desc rv-message-body">${esc(item.body)}</p>
       <div class="rv-facts">
-        <span>公告 ID：${esc(item.id)}</span>
+        <span>站信 ID：${esc(item.id)}</span>
         <span>级别：${esc(level.text)}</span>
+        ${scheduled ? `<span>计划发布时间：${fmtTime(item.scheduledAt)}</span>` : ""}
       </div>
     </article>`;
   }
 
-  async function publishAnnouncement() {
-    const title = $("ann-title").value.trim();
-    const body = $("ann-body").value.trim();
-    const level = $("ann-level").value;
-    const error = $("ann-error");
+  async function publishMessage() {
+    const title = $("message-title").value.trim();
+    const body = $("message-body").value.trim();
+    const level = $("message-level").value;
+    const scheduledAtInput = $("message-scheduled-at").value;
+    const error = $("message-error");
     if (title.length < 2) {
-      error.textContent = "公告标题至少需要 2 个字。";
+      error.textContent = "站信标题至少需要 2 个字。";
       error.hidden = false;
-      $("ann-title").focus();
+      $("message-title").focus();
       return;
     }
     if (!body) {
-      error.textContent = "公告内容不能为空。";
+      error.textContent = "站信内容不能为空。";
       error.hidden = false;
-      $("ann-body").focus();
+      $("message-body").focus();
       return;
     }
 
-    const button = document.querySelector('[data-act="publish-announcement"]');
+    let scheduledAt = "";
+    if (scheduledAtInput) {
+      const scheduledDate = new Date(scheduledAtInput);
+      if (Number.isNaN(scheduledDate.getTime())) {
+        error.textContent = "计划发布时间无效。";
+        error.hidden = false;
+        $("message-scheduled-at").focus();
+        return;
+      }
+      scheduledAt = scheduledDate.toISOString();
+    }
+
+    const button = document.querySelector('[data-act="publish-message"]');
     if (button) button.disabled = true;
-    const res = await DataApi.createAnnouncement({ title, body, level });
+    const res = await DataApi.createMessage({ title, body, level, scheduledAt });
     if (button) button.disabled = false;
     if (!res.ok) {
       error.textContent = res.error || "发布失败";
       error.hidden = false;
       return;
     }
-    toast("公告已发布");
-    await loadTab("announcements");
+    toast(scheduledAt ? "站信已安排定时发布" : "站信已发布");
+    await loadTab("messages");
   }
 
-  async function deleteAnnouncement(id) {
-    const item = state.announcements.find((row) => row.id === id);
+  async function deleteMessage(id) {
+    const item = state.messages.find((row) => row.id === id);
     if (!item) return;
-    if (!confirm(`确定删除公告「${item.title}」？首页将不再显示。`)) return;
-    const res = await DataApi.deleteAnnouncement(id);
+    if (!confirm(`确定删除全站站信「${item.title}」？访客将不再看到。`)) return;
+    const res = await DataApi.deleteMessage(id);
     if (!res.ok) return toast(res.error || "删除失败");
-    toast("公告已删除");
-    await loadTab("announcements");
+    toast("站信已删除");
+    await loadTab("messages");
   }
 
   // ---------------- 详情 / 差异 ----------------
@@ -722,10 +745,10 @@
         return;
       }
 
-      if (act === "publish-announcement") return publishAnnouncement();
-      const announcementCard = btn.closest("[data-ann]");
-      if (announcementCard && act === "delete-announcement") {
-        return deleteAnnouncement(announcementCard.dataset.ann);
+      if (act === "publish-message") return publishMessage();
+      const messageCard = btn.closest("[data-message]");
+      if (messageCard && act === "delete-message") {
+        return deleteMessage(messageCard.dataset.message);
       }
 
       if (card.dataset.published) {
@@ -779,10 +802,10 @@
       DataApi.setToken("");
       state.admin = false;
       state.bans = [];
-      state.announcements = [];
+      state.messages = [];
       updateAdminUI();
       toast("已退出管理员登录");
-      loadTab(state.tab === "bans" || state.tab === "announcements" ? "pending" : state.tab);
+      loadTab(state.tab === "bans" || state.tab === "messages" ? "pending" : state.tab);
     });
   }
 

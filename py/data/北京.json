@@ -2207,5 +2207,30 @@
       "清河"
     ]
   ],
-  "aliases": []
+  "aliases": [],
+  "through_services": [
+    {
+      "id": "bj_through_m9_mfs",
+      "name": "北京地铁9号线—房山线贯通交路",
+      "short_name": "9号线/房山线贯通",
+      "type": "metro",
+      "color": "#9FC238",
+      "color2": "#C9602B",
+      "operator": "北京市地铁运营有限公司",
+      "headway_rush": 3,
+      "headway_normal": 6,
+      "segments": [
+        {
+          "line_id": "bj_m9",
+          "from_station": "国家图书馆",
+          "to_station": "郭公庄"
+        },
+        {
+          "line_id": "bj_mfs",
+          "from_station": "郭公庄",
+          "to_station": "阎村东"
+        }
+      ]
+    }
+  ]
 }

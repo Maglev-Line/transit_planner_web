@@ -13,27 +13,48 @@
 <body class="record-body">
   <div class="topstack">
     <header class="topbar record-topbar">
-      <a class="home-nav" href="index.html" title="返回首页">首页</a>
-      <div class="brand">记录模式</div>
-
-      <label>记录名 <input id="rec-title" type="text" size="18" placeholder="我的运转记录"></label>
-      <label>日期 <input id="rec-date" type="date"></label>
-      <label>城市
-        <select id="rec-city" title="选择城市线路库；也可选「纯手动」不使用线路库"></select>
-      </label>
-      <button type="button" class="ghost" id="btn-rec-kernel" title="加载线路库后可选用数据库线路">加载线路库</button>
-      <span class="draft-chip" id="rec-save-state">草稿已自动保存</span>
-
-      <div class="spacer"></div>
-      <a class="btn-link" id="btn-switch-plan" href="plan.html" title="切换到规划模式，并继承当前行程">
-        <img class="ico" src="assets/icons/switch.svg" alt=""> 切换为规划模式
-      </a>
-      <a class="btn-link" id="btn-rec-editor" href="editor.html?from=record" title="编辑城市线路数据、提交审核">数据工坊</a>
-      <button type="button" id="btn-rec-export" title="导出为数据文件（可再次导入编辑）"><span class="ico ico-mono" style="--icon:url(assets/icons/download.svg)" aria-hidden="true"></span> 导出文件</button>
-      <button type="button" class="danger top-delete" id="btn-rec-clear" title="清除当前记录的全部行程段（记录设置保留）">清空记录</button>
-      <button type="button" class="primary" id="btn-rec-print" title="生成 A4 记录表并调用打印（可选另存为 PDF）"><span class="ico ico-mono" style="--icon:url(assets/icons/download.svg)" aria-hidden="true"></span> 导出 PDF</button>
+      <div class="topbar-row topbar-row-primary">
+        <a class="home-nav" href="index.html" title="返回首页">首页</a>
+        <div class="brand">记录模式</div>
+        <label>城市
+          <select id="rec-city" title="选择城市线路库；也可选「纯手动」不使用线路库"></select>
+        </label>
+        <button type="button" class="ghost" id="btn-rec-kernel" title="加载线路库后可选用数据库线路">加载线路库</button>
+        <label>记录名 <input id="rec-title" type="text" size="18" placeholder="我的运转记录"></label>
+        <label>日期 <input id="rec-date" type="date"></label>
+        <label class="check" title="记录中按付费区连续行程处理">
+          <input type="checkbox" id="rec-paid-zone"> 付费区模式
+        </label>
+        <span class="draft-chip" id="rec-save-state">草稿已自动保存</span>
+      </div>
+      <nav class="topbar-row topbar-row-actions" aria-label="记录操作">
+        <a class="btn-link" id="btn-switch-plan" href="plan.html" aria-label="切换到规划模式" title="切换到规划模式，并继承当前行程">
+          <span class="ico ico-mono" style="--icon:url(assets/icons/switch.svg)" aria-hidden="true"></span>
+        </a>
+        <button type="button" id="btn-rec-import" aria-label="导入 JSON" title="导入 JSON 规划或记录文件"><span class="ico ico-mono" style="--icon:url(assets/icons/upload.svg)" aria-hidden="true"></span></button>
+        <input type="file" id="rec-file-import" accept=".json,application/json" hidden>
+        <button type="button" id="btn-rec-export" aria-label="导出" aria-haspopup="dialog" aria-controls="rec-export-dialog" title="选择导出 JSON 或 PDF"><span class="ico ico-mono" style="--icon:url(assets/icons/download.svg)" aria-hidden="true"></span></button>
+        <button type="button" class="danger top-delete" id="btn-rec-clear" aria-label="清空记录" title="清空全部行程段，可通过撤销恢复"><span class="ico ico-mono" style="--icon:url(assets/icons/trash.svg)" aria-hidden="true"></span></button>
+        <button type="button" id="btn-rec-undo" aria-label="撤销" title="撤销上一步" disabled><span class="ico ico-mono" style="--icon:url(assets/icons/undo.svg)" aria-hidden="true"></span></button>
+        <button type="button" id="btn-rec-redo" aria-label="重做" title="重做上一步" disabled><span class="ico ico-mono" style="--icon:url(assets/icons/redo.svg)" aria-hidden="true"></span></button>
+        <a class="btn-link topbar-editor-link" id="btn-rec-editor" href="editor.html?from=record" aria-label="数据工坊" title="编辑城市线路数据、提交审核">
+          <span class="ico ico-mono" style="--icon:url(assets/icons/edit.svg)" aria-hidden="true"></span>
+        </a>
+      </nav>
     </header>
   </div>
+
+  <dialog id="rec-export-dialog" class="export-dialog" aria-labelledby="rec-export-dialog-title">
+    <div class="modal-head">
+      <h3 id="rec-export-dialog-title">选择导出格式</h3>
+      <div class="spacer"></div>
+      <button type="button" class="ghost" data-close-export title="关闭">✕</button>
+    </div>
+    <div class="modal-body export-options">
+      <button type="button" id="btn-rec-export-json"><span class="ico ico-mono" style="--icon:url(assets/icons/download.svg)" aria-hidden="true"></span> 导出JSON</button>
+      <button type="button" id="btn-rec-export-pdf"><span class="ico ico-mono" style="--icon:url(assets/icons/download.svg)" aria-hidden="true"></span> 导出PDF</button>
+    </div>
+  </dialog>
 
   <div class="record-main">
     <!-- 左：行程记录列表 -->

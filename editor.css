@@ -333,13 +333,13 @@ main.ed-main {
 }
 .ed-form .city-name small { display: block; font-size: 11px; font-weight: 400; color: var(--ink-3); margin-top: 2px; }
 
-#group-meta, #walk-meta { padding: 8px 12px 10px; display: grid; gap: 6px; }
+#system-meta, #group-meta, #walk-meta { padding: 8px 12px 10px; display: grid; gap: 6px; }
 .ed-group-row, .ed-walk-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 6px; }
 .ed-walk-row { grid-template-columns: minmax(0, 1.6fr) 70px auto; }
 .ed-group-row input, .ed-walk-row input { width: 100%; font-size: 12.5px; }
 .ed-group-row button, .ed-walk-row button { font-size: 12px; padding: 2px 7px; }
 .ed-add-btn { justify-self: start; font-size: 12px; padding: 4px 9px; margin-top: 2px; }
-#group-meta .hint, #walk-meta .hint { font-size: 11px; }
+#system-meta .hint, #group-meta .hint, #walk-meta .hint { font-size: 11px; }
 
 .ed-validation { padding: 10px 12px 14px; display: grid; gap: 8px; font-size: 12.5px; }
 .ed-validation .v-stats { color: var(--ink-3); font-size: 12px; }

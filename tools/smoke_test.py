@@ -16,6 +16,10 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "py"))
 
 import web_api  # noqa: E402
+from transit_planner.core.models import City, CityLibrary  # noqa: E402
+from transit_planner.core.models import Direction, Line, LineError, TransferEndpoint  # noqa: E402
+from transit_planner.core import engine  # noqa: E402
+from route_planner import plan_routes  # noqa: E402
 
 web_api.DATA_DIR = str(ROOT / "py" / "data")   # 本地测试直接用仓库里的数据目录
 
@@ -25,6 +29,39 @@ def call(name: str, *args) -> dict:
     if not res.get("ok"):
         raise SystemExit(f"[×] {name} 返回错误：{res.get('error')}")
     return res
+
+
+def check_system_transfers() -> None:
+    """系统内同站可换乘；系统间仅允许明确配置的站点对转乘。"""
+    source = Line(
+        id="system_a", name="系统 A", system="A", stations=["起点", "共站"],
+        travel_minutes=[2], directions=[Direction(label="共站方向", terminal="共站")],
+    )
+    target = Line(
+        id="system_b", name="系统 B", system="B", stations=["共站", "终点"],
+        travel_minutes=[3], directions=[Direction(label="终点方向", terminal="终点")],
+    )
+    city = City(name="测试", lines=[source, target])
+    try:
+        plan_routes(city, "起点", "station", "终点")
+    except LineError:
+        pass
+    else:
+        raise AssertionError("同名跨系统站在未配置转乘站对时不应连通")
+
+    city.transfers = [[
+        TransferEndpoint(station="共站", system="A"),
+        TransferEndpoint(station="共站", system="B"),
+    ]]
+    cross = plan_routes(city, "起点", "station", "终点")["plans"][0]
+    assert cross["transfers"] == 0 and cross["systemTransfers"] == 1
+    assert cross["legs"][1]["transfer"] and cross["legs"][1]["walk"] == 5
+
+    target.system = "A"
+    city.transfers = []
+    same = plan_routes(city, "起点", "station", "终点")["plans"][0]
+    assert same["transfers"] == 1 and same["systemTransfers"] == 0
+    assert same["legs"][1]["interchange"] and not same["legs"][1]["transfer"]
 
 
 def main() -> int:
@@ -43,6 +80,16 @@ def main() -> int:
     assert checked["valid"] and checked["stats"]["lines"] == len(raw["city"]["lines"])
     print(f"[√] 数据工坊：读取上海 JSON 并通过校验（{checked['stats']['lines']} 条线路、"
           f"{checked['stats']['stations']} 站、{len(checked['warnings'])} 条提醒）")
+    shanghai_systems = {line["system"] for line in raw["city"]["lines"]}
+    assert shanghai_systems == {
+        "地铁系统", "磁浮系统", "松江有轨电车系统", "金山铁路系统", "公交系统",
+    }, f"上海线路系统分类不完整：{shanghai_systems}"
+    assert all(
+        isinstance(endpoint, dict) and endpoint.get("station") and endpoint.get("system")
+        for group in raw["city"]["transfers"] for endpoint in group
+    ), "上海转乘站对的每个端点都必须同时声明站名和系统"
+    print(f"[√] 上海数据库：{len(shanghai_systems)} 个线路系统，"
+          f"{len(raw['city']['transfers'])} 组精确转乘站对")
 
     broken_doc = json.loads(json.dumps(raw["city"], ensure_ascii=False))
     broken_doc["lines"][0]["travel_minutes"] = ["不是数字"]
@@ -53,6 +100,31 @@ def main() -> int:
     city_name = "上海" if "上海" in cities else cities[0]
     city = call("api_load_city", city_name)
     print(f"[√] {city_name}：{city['city']['lineCount']} 条线路、{city['city']['stationCount']} 站")
+    check_system_transfers()
+    shanghai_hints = call("api_transfer_hints", "莘庄", "sh_m1")["hints"]
+    jinshan_hint = next(h for h in shanghai_hints if h["id"] == "sh_rail_jinshan")
+    assert jinshan_hint["transfer"] and jinshan_hint["boardStation"] == "莘庄"
+    print("[√] 上海莘庄：地铁与金山铁路同名站被识别为跨系统转乘")
+    metro_direction = call(
+        "api_pick_direction", "sh_m1", "莘庄", "上海南站"
+    )["direction"]
+    rail_direction = call(
+        "api_pick_direction", "sh_rail_jinshan", "上海南", "金山卫"
+    )["direction"]
+    transfer_trip = call("api_evaluate", json.dumps({
+        "city": "上海",
+        "transfer_walk_default": 5,
+        "steps": [
+            {"line_id": "sh_m1", "direction_label": metro_direction,
+             "from_station": "莘庄", "to_station": "上海南站"},
+            {"line_id": "sh_rail_jinshan", "direction_label": rail_direction,
+             "from_station": "上海南", "to_station": "金山卫"},
+        ],
+    }, ensure_ascii=False))
+    assert transfer_trip["totals"]["transferCount"] == 0
+    assert transfer_trip["totals"]["systemTransferCount"] == 1
+    assert transfer_trip["segments"][1]["walk"] == 5
+    print("[√] 跨系统行程统计为转乘，且同名转乘站按默认步行时间计算")
 
     lines = call("api_search_lines", "1号线")["lines"]
     line = lines[0]
@@ -94,6 +166,8 @@ def main() -> int:
           f"运行 {first['run']} 分钟 / {first['stopCount']} 站，经停 {len(first['stops'])} 站，"
           f"默认步行 {first['walkDefault']} 分钟")
     assert res["totals"]["price"] == 6.0, "票价合计应为 6.0"
+    assert res["totals"]["transferCount"] == 1
+    assert res["totals"]["systemTransferCount"] == 0
     print(f"[√] 统计：总时长 {res['totals']['minutes']} 分钟（运行 {res['totals']['run']} + "
           f"步行 {res['totals']['walk']}）、换乘 {res['totals']['transferCount']} 次、"
           f"线路 {res['totals']['lineCount']} 条、票价 ¥{res['totals']['price']}")
@@ -120,6 +194,7 @@ def main() -> int:
 
     check_express()
     check_routes()
+    check_network_services()
     check_combined_city()
 
     print("\n全部检查通过。")
@@ -154,7 +229,307 @@ def check_combined_city() -> None:
         assert f"{station}（上海）" in stations_by_city["上海"]
         assert f"{station}（苏州）" in stations_by_city["苏州"]
         assert station not in stations_by_city["上海"] | stations_by_city["苏州"]
+    combined_city = CityLibrary(ROOT / "py" / "data").load("上海-苏州")
+    shanghai_system = combined_city.line("sh_m11").system
+    suzhou_system = combined_city.line("sz_m11").system
+    assert shanghai_system != suzhou_system
+    assert any(
+        endpoint.station == "花桥" and endpoint.system == suzhou_system
+        for endpoint in engine.transfer_targets(combined_city, "花桥", shanghai_system)
+    ), "同城组合应仅将配置的花桥站声明为跨系统共站"
     print(f"[√] 上海-苏州同城组合：{len(shared_names)} 个重名站中仅花桥共站")
+
+
+def check_network_services() -> None:
+    """跨线贯通与线路内快车都能校验、搜索并计算。"""
+    beijing_doc = call("api_city_json", "北京")["city"]
+    beijing_check = call("api_validate_city", json.dumps(beijing_doc, ensure_ascii=False))
+    assert beijing_check["valid"], f"北京贯通交路应通过校验：{beijing_check['errors']}"
+    assert (
+        beijing_check["city"]["through_services"][0]["id"]
+        == beijing_doc["through_services"][0]["id"]
+        and [
+            (section["line_id"], section["from_station"], section["to_station"])
+            for section in beijing_check["city"]["through_services"][0]["segments"]
+        ] == [
+            (section["line_id"], section["from_station"], section["to_station"])
+            for section in beijing_doc["through_services"][0]["segments"]
+        ]
+    ), "数据工坊校验结果应保留可编辑的 through_services 配置"
+
+    beijing = call("api_load_city", "北京")
+    through = next(
+        line for line in beijing["lines"] if line["id"] == "bj_through_m9_mfs"
+    )
+    assert through["stationCount"] == 24, "北京贯通交路应包含两区段的连续站点"
+    assert "bj_through_m9_mfs" in beijing["city"]["throughServiceIds"]
+    plans = call("api_plan_routes", json.dumps({
+        "mode": "station", "origin": "国家图书馆", "target": "阎村东", "limit": 5,
+    }, ensure_ascii=False))["plans"]
+    assert all(
+        leg["lineId"] != "bj_through_m9_mfs"
+        for plan in plans for leg in plan["legs"]
+    ), "智能规划不应展示班次较少的跨线贯通交路"
+    blocked_through_goal = json.loads(web_api.api_plan_routes(json.dumps({
+        "mode": "line", "origin": "国家图书馆", "target": "bj_through_m9_mfs",
+    }, ensure_ascii=False)))
+    assert not blocked_through_goal["ok"], "跨线交路不能作为智能规划的乘坐线路目标"
+
+    through_direction = call(
+        "api_pick_direction", "bj_through_m9_mfs", "国家图书馆", "阎村东"
+    )["direction"]
+    evaluated = call("api_evaluate", json.dumps({
+        "city": "北京",
+        "steps": [{
+            "line_id": "bj_through_m9_mfs",
+            "direction_label": through_direction,
+            "from_station": "国家图书馆",
+            "to_station": "阎村东",
+            "manual": False,
+        }],
+    }, ensure_ascii=False))
+    assert evaluated["failedStep"] is None, f"贯通交路仍应可手动计算：{evaluated.get('error')}"
+    assert "郭公庄" in evaluated["segments"][0]["stops"]
+
+    through_fast_doc = json.loads(json.dumps(beijing_doc, ensure_ascii=False))
+    through_fast_doc["through_services"][0]["express"] = [{
+        "id": "test_rapid",
+        "name": "跨线直快车",
+        "stops": ["国家图书馆", "郭公庄", "阎村东"],
+        "section_minutes": [],
+        "skip_minutes": 0.4,
+        "headway_text": "",
+    }]
+    fast_check = call("api_validate_city", json.dumps(through_fast_doc, ensure_ascii=False))
+    assert fast_check["valid"], f"跨线快车服务应通过校验：{fast_check['errors']}"
+    web_api._city = CityLibrary.with_through_services(City.from_dict(through_fast_doc))
+    fast_plans = call("api_plan_routes", json.dumps({
+        "mode": "station", "origin": "国家图书馆", "target": "阎村东", "limit": 5,
+    }, ensure_ascii=False))["plans"]
+    assert all(
+        leg["lineId"] != "bj_through_m9_mfs"
+        for plan in fast_plans for leg in plan["legs"]
+    ), "快车班次较少时，智能规划也不应展示跨线交路"
+    fast_direction = call(
+        "api_pick_direction", "bj_through_m9_mfs", "国家图书馆", "阎村东", "test_rapid"
+    )["direction"]
+    evaluated_fast = call("api_evaluate", json.dumps({
+        "city": "北京",
+        "steps": [{
+            "line_id": "bj_through_m9_mfs",
+            "direction_label": fast_direction,
+            "from_station": "国家图书馆",
+            "to_station": "阎村东",
+            "manual": False,
+            "service": "test_rapid",
+        }],
+    }, ensure_ascii=False))
+    assert evaluated_fast["failedStep"] is None, "跨线快车步骤应可由运转内核计算"
+
+    shanghai_doc = call("api_city_json", "上海")["city"]
+    shanghai_check = call("api_validate_city", json.dumps(shanghai_doc, ensure_ascii=False))
+    assert shanghai_check["valid"], f"上海快车数据应通过校验：{shanghai_check['errors']}"
+    call("api_load_city", "上海")
+    line16 = call("api_line", "sh_m16")["line"]
+    assert [service["name"] for service in line16["express"]] == ["大站车", "直达车"]
+    for service_id, service_name, expected_stops in [
+        ("rapid", "大站车", ["龙阳路", "罗山路", "新场", "惠南", "临港大道", "滴水湖"]),
+        ("direct", "直达车", ["龙阳路", "滴水湖"]),
+    ]:
+        direction = call("api_pick_direction", "sh_m16", "龙阳路", "滴水湖", service_id)["direction"]
+        result = call("api_evaluate", json.dumps({
+            "city": "上海",
+            "steps": [{
+                "line_id": "sh_m16", "direction_label": direction,
+                "from_station": "龙阳路", "to_station": "滴水湖",
+                "manual": False, "service": service_id,
+            }],
+        }, ensure_ascii=False))
+        segment = result["segments"][0]
+        assert segment["serviceName"] == service_name and segment["stops"] == expected_stops
+    express_route = call("api_plan_routes", json.dumps({
+        "mode": "station", "origin": "龙阳路", "target": "滴水湖", "limit": 1,
+    }, ensure_ascii=False))["plans"][0]
+    assert any(
+        leg["lineId"] == "sh_m16" and leg["service"] == "direct"
+        for leg in express_route["legs"]
+    ), "智能规划应能使用更快的直达车服务"
+
+    chongqing_doc = call("api_city_json", "重庆")["city"]
+    chongqing_check = call("api_validate_city", json.dumps(chongqing_doc, ensure_ascii=False))
+    assert chongqing_check["valid"], f"重庆快车数据应通过校验：{chongqing_check['errors']}"
+    call("api_load_city", "重庆")
+    line15 = next(line for line in call("api_load_city", "重庆")["lines"] if line["id"] == "cq_m15")
+    assert line15["type"] == "suburban", "重庆15号线应标记为市域铁路"
+    line10 = call("api_line", "cq_m10")["line"]
+    assert [service["id"] for service in line10["express"]] == ["direct_fast"]
+    expected_direct_stops = [
+        "王家庄", "中央公园西", "江北机场T2航站楼", "江北机场T3航站楼",
+        "上湾路", "重庆北站北广场", "重庆北站南广场", "红土地",
+        "鲤鱼池", "曾家岩", "大礼堂", "七星岗", "万寿路", "兰花路",
+    ]
+    direction = call(
+        "api_pick_direction", "cq_m10", expected_direct_stops[0], expected_direct_stops[-1], "direct_fast"
+    )["direction"]
+    result = call("api_evaluate", json.dumps({
+        "city": "重庆",
+        "steps": [{
+            "line_id": "cq_m10", "direction_label": direction,
+            "from_station": expected_direct_stops[0], "to_station": expected_direct_stops[-1],
+            "manual": False, "service": "direct_fast",
+        }],
+    }, ensure_ascii=False))
+    assert result["segments"][0]["stops"] == expected_direct_stops
+    assert "南坪" not in result["segments"][0]["stops"]
+    cq_through_id = "cq_through_m5_m0_m4"
+    assert cq_through_id in {service["id"] for service in chongqing_doc["through_services"]}
+    cq_through = call("api_line", cq_through_id)["line"]
+    expected_cq_stops = [
+        "跳磴", "华岩中心", "金建路", "重庆西站", "上桥", "重庆图书馆",
+        "沙坪坝", "冉家坝", "民安大道", "重庆北站北广场", "头塘", "唐家沱",
+    ]
+    assert [service["name"] for service in cq_through["express"]] == ["直快车"]
+    assert cq_through["color"] == "#B35A20"
+    assert cq_through["headwayText"] == "30分钟一班"
+    assert cq_through["express"][0]["headwayText"] == "30分钟一班"
+    editable_chongqing = json.loads(json.dumps(chongqing_doc, ensure_ascii=False))
+    editable_service = editable_chongqing["through_services"][0]
+    editable_service["color"] = "#B35A20"
+    editable_service["headway_rush"] = 30
+    editable_service["headway_normal"] = 30
+    editable_service["express"][0]["headway_text"] = "30分钟一班"
+    edit_check = call(
+        "api_validate_city", json.dumps(editable_chongqing, ensure_ascii=False)
+    )
+    assert edit_check["valid"], f"数据工坊修改跨线交路后应通过校验：{edit_check['errors']}"
+    saved_service = edit_check["city"]["through_services"][0]
+    assert saved_service["color"] == "#B35A20"
+    assert saved_service["headway_rush"] == saved_service["headway_normal"] == 30
+    assert saved_service["express"][0]["headway_text"] == "30分钟一班"
+    assert saved_service["express"][0]["stops"] == expected_cq_stops
+    cq_direction = call(
+        "api_pick_direction", cq_through_id, expected_cq_stops[0], expected_cq_stops[-1],
+        "cq_direct_fast",
+    )["direction"]
+    cq_result = call("api_evaluate", json.dumps({
+        "city": "重庆",
+        "steps": [{
+            "line_id": cq_through_id,
+            "direction_label": cq_direction,
+            "from_station": expected_cq_stops[0],
+            "to_station": expected_cq_stops[-1],
+            "manual": False,
+            "service": "cq_direct_fast",
+        }],
+    }, ensure_ascii=False))
+    assert cq_result["failedStep"] is None, f"重庆跨线直快车应可计算：{cq_result.get('error')}"
+    assert cq_result["segments"][0]["stops"] == expected_cq_stops
+    assert cq_result["segments"][0]["serviceName"] == "直快车"
+    cq_smart_routes = call("api_plan_routes", json.dumps({
+        "mode": "station", "origin": "跳磴", "target": "唐家沱", "limit": 5,
+    }, ensure_ascii=False))["plans"]
+    assert all(
+        leg["lineId"] != cq_through_id
+        for plan in cq_smart_routes for leg in plan["legs"]
+    ), "班次较少的重庆跨线直快车不应进入智能规划"
+    call("api_load_city", "上海")
+    print("[√] 北京贯通/跨线快车、上海16号线快车、重庆跨线直快车均可配置和计算")
+    suzhou_doc = call("api_city_json", "苏州")["city"]
+    suzhou_check = call("api_validate_city", json.dumps(suzhou_doc, ensure_ascii=False))
+    assert suzhou_check["valid"], f"苏州线路数据应通过校验：{suzhou_check['errors']}"
+    suzhou_systems = {"地铁系统", "有轨电车系统", "智轨系统"}
+    assert set(suzhou_doc["systems"]) == suzhou_systems
+    assert all(line["system"] in suzhou_systems for line in suzhou_doc["lines"])
+    assert all(line["type"] != "national_rail" for line in suzhou_doc["lines"])
+    duplicate_station_systems = {}
+    for line in suzhou_doc["lines"]:
+        for station in line["stations"]:
+            duplicate_station_systems.setdefault(station, set()).add(line["system"])
+    expected_transfer_groups = {
+        frozenset((station, system) for system in systems)
+        for station, systems in duplicate_station_systems.items()
+        if len(systems) > 1
+    }
+    configured_transfer_groups = {
+        frozenset((endpoint["station"], endpoint["system"]) for endpoint in group)
+        for group in suzhou_doc["transfers"]
+    }
+    assert configured_transfer_groups == expected_transfer_groups, (
+        "苏州应且仅应声明所有跨系统同名车站为转乘站"
+    )
+    invalid_system_doc = json.loads(json.dumps(suzhou_doc, ensure_ascii=False))
+    invalid_system_doc["systems"].remove("智轨系统")
+    invalid_system_check = call(
+        "api_validate_city", json.dumps(invalid_system_doc, ensure_ascii=False)
+    )
+    assert not invalid_system_check["valid"], "删除仍被线路引用的系统应无法通过校验"
+    suzhou = call("api_load_city", "苏州")
+    suzhou_line = call("api_line", "sz_m11")["line"]
+    assert suzhou_line["system"] == "地铁系统"
+    suzhou_hints = call("api_transfer_hints", "狮子山", "sz_m1")["hints"]
+    tram_hint = next(hint for hint in suzhou_hints if hint["id"] == "sz_tram_t1")
+    assert tram_hint["transfer"] and tram_hint["boardStation"] == "狮子山"
+    metro_direction = call("api_pick_direction", "sz_m1", "狮子山", "塔园路")["direction"]
+    tram_direction = call("api_pick_direction", "sz_tram_t1", "狮子山", "新区公园")["direction"]
+    suzhou_transfer = call("api_evaluate", json.dumps({
+        "city": "苏州",
+        "steps": [
+            {"line_id": "sz_m1", "direction_label": metro_direction,
+             "from_station": "狮子山", "to_station": "塔园路"},
+            {"line_id": "sz_tram_t1", "direction_label": tram_direction,
+             "from_station": "狮子山", "to_station": "新区公园"},
+        ],
+    }, ensure_ascii=False))
+    assert suzhou_transfer["totals"]["transferCount"] == 0
+    assert suzhou_transfer["totals"]["systemTransferCount"] == 1
+    print("[√] 苏州狮子山：地铁与有轨电车按指定同名站转乘")
+    assert suzhou_line["stations"][0] == "唯亭" and suzhou_line["stations"][-1] == "花桥"
+    assert "金厍桥" not in suzhou_line["stations"]
+    assert len(suzhou_line["travelMinutes"]) == len(suzhou_line["stations"]) - 1
+    assert suzhou_line["directions"] == ["花桥方向", "唯亭方向"]
+    through_ids = {"sz_through_m3_m11", "sz_through_m4_m7"}
+    assert through_ids.issubset(set(suzhou["city"]["throughServiceIds"]))
+    for line_id, origin, target, junction in [
+        ("sz_through_m3_m11", "花桥", "金厍桥", "唯亭"),
+        ("sz_through_m4_m7", "龙道浜", "木里", "红庄"),
+    ]:
+        through_line = call("api_line", line_id)["line"]
+        assert through_line["system"] == "地铁系统"
+        assert through_line["stations"][0] == origin and through_line["stations"][-1] == target
+        assert through_line["stations"].count(junction) == 1
+        assert len(through_line["travelMinutes"]) == len(through_line["stations"]) - 1
+        direction = call("api_pick_direction", line_id, origin, target)["direction"]
+        result = call("api_evaluate", json.dumps({
+            "city": "苏州",
+            "steps": [{
+                "line_id": line_id,
+                "direction_label": direction,
+                "from_station": origin,
+                "to_station": target,
+                "manual": False,
+            }],
+        }, ensure_ascii=False))
+        assert result["failedStep"] is None, f"{through_line['name']}应可计算：{result.get('error')}"
+        assert result["segments"][0]["stops"] == through_line["stations"]
+        assert result["segments"][0]["system"] == "地铁系统"
+    smart_suzhou_route = call("api_plan_routes", json.dumps({
+        "mode": "station", "origin": "花桥", "target": "金厍桥", "limit": 5,
+    }, ensure_ascii=False))["plans"]
+    assert all(
+        leg["lineId"] not in through_ids
+        for plan in smart_suzhou_route for leg in plan["legs"]
+    ), "苏州智能规划不应使用低频跨线交路"
+    print("[√] 苏州3/11号线与4/7号线贯通车可配置和计算，智能规划不纳入")
+
+    shenzhen_doc = call("api_city_json", "深圳")["city"]
+    shenzhen_check = call("api_validate_city", json.dumps(shenzhen_doc, ensure_ascii=False))
+    assert shenzhen_check["valid"], f"深圳线路数据应通过校验：{shenzhen_check['errors']}"
+    shenzhen = call("api_load_city", "深圳")
+    assert "szn_m8" not in {line["id"] for line in shenzhen["lines"]}
+    shenzhen_line = next(line for line in shenzhen["lines"] if line["id"] == "szn_m2")
+    assert shenzhen_line["name"] == "深圳地铁2/8号线"
+    assert shenzhen_line["shortName"] == "2/8号线"
+    print("[√] 苏州11号线缩至唯亭—花桥，深圳8号线并入2/8号线")
 
 
 def check_routes() -> None:
@@ -175,7 +550,7 @@ def check_routes() -> None:
     plans = call("api_plan_routes", json.dumps(params, ensure_ascii=False))["plans"]
     assert plans, "前往车站模式应给出方案"
     for plan in plans:
-        assert plan["transfers"] == max(0, len(plan["legs"]) - 1), "换乘次数应与乘车段数一致"
+        assert plan["transfers"] + plan["systemTransfers"] == max(0, len(plan["legs"]) - 1), "换乘与转乘之和应与乘车段数一致"
         assert abs(plan["minutes"] - sum(leg["run"] + leg["walk"] for leg in plan["legs"])) < 0.3
         evaluated = call("api_evaluate", json.dumps({"city": "上海", "steps": plan["steps"]}, ensure_ascii=False))
         assert evaluated["failedStep"] is None, f"方案步骤应可被内核计算：{evaluated.get('error')}"

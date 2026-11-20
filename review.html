@@ -38,7 +38,7 @@
       <button type="button" data-tab="published">已发布数据</button>
       <button type="button" data-tab="rollbacks">回滚记录</button>
       <button type="button" data-tab="bans" id="tab-bans" hidden>封禁名单 <span class="count" id="count-bans"></span></button>
-      <button type="button" data-tab="announcements" id="tab-announcements" hidden>公告管理</button>
+      <button type="button" data-tab="messages" id="tab-messages" hidden>站信管理</button>
     </nav>
 
     <div class="rv-list" id="list">
@@ -51,6 +51,7 @@
         <li>任何人都可以匿名提交城市数据修改或新建城市（数据由系统做结构与数值校验）。</li>
         <li>提交说明、完整数据、差异对比与审核结果对所有访客公开；<b>联系方式仅管理员可见</b>。</li>
         <li>管理员通过后，覆盖数据立即对全站生效（优先于内置数据），所有访客刷新页面即可使用。</li>
+        <li>新提交通过或驳回后，审核结果会作为私密站信发送到提交时使用的浏览器。</li>
         <li>管理员可随时回滚到内置数据或任意历史版本；每次回滚同样记录在本页。</li>
         <li>管理员可按匿名提交的 IP 指纹封禁恶意提交者，时长从数天到永久不等；封禁只阻止其继续匿名提交。</li>
       </ul>
@@ -124,9 +125,9 @@
   <div class="toast" id="toast" hidden></div>
 
   <script src="js/navigation.js"></script>
-  <script src="js/data-api.js"></script>
+  <script src="js/data-api.js?v=site-messages-1"></script>
   <script src="js/city-diff.js"></script>
-  <script src="js/review.js"></script>
+  <script src="js/review.js?v=site-messages-1"></script>
 </body>
 
 </html>
