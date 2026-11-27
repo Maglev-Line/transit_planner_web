@@ -2,6 +2,23 @@
   "city": "重庆",
   "region": "西南",
   "version": "1.0",
+  "systems": [
+    "轨道交通系统",
+    "云巴系统",
+    "长江索道"
+  ],
+  "station_systems": {
+    "国家铁路系统": {
+      "type": "national_rail",
+      "stations": [
+        "重庆北",
+        "重庆西",
+        "重庆东",
+        "江北机场",
+        "江津北"
+      ]
+    }
+  },
   "lines": [
     {
       "id": "cq_m0",
@@ -99,7 +116,8 @@
           "terminal": null,
           "reverse": true
         }
-      ]
+      ],
+      "system": "轨道交通系统"
     },
     {
       "id": "cq_m1",
@@ -178,7 +196,8 @@
           "terminal": "朝天门",
           "reverse": false
         }
-      ]
+      ],
+      "system": "轨道交通系统"
     },
     {
       "id": "cq_m2",
@@ -257,7 +276,8 @@
           "terminal": "较场口",
           "reverse": false
         }
-      ]
+      ],
+      "system": "轨道交通系统"
     },
     {
       "id": "cq_m3",
@@ -364,7 +384,8 @@
           "terminal": "鱼洞",
           "reverse": false
         }
-      ]
+      ],
+      "system": "轨道交通系统"
     },
     {
       "id": "cq_mkg",
@@ -407,7 +428,8 @@
           "terminal": "碧津",
           "reverse": false
         }
-      ]
+      ],
+      "system": "轨道交通系统"
     },
     {
       "id": "cq_m4",
@@ -500,7 +522,8 @@
           "terminal": "石马河立交",
           "reverse": false
         }
-      ]
+      ],
+      "system": "轨道交通系统"
     },
     {
       "id": "cq_m5",
@@ -593,7 +616,8 @@
           "terminal": "悦港北路",
           "reverse": false
         }
-      ]
+      ],
+      "system": "轨道交通系统"
     },
     {
       "id": "cq_m6",
@@ -678,7 +702,8 @@
           "terminal": "茶园",
           "reverse": false
         }
-      ]
+      ],
+      "system": "轨道交通系统"
     },
     {
       "id": "cq_m6b",
@@ -715,7 +740,8 @@
           "terminal": "刘家坪",
           "reverse": false
         }
-      ]
+      ],
+      "system": "轨道交通系统"
     },
     {
       "id": "cq_mgb",
@@ -770,7 +796,8 @@
           "terminal": "礼嘉",
           "reverse": false
         }
-      ]
+      ],
+      "system": "轨道交通系统"
     },
     {
       "id": "cq_m9",
@@ -857,7 +884,8 @@
           "terminal": "高滩岩",
           "reverse": false
         }
-      ]
+      ],
+      "system": "轨道交通系统"
     },
     {
       "id": "cq_m10",
@@ -963,7 +991,8 @@
           "skip_minutes": 0.4,
           "headway_text": ""
         }
-      ]
+      ],
+      "system": "轨道交通系统"
     },
     {
       "id": "cq_m15",
@@ -1028,7 +1057,8 @@
           "terminal": "井口",
           "reverse": false
         }
-      ]
+      ],
+      "system": "轨道交通系统"
     },
     {
       "id": "cq_m18",
@@ -1095,7 +1125,8 @@
           "terminal": "跳磴南",
           "reverse": false
         }
-      ]
+      ],
+      "system": "轨道交通系统"
     },
     {
       "id": "cq_sub_jt",
@@ -1138,7 +1169,8 @@
           "terminal": "跳磴",
           "reverse": false
         }
-      ]
+      ],
+      "system": "轨道交通系统"
     },
     {
       "id": "cq_sub_bt",
@@ -1183,7 +1215,8 @@
           "terminal": "璧山",
           "reverse": false
         }
-      ]
+      ],
+      "system": "轨道交通系统"
     },
     {
       "id": "cq_cloud_yb",
@@ -1194,7 +1227,7 @@
       "color2": "",
       "operator": "",
       "stations": [
-        "1号地铁",
+        "1号地铁站",
         "科创小镇",
         "景山路",
         "千层岩",
@@ -1238,11 +1271,12 @@
           "reverse": false
         },
         {
-          "label": "1号地铁方向",
-          "terminal": "1号地铁",
+          "label": "1号地铁站方向",
+          "terminal": "1号地铁站",
           "reverse": false
         }
-      ]
+      ],
+      "system": "云巴系统"
     },
     {
       "id": "cq_cable_cjsd",
@@ -1275,41 +1309,10 @@
           "terminal": "上新街",
           "reverse": false
         }
-      ]
+      ],
+      "system": "长江索道"
     }
   ],
-  "external_walks": {},
-  "transfers": [
-    [
-      "重庆北站南广场",
-      "重庆北"
-    ],
-    [
-      "重庆北站北广场",
-      "重庆北"
-    ],
-    [
-      "重庆西站",
-      "重庆西"
-    ],
-    [
-      "重庆东站",
-      "重庆东"
-    ],
-    [
-      "江北机场T3航站楼",
-      "江北机场"
-    ],
-    [
-      "江津高铁",
-      "江津北"
-    ],
-    [
-      "1号地铁",
-      "璧山"
-    ]
-  ],
-  "aliases": [],
   "through_services": [
     {
       "id": "cq_through_m5_m0_m4",
@@ -1363,5 +1366,99 @@
         }
       ]
     }
-  ]
+  ],
+  "external_walks": {},
+  "transfers": [
+    [
+      {
+        "system": "轨道交通系统",
+        "station": "重庆北站南广场"
+      },
+      {
+        "system": "国家铁路系统",
+        "station": "重庆北"
+      }
+    ],
+    [
+      {
+        "system": "轨道交通系统",
+        "station": "重庆北站北广场"
+      },
+      {
+        "system": "国家铁路系统",
+        "station": "重庆北"
+      }
+    ],
+    [
+      {
+        "system": "轨道交通系统",
+        "station": "重庆西站"
+      },
+      {
+        "system": "国家铁路系统",
+        "station": "重庆西"
+      }
+    ],
+    [
+      {
+        "system": "轨道交通系统",
+        "station": "重庆东站"
+      },
+      {
+        "system": "国家铁路系统",
+        "station": "重庆东"
+      }
+    ],
+    [
+      {
+        "system": "轨道交通系统",
+        "station": "江北机场T3航站楼"
+      },
+      {
+        "system": "国家铁路系统",
+        "station": "江北机场"
+      }
+    ],
+    [
+      {
+        "system": "轨道交通系统",
+        "station": "江津高铁"
+      },
+      {
+        "system": "国家铁路系统",
+        "station": "江津北"
+      }
+    ],
+    [
+      {
+        "station": "璧山",
+        "system": "轨道交通系统"
+      },
+      {
+        "station": "1号地铁站",
+        "system": "云巴系统"
+      }
+    ],
+    [
+      {
+        "station": "朝天门",
+        "system": "轨道交通系统"
+      },
+      {
+        "station": "新华路",
+        "system": "长江索道"
+      }
+    ],
+    [
+      {
+        "station": "上新街",
+        "system": "轨道交通系统"
+      },
+      {
+        "station": "上新街",
+        "system": "长江索道"
+      }
+    ]
+  ],
+  "aliases": []
 }

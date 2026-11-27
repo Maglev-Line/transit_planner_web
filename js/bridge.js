@@ -61,7 +61,8 @@
   }
 
   /**
-   * 启动运行时。
+   * 启动运行时。城市数据不再在启动时全部写入虚拟文件系统，
+   * 而是由 loadCity / cityJson 按需拉取所选城市的文件。
    * @param {(msg: string, ratio: number) => void} onProgress 进度回调（0~1）
    */
   async function boot(onProgress = () => {}) {
@@ -72,17 +73,17 @@
     onProgress("正在读取数据清单…", 0.35);
     const manifest = JSON.parse(await fetchText("py/manifest.json"));
     TP.manifest = manifest;
+    buildCityIndex(manifest);
 
     const coreUrls = manifest.coreFiles.map((rel) => `py/${rel}`);
-    const dataUrls = manifest.dataFiles.map((f) => `py/data/${f}`);
-    const urls = [...coreUrls, "py/web_api.py", "py/route_planner.py", ...dataUrls];
+    const urls = [...coreUrls, "py/web_api.py", "py/route_planner.py"];
 
     let done = 0;
     const texts = await Promise.all(
       urls.map(async (url) => {
         const text = await fetchText(url);
         done += 1;
-        onProgress(`正在加载数据（${done}/${urls.length}）…`, 0.35 + 0.5 * (done / urls.length));
+        onProgress(`正在加载内核（${done}/${urls.length}）…`, 0.35 + 0.5 * (done / urls.length));
         return text;
       })
     );
@@ -96,16 +97,12 @@
       const rel = manifest.coreFiles[i];
       writeFile(`${PY_ROOT}/${rel}`, texts[i]);
     });
-    const offset = coreUrls.length;
-    writeFile(`${PY_ROOT}/web_api.py`, texts[offset]);
-    writeFile(`${PY_ROOT}/route_planner.py`, texts[offset + 1]);
-    manifest.dataFiles.forEach((f, i) => {
-      writeFile(`${DATA_ROOT}/${f}`, texts[offset + 2 + i]);
-    });
+    writeFile(`${PY_ROOT}/web_api.py`, texts[coreUrls.length]);
+    writeFile(`${PY_ROOT}/route_planner.py`, texts[coreUrls.length + 1]);
 
     pyodide.runPython(`import sys\nif "${PY_ROOT}" not in sys.path:\n    sys.path.insert(0, "${PY_ROOT}")`);
 
-    // 社区审核通过的覆盖数据：写入 /data 后，内核加载城市时自然使用最新版本
+    // 社区审核通过的覆盖数据：记录在内存里，加载对应城市时再写入 /data
     onProgress("正在同步审核通过的线路数据…", 0.94);
     await applyPublishedOverrides();
 
@@ -115,6 +112,64 @@
     return call("api_init");
   }
 
+  // ---------------- 城市数据按需加载 ----------------
+
+  /** 城市名 → { file, parts }；清单里没有的城市按「城市名.json」处理。 */
+  const cityIndex = new Map();
+  /** 已写入虚拟文件系统的数据文件（避免重复下载）。 */
+  const loadedDataFiles = new Set();
+  /** 审核通过的覆盖数据：stem → doc */
+  const publishedDocs = {};
+
+  function buildCityIndex(manifest) {
+    cityIndex.clear();
+    const catalog = Array.isArray(manifest?.cities) ? manifest.cities : [];
+    for (const item of catalog) {
+      const name = String(item?.name || "").trim();
+      if (!name) continue;
+      cityIndex.set(name, {
+        file: String(item?.file || "").trim(),
+        parts: Array.isArray(item?.parts) ? item.parts.map(String) : [],
+      });
+    }
+    if (!cityIndex.size) {
+      (manifest?.dataFiles || []).forEach((file) => {
+        const name = String(file).replace(/\.json$/i, "");
+        cityIndex.set(name, { file: String(file), parts: [] });
+      });
+    }
+  }
+
+  function cityFilesOf(name) {
+    const entry = cityIndex.get(name);
+    const files = new Set();
+    if (entry?.parts?.length) {
+      entry.parts.forEach((part) => {
+        const partEntry = cityIndex.get(part);
+        files.add(partEntry?.file || `${part}.json`);
+      });
+    } else {
+      files.add(entry?.file || `${name}.json`);
+    }
+    return [...files];
+  }
+
+  /** 把某城市（同城组合则为组成城市）的数据文件写入虚拟文件系统，只下载一次。 */
+  async function ensureCityData(name) {
+    if (!name) return;
+    for (const file of cityFilesOf(name)) {
+      if (loadedDataFiles.has(file)) continue;
+      const stem = file.replace(/\.json$/i, "");
+      const override = publishedDocs[stem];
+      if (override && !AUTHORITATIVE_CITY_DATA.has(stem)) {
+        writeFile(`${DATA_ROOT}/${file}`, JSON.stringify(override, null, 2));
+      } else {
+        writeFile(`${DATA_ROOT}/${file}`, await fetchText(`py/data/${file}`));
+      }
+      loadedDataFiles.add(file);
+    }
+  }
+
   /**
    * 拉取审核通过的覆盖数据。未部署 Netlify Functions（纯静态服务器）时静默跳过，
    * 规划器照常使用内置数据。
@@ -122,6 +177,7 @@
   async function applyPublishedOverrides() {
     TP.published = {};
     TP.backendAvailable = false;
+    for (const key of Object.keys(publishedDocs)) delete publishedDocs[key];
     try {
       const res = await fetch("/api/cities", { cache: "no-store" });
       if (!res.ok) return;
@@ -134,7 +190,7 @@
         const doc = entry?.doc;
         if (!doc || typeof doc !== "object") continue;
         if (AUTHORITATIVE_CITY_DATA.has(name)) continue;
-        writeFile(`${DATA_ROOT}/${name}.json`, JSON.stringify(doc, null, 2));
+        publishedDocs[name] = doc;
         TP.published[name] = {
           updatedAt: entry.updatedAt || "",
           submissionId: entry.submissionId || "",
@@ -172,7 +228,15 @@
 
     // ---- 内核接口（全部返回已解析的 JSON）----
     init: () => call("api_init"),
-    loadCity: (name) => call("api_load_city", name),
+    loadCity: async (name) => {
+      if (!name) return call("api_load_city", "");
+      try {
+        await ensureCityData(name);
+      } catch (err) {
+        return { ok: false, error: `加载城市数据失败：${err.message || err}` };
+      }
+      return call("api_load_city", name);
+    },
     line: (lineId) => call("api_line", lineId),
     stations: () => call("api_stations"),
     searchLines: (keyword) => call("api_search_lines", keyword, 30),
@@ -187,7 +251,19 @@
     walkSuggestion: (trip, index) => call("api_walk_suggestion", JSON.stringify(trip), index),
 
     // ---- 数据工坊（编辑器）----
-    cityJson: (name) => call("api_city_json", name),
+    cityJson: async (name) => {
+      if (name) {
+        try {
+          await ensureCityData(name);
+        } catch (err) {
+          return { ok: false, error: `未找到城市数据文件：${name}.json` };
+        }
+      }
+      return call("api_city_json", name);
+    },
     validateCity: (doc) => call("api_validate_city", JSON.stringify(doc)),
+
+    // ---- 城市目录（地区 / 组成城市）----
+    get cityCatalog() { return [...cityIndex.entries()].map(([name, v]) => ({ name, ...v })); },
   };
 })();

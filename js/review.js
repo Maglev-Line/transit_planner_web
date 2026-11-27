@@ -872,5 +872,18 @@
     await refresh();
   }
 
+  // 线路数据工坊：先选城市，再只加载该城市的数据
+  const editorLink = document.querySelector('[data-page-link="editor"]');
+  if (editorLink && window.CityPicker) {
+    editorLink.addEventListener("click", async (ev) => {
+      ev.preventDefault();
+      const city = await window.CityPicker.pick({ title: "选择城市", allowManual: false });
+      if (!city) return;
+      const url = new URL(editorLink.getAttribute("href") || "editor.html", location.href);
+      url.searchParams.set("city", city);
+      location.href = `${url.pathname.split("/").pop()}${url.search}${url.hash}`;
+    });
+  }
+
   boot();
 })();

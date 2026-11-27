@@ -15,7 +15,7 @@ const DIST = join(ROOT, "dist");
 
 const FILES = [
   "index.html",
-  "README.md",
+  "instructions.md",
   "plan.html",
   "record.html",
   "editor.html",

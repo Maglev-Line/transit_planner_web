@@ -50,6 +50,15 @@ def _err(message: str) -> str:
     return json.dumps({"ok": False, "error": message}, ensure_ascii=False)
 
 
+def _ordered_lines(city_name: str, lines: list) -> list:
+    """共用线路库的城市视图：把该城市关注的线路排在最前，其余保持文件顺序。"""
+    priority = CityLibrary.CITY_LINE_PRIORITY.get(city_name, ())
+    if not priority:
+        return list(lines)
+    front = [ln for line_id in priority for ln in lines if ln.id == line_id]
+    return front + [ln for ln in lines if ln.id not in priority]
+
+
 def _line_summary(ln: Line, brief: bool = False) -> dict:
     d = {
         "id": ln.id,
@@ -68,6 +77,9 @@ def _line_summary(ln: Line, brief: bool = False) -> dict:
         "lastTrain": ln.last_train,
         "directions": [x.label for x in ln.directions],
         "express": _service_summaries(ln),
+        "directionSkips": {
+            label: list(stations) for label, stations in (ln.direction_stops or {}).items()
+        },
     }
     if not brief:
         d["stations"] = list(ln.stations)
@@ -195,23 +207,62 @@ def _result_payload(trip: Trip, result) -> dict:
 
 # ---------------- 接口 ----------------
 
+def _manifest_catalog(manifest: dict) -> list[dict]:
+    """数据清单里的城市目录（含地区）；旧清单没有该字段时返回空列表。"""
+    raw = manifest.get("cities")
+    if not isinstance(raw, list):
+        return []
+    catalog: list[dict] = []
+    for item in raw:
+        if not isinstance(item, dict):
+            continue
+        name = str(item.get("name") or "").strip()
+        if not name:
+            continue
+        parts = [str(p).strip() for p in item.get("parts") or [] if str(p).strip()]
+        catalog.append({
+            "name": name,
+            "file": str(item.get("file") or "").strip(),
+            "region": str(item.get("region") or "").strip(),
+            "parts": parts,
+        })
+    return catalog
+
+
 def api_init() -> str:
-    """启动信息：内核版本、交通类型表、数据清单。"""
+    """启动信息：内核版本、交通类型表、城市目录。
+
+    城市目录优先取数据清单（含地区、同城组合的组成城市），这样浏览器
+    只加载所选城市的数据文件时，仍能列出全部城市。
+    """
     from transit_planner import APP_NAME, __version__
 
     manifest_path = Path("/py/manifest.json")
     manifest = {}
     if manifest_path.exists():
         manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-    library = _library()
-    cities = library.list_cities()
+    catalog = _manifest_catalog(manifest)
+    if catalog:
+        cities = sorted({item["name"] for item in catalog} | set(CityLibrary.COMBINED_CITIES))
+        city_files = {
+            item["name"]: (item["file"] or f"{item['name']}.json").removesuffix(".json")
+            for item in catalog
+        }
+        city_regions = {item["name"]: item["region"] for item in catalog}
+    else:
+        library = _library()
+        cities = library.list_cities()
+        city_files = {name: library.file_stem(name) for name in cities}
+        city_regions = {}
     return _ok(
         appName=APP_NAME,
         version=__version__,
         syncedAt=manifest.get("syncedAt", ""),
         typeLabels=TYPE_LABELS,
         cities=cities,
-        cityFiles={name: library.file_stem(name) for name in cities},
+        cityFiles=city_files,
+        cityRegions=city_regions,
+        cityCatalog=catalog,
         combinedCities={k: list(v) for k, v in CityLibrary.COMBINED_CITIES.items()},
     )
 
@@ -225,7 +276,7 @@ def api_load_city(name: str) -> str:
             return _ok(city=None, lines=[])
         city = _library().load(name)
         _city, _city_name = city, name
-        line_summaries = [_line_summary(ln, brief=True) for ln in city.lines]
+        line_summaries = [_line_summary(ln, brief=True) for ln in _ordered_lines(name, city.lines)]
         if CityLibrary.is_combined(name):
             for summary in line_summaries:
                 summary["cityName"] = city.line_cities.get(summary["id"], "")
@@ -240,6 +291,15 @@ def api_load_city(name: str) -> str:
                 "stationCount": len(engine.all_stations(city)),
                 "transferGroups": city.to_dict()["transfers"],
                 "aliasGroups": city.aliases,
+                "stationSystems": [
+                    {
+                        "name": system.name,
+                        "type": system.type,
+                        "typeLabel": type_display(system.type) if system.type else "",
+                        "stationCount": len(system.stations),
+                    }
+                    for system in city.station_systems
+                ],
                 "throughServiceIds": [service.id for service in city.through_services],
             },
             lines=line_summaries,
@@ -416,6 +476,19 @@ def api_validate_city(doc_json: str) -> str:
                     if not _is_number(skip) or skip < 0:
                         errors.append(f"{svc_label}的 skip_minutes 必须是不小于 0 的数字")
 
+            # 上下行停靠站不一致：方向 label → 该方向的停靠站表
+            if ln.direction_stops:
+                direction_labels = {d.label for d in ln.directions}
+                station_order = {s: k for k, s in enumerate(ln.stations)}
+                for dir_label, stations in ln.direction_stops.items():
+                    if dir_label not in direction_labels:
+                        warnings.append(f"{label}的「{dir_label}」停靠站表没有对应的方向")
+                    if len(stations) < 2:
+                        errors.append(f"{label}的「{dir_label}」至少需要 2 个停靠站")
+                    for station in stations:
+                        if station not in station_order:
+                            errors.append(f"{label}的「{dir_label}」停靠站「{station}」不在本站表内")
+
             stats["lines"] += 1
             stats["segments"] += max(0, len(ln.stations) - 1)
 
@@ -455,10 +528,13 @@ def api_validate_city(doc_json: str) -> str:
                     if not any(
                         line.system == system and station in line.stations
                         for line in city.lines
+                    ) and not any(
+                        item.name == system and station in item.stations
+                        for item in city.station_systems
                     ):
                         errors.append(
                             f"transfers 第 {gi} 组的端点「{system}|{station}」"
-                            "无法匹配到线路"
+                            "无法匹配到线路或强互通系统车站"
                         )
                 if not has_legacy_endpoint and len(explicit_systems) < 2:
                     errors.append(f"transfers 第 {gi} 组的端点必须跨越至少 2 个系统")
@@ -472,6 +548,34 @@ def api_validate_city(doc_json: str) -> str:
                     errors.append(f"aliases 第 {gi} 组至少需要 2 个站名")
                 elif any(not isinstance(x, str) or not x.strip() for x in group):
                     errors.append(f"aliases 第 {gi} 组包含空的站名")
+
+        raw_shared = data.get("combined_shared_stations")
+        if raw_shared is not None:
+            if not isinstance(raw_shared, list):
+                errors.append("combined_shared_stations 必须是字符串数组")
+            else:
+                for i, name in enumerate(raw_shared, 1):
+                    if not isinstance(name, str) or not name.strip():
+                        errors.append(f"第 {i} 个同城组合共用车站必须是非空字符串")
+                    elif name not in all_stations:
+                        warnings.append(f"同城组合共用车站「{name}」不在本城市站表中，组合时不会生效")
+
+        raw_station_systems = data.get("station_systems")
+        if raw_station_systems is not None:
+            if not isinstance(raw_station_systems, (dict, list)):
+                errors.append("station_systems 必须是对象（系统名 → 车站数组）")
+            else:
+                for system in city.station_systems:
+                    label = f"强互通系统「{system.name}」"
+                    if system.name in (system_catalog or set()):
+                        errors.append(f"{label}与线路系统同名，请改名以示区分")
+                    if not system.stations:
+                        warnings.append(f"{label}没有登记车站")
+                    seen_stations: set[str] = set()
+                    for station in system.stations:
+                        if station in seen_stations:
+                            warnings.append(f"{label}的车站「{station}」重复")
+                        seen_stations.add(station)
 
         if not isinstance(city.external_walks, dict):
             errors.append("external_walks 必须是对象")
@@ -573,11 +677,14 @@ def api_transfer_hints(station: str, exclude_line_id: str = "") -> str:
     返回两类：
     - 系统内换乘（`transfer: false`）：同系统内同站或同站异名线路；
     - 跨系统转乘（`transfer: true`）：仅按 `city.transfers` 中的系统+站名端点匹配。
+
+    另外返回 `stationSystems`：该站的「强互通系统」（如广东城际系统、国家铁路系统），
+    这类系统只登记车站名，界面据此给出转乘提示；`type=national_rail` 时可直达国铁查询。
     """
     try:
         city = _require_city()
         if not station:
-            return _ok(hints=[])
+            return _ok(hints=[], stationSystems=[])
         hints: list[dict] = []
         source_line = next((line for line in city.lines if line.id == exclude_line_id), None)
         if source_line and station in source_line.stations:
@@ -603,7 +710,18 @@ def api_transfer_hints(station: str, exclude_line_id: str = "") -> str:
                 "transferStation": board_station if is_transfer else "",
             })
         hints.sort(key=lambda h: h["transfer"])  # 先同系统换乘，再跨系统转乘
-        return _ok(hints=hints)
+        station_systems = [
+            {
+                "system": name,
+                "station": stations[0] if stations else station,
+                "type": system_type,
+                "typeLabel": type_display(system_type) if system_type else "",
+            }
+            for name, stations, system_type in engine.station_system_hints(
+                city, station, source_line.system if source_line else None
+            )
+        ]
+        return _ok(hints=hints, stationSystems=station_systems)
     except Exception as exc:  # noqa: BLE001
         return _err(str(exc))
 

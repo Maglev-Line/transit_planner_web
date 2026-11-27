@@ -2,6 +2,30 @@
   "city": "北京",
   "region": "华北",
   "version": "1.0",
+  "systems": [
+    "地铁系统",
+    "首都机场线",
+    "大兴机场线",
+    "西郊线",
+    "亦庄有轨电车系统",
+    "公交系统"
+  ],
+  "station_systems": {
+    "国家铁路系统": {
+      "type": "national_rail",
+      "stations": [
+        "北京南",
+        "北京",
+        "北京北",
+        "北京西",
+        "北京丰台",
+        "亦庄",
+        "北京朝阳",
+        "北京大兴",
+        "清河"
+      ]
+    }
+  },
   "lines": [
     {
       "id": "bj_m1",
@@ -102,7 +126,8 @@
           "terminal": "苹果园",
           "reverse": false
         }
-      ]
+      ],
+      "system": "地铁系统"
     },
     {
       "id": "bj_m2",
@@ -170,7 +195,8 @@
           "terminal": null,
           "reverse": true
         }
-      ]
+      ],
+      "system": "地铁系统"
     },
     {
       "id": "bj_m3",
@@ -219,7 +245,8 @@
           "terminal": "东四十条",
           "reverse": false
         }
-      ]
+      ],
+      "system": "地铁系统"
     },
     {
       "id": "bj_m4",
@@ -318,7 +345,8 @@
           "terminal": "安河桥北",
           "reverse": false
         }
-      ]
+      ],
+      "system": "地铁系统"
     },
     {
       "id": "bj_m5",
@@ -393,7 +421,8 @@
           "terminal": "天通苑北",
           "reverse": false
         }
-      ]
+      ],
+      "system": "地铁系统"
     },
     {
       "id": "bj_m6",
@@ -494,7 +523,8 @@
           "terminal": "金安桥",
           "reverse": false
         }
-      ]
+      ],
+      "system": "地铁系统"
     },
     {
       "id": "bj_m7",
@@ -583,7 +613,8 @@
           "terminal": "北京西站",
           "reverse": false
         }
-      ]
+      ],
+      "system": "地铁系统"
     },
     {
       "id": "bj_m8",
@@ -682,7 +713,8 @@
           "terminal": "朱辛庄",
           "reverse": false
         }
-      ]
+      ],
+      "system": "地铁系统"
     },
     {
       "id": "bj_m9",
@@ -737,7 +769,8 @@
           "terminal": "国家图书馆",
           "reverse": false
         }
-      ]
+      ],
+      "system": "地铁系统"
     },
     {
       "id": "bj_m10",
@@ -859,7 +892,8 @@
           "terminal": null,
           "reverse": true
         }
-      ]
+      ],
+      "system": "地铁系统"
     },
     {
       "id": "bj_m11",
@@ -896,7 +930,8 @@
           "terminal": "模式口",
           "reverse": false
         }
-      ]
+      ],
+      "system": "地铁系统"
     },
     {
       "id": "bj_m12",
@@ -965,7 +1000,8 @@
           "terminal": "四季青桥",
           "reverse": false
         }
-      ]
+      ],
+      "system": "地铁系统"
     },
     {
       "id": "bj_m13",
@@ -1028,7 +1064,8 @@
           "terminal": "西直门",
           "reverse": false
         }
-      ]
+      ],
+      "system": "地铁系统"
     },
     {
       "id": "bj_m14",
@@ -1123,7 +1160,8 @@
           "terminal": "善各庄",
           "reverse": false
         }
-      ]
+      ],
+      "system": "地铁系统"
     },
     {
       "id": "bj_m15",
@@ -1192,7 +1230,8 @@
           "terminal": "清华东路西口",
           "reverse": false
         }
-      ]
+      ],
+      "system": "地铁系统"
     },
     {
       "id": "bj_m16",
@@ -1281,7 +1320,8 @@
           "terminal": "北安河",
           "reverse": false
         }
-      ]
+      ],
+      "system": "地铁系统"
     },
     {
       "id": "bj_m17",
@@ -1350,7 +1390,8 @@
           "terminal": "未来科学城北",
           "reverse": false
         }
-      ]
+      ],
+      "system": "地铁系统"
     },
     {
       "id": "bj_m18",
@@ -1401,7 +1442,8 @@
           "terminal": "马连洼",
           "reverse": false
         }
-      ]
+      ],
+      "system": "地铁系统"
     },
     {
       "id": "bj_m19",
@@ -1450,7 +1492,8 @@
           "terminal": "牡丹园",
           "reverse": false
         }
-      ]
+      ],
+      "system": "地铁系统"
     },
     {
       "id": "bj_msdjc",
@@ -1489,7 +1532,23 @@
           "terminal": "北新桥",
           "reverse": false
         }
-      ]
+      ],
+      "system": "首都机场线",
+      "direction_stops": {
+        "2号航站楼方向": [
+          "北新桥",
+          "东直门",
+          "三元桥",
+          "3号航站楼",
+          "2号航站楼"
+        ],
+        "北新桥方向": [
+          "2号航站楼",
+          "三元桥",
+          "东直门",
+          "北新桥"
+        ]
+      }
     },
     {
       "id": "bj_mdxjc",
@@ -1524,7 +1583,8 @@
           "terminal": "草桥",
           "reverse": false
         }
-      ]
+      ],
+      "system": "大兴机场线"
     },
     {
       "id": "bj_mcp",
@@ -1593,7 +1653,8 @@
           "terminal": "蓟门桥",
           "reverse": false
         }
-      ]
+      ],
+      "system": "地铁系统"
     },
     {
       "id": "bj_myz",
@@ -1650,7 +1711,8 @@
           "terminal": "宋家庄",
           "reverse": false
         }
-      ]
+      ],
+      "system": "地铁系统"
     },
     {
       "id": "bj_mfs",
@@ -1711,7 +1773,8 @@
           "terminal": "东管头南",
           "reverse": false
         }
-      ]
+      ],
+      "system": "地铁系统"
     },
     {
       "id": "bj_myf",
@@ -1758,7 +1821,8 @@
           "terminal": "阎村东",
           "reverse": false
         }
-      ]
+      ],
+      "system": "地铁系统"
     },
     {
       "id": "bj_ms1",
@@ -1803,7 +1867,8 @@
           "terminal": "苹果园",
           "reverse": false
         }
-      ]
+      ],
+      "system": "地铁系统"
     },
     {
       "id": "bj_tram_xijiao",
@@ -1844,7 +1909,8 @@
           "terminal": "巴沟",
           "reverse": false
         }
-      ]
+      ],
+      "system": "西郊线"
     },
     {
       "id": "bj_tram_yzt1",
@@ -1901,7 +1967,8 @@
           "terminal": "定海园",
           "reverse": false
         }
-      ]
+      ],
+      "system": "亦庄有轨电车系统"
     },
     {
       "id": "bj_bus_brt1",
@@ -1958,7 +2025,8 @@
           "terminal": "沙子口",
           "reverse": false
         }
-      ]
+      ],
+      "system": "公交系统"
     },
     {
       "id": "bj_bus_brt2",
@@ -2027,7 +2095,8 @@
           "terminal": "朝阳门",
           "reverse": false
         }
-      ]
+      ],
+      "system": "公交系统"
     },
     {
       "id": "bj_bus_brt3",
@@ -2098,7 +2167,8 @@
           "terminal": "安定门",
           "reverse": false
         }
-      ]
+      ],
+      "system": "公交系统"
     },
     {
       "id": "bj_bus_brt4",
@@ -2165,49 +2235,10 @@
           "terminal": "阜成门",
           "reverse": false
         }
-      ]
+      ],
+      "system": "公交系统"
     }
   ],
-  "external_walks": {},
-  "transfers": [
-    [
-      "北京南站",
-      "北京南"
-    ],
-    [
-      "北京站",
-      "北京"
-    ],
-    [
-      "西直门",
-      "北京北"
-    ],
-    [
-      "北京西站",
-      "北京西"
-    ],
-    [
-      "丰台站",
-      "北京丰台"
-    ],
-    [
-      "亦庄火车站",
-      "亦庄"
-    ],
-    [
-      "朝阳站",
-      "北京朝阳"
-    ],
-    [
-      "黄村火车站",
-      "北京大兴"
-    ],
-    [
-      "清河站",
-      "清河"
-    ]
-  ],
-  "aliases": [],
   "through_services": [
     {
       "id": "bj_through_m9_mfs",
@@ -2232,5 +2263,159 @@
         }
       ]
     }
-  ]
+  ],
+  "external_walks": {},
+  "transfers": [
+    [
+      {
+        "system": "地铁系统",
+        "station": "北京南站"
+      },
+      {
+        "system": "国家铁路系统",
+        "station": "北京南"
+      }
+    ],
+    [
+      {
+        "system": "地铁系统",
+        "station": "北京站"
+      },
+      {
+        "system": "国家铁路系统",
+        "station": "北京"
+      }
+    ],
+    [
+      {
+        "system": "地铁系统",
+        "station": "西直门"
+      },
+      {
+        "system": "国家铁路系统",
+        "station": "北京北"
+      }
+    ],
+    [
+      {
+        "system": "地铁系统",
+        "station": "北京西站"
+      },
+      {
+        "system": "国家铁路系统",
+        "station": "北京西"
+      }
+    ],
+    [
+      {
+        "system": "地铁系统",
+        "station": "丰台站"
+      },
+      {
+        "system": "国家铁路系统",
+        "station": "北京丰台"
+      }
+    ],
+    [
+      {
+        "system": "地铁系统",
+        "station": "亦庄火车站"
+      },
+      {
+        "system": "国家铁路系统",
+        "station": "亦庄"
+      }
+    ],
+    [
+      {
+        "system": "地铁系统",
+        "station": "朝阳站"
+      },
+      {
+        "system": "国家铁路系统",
+        "station": "北京朝阳"
+      }
+    ],
+    [
+      {
+        "system": "地铁系统",
+        "station": "黄村火车站"
+      },
+      {
+        "system": "国家铁路系统",
+        "station": "北京大兴"
+      }
+    ],
+    [
+      {
+        "system": "地铁系统",
+        "station": "清河站"
+      },
+      {
+        "system": "国家铁路系统",
+        "station": "清河"
+      }
+    ],
+    [
+      {
+        "station": "三元桥",
+        "system": "地铁系统"
+      },
+      {
+        "station": "三元桥",
+        "system": "首都机场线"
+      }
+    ],
+    [
+      {
+        "station": "东直门",
+        "system": "地铁系统"
+      },
+      {
+        "station": "东直门",
+        "system": "首都机场线"
+      }
+    ],
+    [
+      {
+        "station": "北新桥",
+        "system": "地铁系统"
+      },
+      {
+        "station": "北新桥",
+        "system": "首都机场线"
+      }
+    ],
+    [
+      {
+        "station": "巴沟",
+        "system": "地铁系统"
+      },
+      {
+        "station": "巴沟",
+        "system": "西郊线"
+      }
+    ],
+    [
+      {
+        "station": "草桥",
+        "system": "地铁系统"
+      },
+      {
+        "station": "草桥",
+        "system": "大兴机场线"
+      }
+    ],
+    [
+      {
+        "station": "荣昌东街",
+        "system": "亦庄有轨电车系统"
+      },
+      {
+        "station": "荣昌东街",
+        "system": "地铁系统"
+      }
+    ]
+  ],
+  "aliases": []
 }

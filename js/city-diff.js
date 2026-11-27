@@ -338,7 +338,7 @@
             line.directionsChanged ? `<p class="hint">方向定义有变化（由站表自动重建或手工指定）</p>` : "",
           ].join("");
           const swatch = line.color2
-            ? `linear-gradient(90deg, ${safeColor(line.color)} 0 50%, ${safeColor(line.color2)} 50% 100%)`
+            ? `linear-gradient(90deg, ${safeColor(line.color)} 0 50%, ${safeColor(line.color2)} 50% 100%) border-box no-repeat`
             : safeColor(line.color);
           return `<div class="diff-line"><div class="diff-line-head"><span class="swatch" style="background:${swatch}"></span><b>${esc(line.name)}</b><span class="tag">${esc(line.id)}</span></div>${compact ? "" : body}</div>`;
         }).join("")

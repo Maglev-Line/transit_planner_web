@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="zh-CN">
 
 <head>
@@ -16,9 +16,11 @@
       <div class="topbar-row topbar-row-primary">
         <a class="home-nav" href="index.html" title="返回首页">首页</a>
         <div class="brand">记录模式</div>
-        <label>城市
-          <select id="rec-city" title="选择城市线路库；也可选「纯手动」不使用线路库"></select>
-        </label>
+        <button type="button" class="city-switch" id="btn-rec-city-switch" title="选择城市线路库；也可选「纯手动」不使用线路库">
+          <span class="ico ico-mono" style="--icon:url(assets/icons/map.svg)" aria-hidden="true"></span>
+          城市：<b id="rec-city-switch-name">不使用线路库</b>
+        </button>
+        <select id="rec-city" hidden aria-hidden="true" tabindex="-1"></select>
         <button type="button" class="ghost" id="btn-rec-kernel" title="加载线路库后可选用数据库线路">加载线路库</button>
         <label>记录名 <input id="rec-title" type="text" size="18" placeholder="我的运转记录"></label>
         <label>日期 <input id="rec-date" type="date"></label>
@@ -37,9 +39,6 @@
         <button type="button" class="danger top-delete" id="btn-rec-clear" aria-label="清空记录" title="清空全部行程段，可通过撤销恢复"><span class="ico ico-mono" style="--icon:url(assets/icons/trash.svg)" aria-hidden="true"></span></button>
         <button type="button" id="btn-rec-undo" aria-label="撤销" title="撤销上一步" disabled><span class="ico ico-mono" style="--icon:url(assets/icons/undo.svg)" aria-hidden="true"></span></button>
         <button type="button" id="btn-rec-redo" aria-label="重做" title="重做上一步" disabled><span class="ico ico-mono" style="--icon:url(assets/icons/redo.svg)" aria-hidden="true"></span></button>
-        <a class="btn-link topbar-editor-link" id="btn-rec-editor" href="editor.html?from=record" aria-label="数据工坊" title="编辑城市线路数据、提交审核">
-          <span class="ico ico-mono" style="--icon:url(assets/icons/edit.svg)" aria-hidden="true"></span>
-        </a>
       </nav>
     </header>
   </div>
@@ -57,7 +56,24 @@
   </dialog>
 
   <div class="record-main">
-    <!-- 左：行程记录列表 -->
+    <!-- 左：线路库（与规划模式一致：按系统分组，单击看详情、双击预填到新记录） -->
+    <aside class="panel library record-library">
+      <h2>
+        <span class="library-title">线路库</span>
+        <span class="hint" id="rec-city-label"></span>
+        <a class="btn-link library-editor-link" id="btn-rec-editor" href="editor.html?from=record" aria-label="数据工坊" title="编辑该城市的线路数据、提交审核">
+          <span class="ico ico-mono" style="--icon:url(assets/icons/edit.svg)" aria-hidden="true"></span>
+        </a>
+      </h2>
+      <input class="search" id="rec-line-search" type="search" placeholder="搜索线路（名称 / 简称 / ID）">
+      <div id="rec-line-list" class="line-list"></div>
+      <div class="library-splitter" id="rec-library-splitter" role="separator" aria-orientation="horizontal"
+           aria-label="拖动调整线路列表与线路详情的高度" tabindex="0"
+           title="上下拖动调整「线路列表 / 线路详情」的高度，双击恢复默认" hidden></div>
+      <div class="detail" id="rec-line-detail" hidden></div>
+    </aside>
+
+    <!-- 中：行程记录列表 -->
     <section class="panel record-list-panel">
       <h2>运转行程 <span class="hint">按时间顺序记录每一段乘车</span></h2>
       <div id="rec-list"></div>
@@ -301,8 +317,12 @@
 
   <!-- 规划内核：记录页按需加载（打开数据库线路录入时才下载 Pyodide） -->
   <script src="js/bridge.js"></script>
+  <script src="js/line-branches.js"></script>
+  <script src="js/line-library.js?v=dual-color-1"></script>
   <script src="js/drafts.js"></script>
   <script src="js/contact.js"></script>
+  <script src="js/city-picker.js?v=city-picker-2"></script>
+  <script src="js/pdf-export.js?v=pdf-export-1"></script>
   <script src="js/record.js"></script>
 </body>
 

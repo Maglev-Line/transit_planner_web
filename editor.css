@@ -333,13 +333,51 @@ main.ed-main {
 }
 .ed-form .city-name small { display: block; font-size: 11px; font-weight: 400; color: var(--ink-3); margin-top: 2px; }
 
-#system-meta, #group-meta, #walk-meta { padding: 8px 12px 10px; display: grid; gap: 6px; }
+#system-meta, #station-system-meta, #group-meta, #walk-meta { padding: 8px 12px 10px; display: grid; gap: 6px; }
 .ed-group-row, .ed-walk-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 6px; }
 .ed-walk-row { grid-template-columns: minmax(0, 1.6fr) 70px auto; }
 .ed-group-row input, .ed-walk-row input { width: 100%; font-size: 12.5px; }
 .ed-group-row button, .ed-walk-row button { font-size: 12px; padding: 2px 7px; }
 .ed-add-btn { justify-self: start; font-size: 12px; padding: 4px 9px; margin-top: 2px; }
-#system-meta .hint, #group-meta .hint, #walk-meta .hint { font-size: 11px; }
+#system-meta .hint, #station-system-meta .hint, #group-meta .hint, #walk-meta .hint { font-size: 11px; }
+/* 强互通系统编辑：一个系统一块，名称/类型/站表上下排列 */
+#station-system-meta .ed-group-block {
+  display: grid; gap: 6px; padding: 8px; margin-bottom: 6px;
+  border: 1px solid var(--line); border-radius: 9px; background: #fbfcff;
+}
+#station-system-meta .ed-group-row { grid-template-columns: minmax(0, 1fr) auto; }
+#station-system-meta select { width: 100%; font-size: 12.5px; }
+#station-system-meta textarea {
+  width: 100%; font-size: 12.5px; resize: vertical;
+  font-family: inherit; line-height: 1.5;
+}
+/* 上下行停靠站：每方向一个勾选网格，方框内数字为该方向的行车顺序 */
+.ed-stop-dir { border-top: 1px dashed var(--ed-line); padding: 8px 0 4px; }
+.ed-stop-dir:first-of-type { border-top: none; padding-top: 0; }
+.ed-stop-grid {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(132px, 1fr));
+  gap: 4px 8px; max-height: 220px; overflow: auto;
+  padding: 6px 8px; border: 1px solid var(--line); border-radius: 9px; background: #fbfcff;
+}
+.ed-stop-cell {
+  display: flex; align-items: center; gap: 5px; font-size: 12.5px;
+  padding: 2px 4px; border-radius: 6px; cursor: pointer;
+}
+.ed-stop-cell:hover { background: #eef3fb; }
+.ed-stop-cell.is-off { color: var(--ink-3); }
+.ed-stop-seq {
+  min-width: 16px; text-align: center; font-size: 11px; color: #fff;
+  background: #9aa8bd; border-radius: 50%; line-height: 16px;
+}
+.ed-stop-cell.is-off .ed-stop-seq { visibility: hidden; }
+.ed-stop-name { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+/* 快捷增加线路弹窗 */
+dialog.ed-quick-dialog { width: min(760px, 94vw); }
+dialog.ed-quick-dialog textarea {
+  width: 100%; min-height: 260px; resize: vertical;
+  font: 13px/1.6 ui-monospace, Consolas, "Cascadia Mono", monospace;
+}
 
 .ed-validation { padding: 10px 12px 14px; display: grid; gap: 8px; font-size: 12.5px; }
 .ed-validation .v-stats { color: var(--ink-3); font-size: 12px; }

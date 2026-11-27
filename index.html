@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="zh-CN">
 
 <head>
@@ -42,8 +42,6 @@
           </div>
         </div>
       </div>
-      <a class="home-nav" href="editor.html?from=home" title="编辑城市线路数据、提交审核">线路数据工坊</a>
-      <a class="home-nav" href="review.html?from=home" title="查看匿名提交、审核结果与已生效数据">数据审核台</a>
     </header>
   </div>
 
@@ -77,6 +75,15 @@
           <span class="mode-go">开始记录 →</span>
         </button>
       </div>
+
+      <nav class="home-extra" aria-label="线路数据">
+        <a class="home-extra-link" id="home-editor-link" href="editor.html?from=home" title="选择城市后编辑该城市线路数据、提交审核">
+          <span class="ico ico-mono" style="--icon:url(assets/icons/edit.svg)" aria-hidden="true"></span>线路数据工坊
+        </a>
+        <a class="home-extra-link" href="review.html?from=home" title="查看匿名提交、审核结果与已生效数据">
+          <span class="ico ico-mono" style="--icon:url(assets/icons/check.svg)" aria-hidden="true"></span>数据审核台
+        </a>
+      </nav>
 
       <p class="home-tip">草稿会自动保存，随时可以从「最近」继续编辑。</p>
     </section>
@@ -122,6 +129,9 @@
     <div class="modal-head">
       <h3 id="readme-title">使用说明</h3>
       <span class="spacer"></span>
+      <button type="button" class="ghost ico-btn" id="btn-guide-download" title="下载使用说明（Markdown）" aria-label="下载使用说明">
+        <span class="ico ico-mono" style="--icon:url(assets/icons/download.svg)" aria-hidden="true"></span>
+      </button>
       <button type="button" class="ghost" id="btn-guide-close" title="关闭">✕</button>
     </div>
     <div class="modal-body readme-scroll">
@@ -184,7 +194,8 @@
   <script src="js/drafts.js"></script>
   <script src="js/contact.js"></script>
   <script src="js/markdown-preview.js"></script>
-  <script src="js/home.js?v=site-messages-1"></script>
+  <script src="js/city-picker.js?v=city-picker-2"></script>
+  <script src="js/home.js?v=city-picker-2"></script>
 </body>
 
 </html>

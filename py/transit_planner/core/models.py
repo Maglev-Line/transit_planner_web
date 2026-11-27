@@ -13,6 +13,7 @@ from pathlib import Path
 # 交通类型常量
 TYPE_METRO = "metro"          # 地铁
 TYPE_SUBURBAN = "suburban"    # 市域铁路
+TYPE_INTERCITY = "intercity"  # 城际铁路
 TYPE_TRAM = "tram"            # 有轨电车
 TYPE_MONORAIL = "monorail"    # 单轨
 TYPE_CLOUDRAIL = "cloudrail"  # 比亚迪云巴
@@ -26,6 +27,7 @@ TYPE_APM = "apm"              # 自动旅客捷运（APM）
 TYPE_LABELS = {
     TYPE_METRO: "地铁",
     TYPE_SUBURBAN: "市域铁路",
+    TYPE_INTERCITY: "城际铁路",
     TYPE_TRAM: "有轨电车",
     TYPE_MONORAIL: "单轨",
     TYPE_CLOUDRAIL: "比亚迪云巴",
@@ -151,6 +153,10 @@ class Line:
     directions: list[Direction] = field(default_factory=list)
     express: list[ExpressService] = field(default_factory=list)  # 快车服务（可空）
     system: str = ""             # 线路所属系统；空值用于兼容旧数据的单一系统
+    direction_stops: dict[str, list[str]] = field(default_factory=dict)
+    # 上下行停靠站不一致：方向 label -> 该方向的停靠站表（按该方向的行车顺序）。
+    # 未列出的车站表示该方向不服务（跳站），因此也能表达上下行完全分离的情形；
+    # 未声明该字段的方向按线路站表停靠全部车站。
 
     def __post_init__(self) -> None:
         if not self.directions and len(self.stations) >= 2:
@@ -210,8 +216,25 @@ class Line:
             return list(self.stations)
         return list(self.express_service(service_id).stops)
 
+    def stop_list(self, direction_label: str) -> list[str]:
+        """某方向自己的停靠站表（按行车顺序）；未声明时返回空列表，表示按站表停靠全部车站。"""
+        if not self.direction_stops:
+            return []
+        stops = self.direction_stops.get(direction_label) or []
+        return [s for s in stops if s in self.stations]
+
+    def skipped_stations(self, direction_label: str) -> list[str]:
+        """某方向不服务的车站（上下行停靠站不一致时使用）。"""
+        stops = self.stop_list(direction_label)
+        if not stops:
+            return []
+        served = set(stops)
+        return [s for s in self.stations if s not in served]
+
     def to_dict(self) -> dict:
         d = asdict(self)
+        if not d.get("direction_stops"):
+            d.pop("direction_stops", None)
         return d
 
     @classmethod
@@ -226,7 +249,68 @@ class Line:
             for x in (express if isinstance(express, list) else [])
             if isinstance(x, (dict, ExpressService))
         ]
+        data["direction_stops"] = cls._read_direction_stops(data)
         return cls(**data)
+
+    @staticmethod
+    def _read_direction_stops(data: dict) -> dict[str, list[str]]:
+        """读取上下行停靠站表；兼容只写「跳站」的 direction_skips 写法。"""
+        def clean(value) -> list[str]:
+            return [str(s).strip() for s in value if str(s).strip()] if isinstance(value, list) else []
+
+        stops: dict[str, list[str]] = {}
+        raw_stops = data.get("direction_stops")
+        if isinstance(raw_stops, dict):
+            for label, value in raw_stops.items():
+                names = clean(value)
+                if names:
+                    stops[str(label)] = names
+        raw_skips = data.get("direction_skips")
+        if isinstance(raw_skips, dict):
+            all_stations = [str(s) for s in (data.get("stations") or []) if str(s).strip()]
+            for label, value in raw_skips.items():
+                if str(label) in stops:
+                    continue
+                skipped = set(clean(value))
+                if not skipped:
+                    continue
+                remaining = [s for s in all_stations if s not in skipped]
+                if remaining:
+                    stops[str(label)] = remaining
+        return stops
+
+
+@dataclass
+class StationSystem:
+    """强互通系统：只登记车站名称、没有线路时刻数据的系统。
+
+    典型用途是「广东城际系统」「国家铁路系统」这类外部网络：数据里只写车站名，
+    在这些车站上与城市内任何系统视为互通，用于转乘提示。
+    type 为交通类型键（如 national_rail），界面据此提供对应的行程查询入口。
+    """
+    name: str
+    stations: list[str] = field(default_factory=list)
+    type: str = ""
+
+    @classmethod
+    def from_value(cls, name: str, value) -> "StationSystem":
+        """接受两种写法：站名数组，或 {type, stations} 对象。"""
+        if isinstance(value, dict):
+            stations = value.get("stations")
+            return cls(
+                name=str(name),
+                stations=[str(s).strip() for s in stations if str(s).strip()]
+                if isinstance(stations, list) else [],
+                type=str(value.get("type", "") or ""),
+            )
+        if isinstance(value, list):
+            return cls(name=str(name), stations=[str(s).strip() for s in value if str(s).strip()])
+        return cls(name=str(name))
+
+    def to_value(self) -> list[str] | dict:
+        if self.type:
+            return {"type": self.type, "stations": list(self.stations)}
+        return list(self.stations)
 
 
 @dataclass
@@ -242,6 +326,11 @@ class City:
     aliases: list[list[str]] = field(default_factory=list)
     # 同站异名组：同一车站、同一付费系统、仅名称不同（如广州"西塱"↔广佛线"西朗"），
     # 换乘不出闸，按同站换乘（步行 0 分钟）处理。
+    combined_shared_stations: list[str] = field(default_factory=list)
+    # 同城组合共用的同名车站：参与组合的任一座城市声明后，组合时保留同名并自动
+    # 声明为跨系统转乘站；未声明的重名站会按城市区分（如"体育西路（佛山）"）。
+    station_systems: list["StationSystem"] = field(default_factory=list)
+    # 强互通系统：只登记车站名称的系统（如广东城际、国家铁路），用于转乘提示。
     line_cities: dict[str, str] = field(default_factory=dict, repr=False)
     through_services: list[ThroughService] = field(default_factory=list)
     systems: list[str] = field(default_factory=list)
@@ -254,6 +343,10 @@ class City:
 
     def lines_serving(self, station: str) -> list[Line]:
         return [ln for ln in self.lines if station in ln.stations]
+
+    def station_systems_at(self, station: str) -> list["StationSystem"]:
+        """在该站设有车站的强互通系统（只登记车站名的系统）。"""
+        return [system for system in self.station_systems if station in system.stations]
 
     def to_dict(self) -> dict:
         return {
@@ -274,6 +367,11 @@ class City:
                 for group in self.transfers
             ],
             "aliases": self.aliases,
+            **({"combined_shared_stations": list(self.combined_shared_stations)}
+               if self.combined_shared_stations else {}),
+            **({"station_systems": {
+                system.name: system.to_value() for system in self.station_systems
+            }} if self.station_systems else {}),
             "through_services": [asdict(service) for service in self.through_services],
         }
 
@@ -303,6 +401,26 @@ class City:
                 elif isinstance(endpoint, str):
                     endpoints.append(TransferEndpoint(station=endpoint, legacy=True))
             transfers.append(endpoints)
+        raw_shared = data.get("combined_shared_stations")
+        combined_shared_stations = (
+            [str(station).strip() for station in raw_shared if str(station).strip()]
+            if isinstance(raw_shared, list) else []
+        )
+        raw_station_systems = data.get("station_systems")
+        station_systems: list[StationSystem] = []
+        if isinstance(raw_station_systems, dict):
+            station_systems = [
+                StationSystem.from_value(name, value)
+                for name, value in raw_station_systems.items()
+                if str(name).strip()
+            ]
+        elif isinstance(raw_station_systems, list):
+            for item in raw_station_systems:
+                if isinstance(item, dict) and str(item.get("name", "")).strip():
+                    name = str(item["name"]).strip()
+                    station_systems.append(StationSystem.from_value(
+                        name, {k: v for k, v in item.items() if k != "name"}
+                    ))
         return cls(
             name=data.get("city", "未命名"),
             region=data.get("region", ""),
@@ -311,6 +429,8 @@ class City:
             external_walks=data.get("external_walks", {}),
             transfers=transfers,
             aliases=data.get("aliases", []),
+            combined_shared_stations=list(dict.fromkeys(combined_shared_stations)),
+            station_systems=station_systems,
             through_services=[
                 ThroughService.from_dict(service)
                 for service in data.get("through_services", [])
@@ -370,15 +490,22 @@ class CityLibrary:
         "珠江三角洲": ("广州", "深圳", "佛山", "东莞"),
     }
 
-    # 同城组合中允许跨城市共用的同名车站；未列出的重名站会按城市区分。
-    COMBINED_SHARED_STATIONS: dict[str, tuple[str, ...]] = {
-        "上海-苏州": ("花桥",),
-    }
+    # 同城组合中允许跨城市共用的同名车站由参与城市的数据文件声明
+    # （`combined_shared_stations`）；未声明的重名站会按城市区分。
 
     # 多城共用一份线路库文件：城市名 -> 数据文件 stem（广州 / 佛山 的线路统一存放于 广州-佛山.json）
     SHARED_CITY_FILES: dict[str, str] = {
         "广州": "广州-佛山",
         "佛山": "广州-佛山",
+        # 南京都市圈跨市线路（宁马线 / 宁滁线）与南京线网共用同一份数据
+        "马鞍山": "南京",
+        "滁州": "南京",
+    }
+
+    # 共用文件的城市视图：该城市关注的线路排在线路库最前（其余仍按文件顺序）
+    CITY_LINE_PRIORITY: dict[str, tuple[str, ...]] = {
+        "马鞍山": ("nj_s2",),
+        "滁州": ("nj_s4",),
     }
 
     # 共用文件中线路的归属：按线路 ID 前缀区分，用于分别保存各城市的改动
@@ -430,6 +557,8 @@ class CityLibrary:
             external_walks=dict(city.external_walks),
             transfers=list(city.transfers),
             aliases=list(city.aliases),
+            combined_shared_stations=list(city.combined_shared_stations),
+            station_systems=list(city.station_systems),
             line_cities=dict(city.line_cities),
             through_services=list(city.through_services),
             systems=list(city.systems),
@@ -591,7 +720,19 @@ class CityLibrary:
             for line in city.lines:
                 for station in line.stations:
                     station_owners.setdefault(station, set()).add(part)
-        shared_stations = set(self.COMBINED_SHARED_STATIONS.get(key, ()))
+        # 共用车站由各参与城市的数据声明（任一城市声明即视为共用），可在数据工坊中编辑
+        shared_stations = {
+            station
+            for _, city in parts
+            for station in city.combined_shared_stations
+        }
+        # 强互通系统（如广东城际、国家铁路）跨城共用：系统名不加城市前缀，车站取并集
+        station_system_names = {
+            system.name
+            for _, city in parts
+            for system in city.station_systems
+        }
+        qualified_names: dict[str, set[str]] = {}
 
         for part, c in parts:
             for line in c.lines:
@@ -600,13 +741,15 @@ class CityLibrary:
                     merged.systems.append(line.system)
             for group in c.transfers:
                 for endpoint in group:
-                    if endpoint.system:
+                    if endpoint.system and endpoint.system not in station_system_names:
                         endpoint.system = f"{part}::{endpoint.system}"
             isolated_names = {
                 station: f"{station}（{part}）"
                 for station, owners in station_owners.items()
                 if len(owners) > 1 and station not in shared_stations and part in owners
             }
+            for station, qualified in isolated_names.items():
+                qualified_names.setdefault(station, set()).add(qualified)
             self._qualify_stations(c, isolated_names)
             for ln in c.lines:
                 idx = index_by_id.get(ln.id)
@@ -638,7 +781,28 @@ class CityLibrary:
                         endpoints.append(endpoint)
             if len({endpoint.system for endpoint in endpoints}) > 1 and endpoints not in merged.transfers:
                 merged.transfers.append(endpoints)
+        merged.station_systems = self._merge_station_systems(parts, qualified_names)
         return merged
+
+    @staticmethod
+    def _merge_station_systems(parts: list[tuple[str, City]],
+                               qualified_names: dict[str, set[str]]) -> list[StationSystem]:
+        """合并各城市的强互通系统：同名系统取并集，并补上被限定过的重名站写法。"""
+        merged: dict[str, StationSystem] = {}
+        for _, city in parts:
+            for system in city.station_systems:
+                target = merged.setdefault(system.name, StationSystem(
+                    name=system.name, stations=[], type=system.type,
+                ))
+                if system.type and not target.type:
+                    target.type = system.type
+                for station in system.stations:
+                    if station not in target.stations:
+                        target.stations.append(station)
+                    for qualified in qualified_names.get(station, ()):
+                        if qualified not in target.stations:
+                            target.stations.append(qualified)
+        return list(merged.values())
 
     def _shared_siblings(self, city: str) -> tuple[str, ...]:
         """同一份共用文件中其它城市的线路 ID 前缀。"""
@@ -671,6 +835,8 @@ class CityLibrary:
         aliases += [g for g in city.aliases if g not in aliases]
         systems = list(existing.systems)
         systems += [system for system in city.systems if system not in systems]
+        shared_stations = list(existing.combined_shared_stations)
+        shared_stations += [s for s in city.combined_shared_stations if s not in shared_stations]
         walks = dict(existing.external_walks)
         walks.update(city.external_walks)
         return City(
@@ -681,6 +847,7 @@ class CityLibrary:
             external_walks=walks,
             transfers=transfers,
             aliases=aliases,
+            combined_shared_stations=shared_stations,
             systems=systems,
         )
 

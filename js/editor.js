@@ -17,6 +17,8 @@
   const palette = ["#2f6feb", "#e23b3b", "#1f8a4c", "#f0a020", "#8b4bd8", "#0c9aa5", "#d4478b", "#5b6472"];
 
   const DRAFT_PREFIX = "transit-planner-web.draft.";
+  const DRAFT_ARCHIVE_PREFIX = "transit-planner-web.draft-archive.";
+  const DRAFT_ARCHIVE_LIMIT = 10;
   const LAST_CITY_KEY = "transit-planner-web.editor-city";
   const CONTACT_KEY = "transit-planner-web.editor-contact";
 
@@ -71,6 +73,7 @@
     validating: false,
     validation: null,
     mapMetrics: null,
+    dirFlip: {},
   };
 
   const selectedLine = () => (state.doc?.lines || []).find((line) => line.id === state.selectedLineId) || null;
@@ -207,6 +210,11 @@
   function normalizeDoc(raw, fallbackName) {
     const doc = raw && typeof raw === "object" ? raw : {};
     const groups = (list) => (Array.isArray(list) ? list.map((g) => (Array.isArray(g) ? g.map(String) : [])).filter((g) => g.length) : []);
+    const sharedStations = [...new Set(
+      (Array.isArray(doc.combined_shared_stations) ? doc.combined_shared_stations : [])
+        .map((station) => String(station ?? "").trim())
+        .filter(Boolean),
+    )];
     const transferGroups = (list) => (Array.isArray(list) ? list.map((group) => (
       Array.isArray(group) ? group.map((endpoint) => (
         typeof endpoint === "string"
@@ -228,12 +236,38 @@
         : {},
       transfers: transferGroups(doc.transfers),
       aliases: groups(doc.aliases),
+      combined_shared_stations: sharedStations,
+      station_systems: normalizeStationSystems(doc.station_systems),
     };
+  }
+
+  /** 强互通系统：只登记车站名称、没有线路数据的系统（如广东城际、国家铁路）。 */
+  function normalizeStationSystems(raw) {
+    const entries = [];
+    if (Array.isArray(raw)) {
+      raw.forEach((item) => {
+        if (item && typeof item === "object" && !Array.isArray(item)) {
+          entries.push([String(item.name ?? ""), item]);
+        }
+      });
+    } else if (raw && typeof raw === "object") {
+      entries.push(...Object.entries(raw));
+    }
+    return entries
+      .map(([name, value]) => {
+        const list = Array.isArray(value) ? value : (Array.isArray(value?.stations) ? value.stations : []);
+        return {
+          name: String(name ?? "").trim(),
+          type: String((Array.isArray(value) ? "" : value?.type) ?? "").trim(),
+          stations: [...new Set(list.map((s) => String(s ?? "").trim()).filter(Boolean))],
+        };
+      })
+      .filter((item) => item.name);
   }
 
   async function loadCity(name) {
     if (!name) return;
-    const res = TP.cityJson(name);
+    const res = await TP.cityJson(name);
     let doc = null;
     let origin = state.published[name] ? "override" : "builtin";
     let restoredFromDraft = false;
@@ -254,6 +288,7 @@
     state.cityName = name;
     state.doc = doc;
     state.baseDoc = res.ok ? clone(doc) : null;
+    state.dirFlip = {};
     state.origin = origin;
     state.existsBuiltin = state.stems.includes(name);
     state.dirty = restoredFromDraft;
@@ -267,7 +302,7 @@
     history.replaceState(null, "", `?city=${encodeURIComponent(name)}`);
 
     renderAll();
-    if (!restoredFromDraft) offerDraft(name);
+    if (!restoredFromDraft && !offerDraft(name)) offerDraftArchives(name);
     if (!state.backend && $("banner").hidden) {
       showBanner("在线审核未启用：仍可编辑并导出数据文件；连接审核服务后即可匿名提交审核。", [], "info");
     }
@@ -277,6 +312,7 @@
   // ---------------- 本地草稿 ----------------
 
   const draftKey = (name) => `${DRAFT_PREFIX}${name}`;
+  const draftArchiveKey = (name) => `${DRAFT_ARCHIVE_PREFIX}${name}`;
 
   function readDraft(name) {
     try { return JSON.parse(localStorage.getItem(draftKey(name)) || "null"); } catch { return null; }
@@ -286,23 +322,107 @@
     try { localStorage.removeItem(draftKey(name)); } catch { /* 忽略 */ }
   }
 
+  const draftTimeText = (time) => new Date(Number(time) || Date.now()).toLocaleString("zh-CN");
+
+  /** 线上数据的更新时间：社区审核版用生效时间，内置数据用数据清单的同步时间。 */
+  function officialUpdatedAt(name) {
+    const updatedAt = Date.parse(state.published[name]?.updatedAt || "");
+    if (Number.isFinite(updatedAt)) return updatedAt;
+    const syncedAt = Date.parse(TP.manifest?.syncedAt || "");
+    return Number.isFinite(syncedAt) ? syncedAt : 0;
+  }
+
+  /** 数据指纹：只保存摘要，用来判断草稿依据的线路库是否还是当前版本。 */
+  function docSignature(doc) {
+    if (!doc) return "";
+    const text = JSON.stringify(doc);
+    let hash = 0x811c9dc5;
+    for (let i = 0; i < text.length; i += 1) {
+      hash = Math.imul(hash ^ text.charCodeAt(i), 0x01000193) >>> 0;
+    }
+    return `${text.length.toString(36)}-${hash.toString(36)}`;
+  }
+
+  /**
+   * 草稿是否基于已被替换的线路库。
+   * 有基线指纹的草稿按内容比对；旧版草稿没有指纹，只能用保存时间与数据更新时间粗略判断。
+   */
+  function draftOutdated(name, draft) {
+    if (!state.baseDoc) return false;
+    if (typeof draft.baseSig === "string") {
+      return Boolean(draft.baseSig) && draft.baseSig !== docSignature(state.baseDoc);
+    }
+    const updated = officialUpdatedAt(name);
+    const saved = Number(draft.savedAt) || 0;
+    return Boolean(updated && saved && saved < updated);
+  }
+
+  function readDraftArchives(name) {
+    try {
+      const list = JSON.parse(localStorage.getItem(draftArchiveKey(name)) || "[]");
+      return Array.isArray(list) ? list.filter((item) => item && item.doc) : [];
+    } catch {
+      return [];
+    }
+  }
+
+  /** 把旧草稿移出草稿位、留在存档里：线路库更新后旧更改不能套用到新数据上。 */
+  function archiveDraft(name, draft, reason) {
+    const entry = {
+      id: `${draft.savedAt || Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      savedAt: Number(draft.savedAt) || Date.now(),
+      archivedAt: Date.now(),
+      reason,
+      doc: draft.doc,
+    };
+    const list = [entry, ...readDraftArchives(name)].slice(0, DRAFT_ARCHIVE_LIMIT);
+    try { localStorage.setItem(draftArchiveKey(name), JSON.stringify(list)); } catch { /* 容量不足时不影响继续编辑 */ }
+    return entry;
+  }
+
+  function clearDraftArchives(name) {
+    try { localStorage.removeItem(draftArchiveKey(name)); } catch { /* 忽略 */ }
+  }
+
+  function downloadDraftArchive(name, draft) {
+    downloadJson(`${name}-旧草稿存档`, JSON.stringify(draft.doc, null, 2));
+    toast("已下载旧草稿存档");
+  }
+
   function persistDraft() {
     if (!state.doc) return;
     try {
-      localStorage.setItem(draftKey(state.cityName), JSON.stringify({ savedAt: Date.now(), doc: state.doc }));
+      localStorage.setItem(draftKey(state.cityName), JSON.stringify({
+        savedAt: Date.now(),
+        baseSig: docSignature(state.baseDoc),
+        doc: state.doc,
+      }));
     } catch { /* 容量不足时忽略 */ }
   }
 
   const persistDraftSoon = debounce(persistDraft, 500);
 
+  /**
+   * 打开城市后处理本地草稿（返回是否已显示提示条）。
+   * 线路库已更新时把旧草稿自动存档，避免旧更改覆盖新数据。
+   */
   function offerDraft(name) {
     const draft = readDraft(name);
-    if (!draft?.doc) return;
+    if (!draft?.doc) return false;
     if (JSON.stringify(draft.doc) === JSON.stringify(state.doc)) {
       clearDraft(name);
-      return;
+      return false;
     }
-    const when = new Date(draft.savedAt || Date.now()).toLocaleString("zh-CN");
+    if (draftOutdated(name, draft)) {
+      archiveDraft(name, draft, "线路库已更新");
+      clearDraft(name);
+      showBanner(`检测到「${name}」线路库已更新：${draftTimeText(draft.savedAt)} 保存的旧草稿已自动存档，不会覆盖最新数据。`, [
+        { label: "下载旧草稿", onClick: () => downloadDraftArchive(name, draft) },
+        { label: "关闭", onClick: clearBanner },
+      ], "info");
+      return true;
+    }
+    const when = draftTimeText(draft.savedAt);
     showBanner(`发现本地在 ${when} 保存、尚未提交的草稿。`, [
       {
         label: "恢复草稿",
@@ -331,6 +451,26 @@
         },
       },
     ]);
+    return true;
+  }
+
+  /** 有因数据更新而存档的旧草稿时提示一次，方便找回或清理。 */
+  function offerDraftArchives(name) {
+    const archives = readDraftArchives(name);
+    if (!archives.length) return false;
+    showBanner(`「${name}」有 ${archives.length} 份旧草稿因线路库更新而存档（最近 ${draftTimeText(archives[0].archivedAt)}）。`, [
+      { label: "下载最近存档", onClick: () => downloadDraftArchive(name, archives[0]) },
+      {
+        label: "清除存档",
+        onClick: () => {
+          clearDraftArchives(name);
+          clearBanner();
+          toast("已清除旧草稿存档");
+        },
+      },
+      { label: "关闭", onClick: clearBanner },
+    ], "info");
+    return true;
   }
 
   // ---------------- 提示条 ----------------
@@ -365,6 +505,7 @@
     renderWorkspace();
     renderCityMeta();
     renderSystemMeta();
+    renderStationSystemMeta();
     renderGroupMeta();
     renderWalkMeta();
     renderValidation();
@@ -509,7 +650,7 @@
     const segments = segmentCount(line);
     const stationCount = line.ring ? ringSize(line) : line.stations.length;
     box.innerHTML = `
-      <span class="line-chip"><i style="background:${line.color2 ? `linear-gradient(90deg, ${safeColor(line.color)} 0 50%, ${safeColor(line.color2)} 50% 100%)` : safeColor(line.color)}"></i>${esc(line.name || "未命名线路")}</span>
+      <span class="line-chip"><i style="background:${line.color2 ? `linear-gradient(90deg, ${safeColor(line.color)} 0 50%, ${safeColor(line.color2)} 50% 100%) border-box no-repeat` : safeColor(line.color)}"></i>${esc(line.name || "未命名线路")}</span>
       <span class="hint">${esc(typeLabel(line.type))} · ${stationCount} 站 · ${segments} 段</span>
       <div class="spacer"></div>
       <button type="button" data-tool="add-station" title="在线路末端添加一个车站">＋ 末尾加站</button>
@@ -1300,8 +1441,90 @@
           <div class="chips">${(line.directions || []).map((d) => `<span class="chip">${esc(d.label || "—")}</span>`).join("") || "<span class='hint'>尚未生成</span>"}</div>
           <button type="button" id="btn-rebuild-dirs">按站表重建方向</button>
         </div>
+        ${renderDirectionStopsEditor(line)}
         ${renderExpressEditor(line)}
       </div>`;
+  }
+
+  /**
+   * 上下行停靠站不一致：为每个方向单独指定停靠站表。
+   * 未填写的方向表示「按站表停靠全部车站」；填写后未列出的车站该方向不服务。
+   */
+  function directionAxis(line, direction) {
+    // 该方向的行车顺序：终点在站表末尾为正向，否则视为反向（与内核 direction_sign 一致）
+    const stations = line.stations || [];
+    const terminalIndex = direction?.terminal == null ? -1 : stations.indexOf(direction.terminal);
+    const forward = direction?.terminal != null
+      ? terminalIndex === stations.length - 1
+      : !direction?.reverse;
+    return forward ? stations : [...stations].reverse();
+  }
+
+  function directionFlipKey(line, label) {
+    return `${line.id}|${label}`;
+  }
+
+  /** 该方向当前是否按「与站表相反」的顺序停靠（上下行走向对调时使用）。 */
+  function isDirectionFlipped(line, direction, axis) {
+    const key = directionFlipKey(line, direction.label);
+    if (state.dirFlip[key] === undefined) {
+      const current = line.direction_stops?.[direction.label];
+      const base = current?.length ? axis.filter((station) => current.includes(station)) : [];
+      state.dirFlip[key] = Boolean(current?.length) && base.join("|") !== current.join("|");
+    }
+    return state.dirFlip[key];
+  }
+
+  function renderDirectionStopsEditor(line) {
+    const directions = line.directions || [];
+    if (!directions.length) {
+      return `<div class="ed-dirs"><b>上下行停靠站</b>
+        <span class="hint">先确定方向后，才能为每个方向单独设置停靠站。</span></div>`;
+    }
+    const stops = line.direction_stops || {};
+    const total = (line.stations || []).length;
+    const rows = directions.map((direction, i) => {
+      const label = direction.label;
+      const current = Array.isArray(stops[label]) ? stops[label] : [];
+      const served = new Set(current);
+      const axis = directionAxis(line, direction);
+      const order = current.length ? current : axis;
+      const rank = new Map(order.map((station, k) => [station, k + 1]));
+      const cells = axis.map((station) => {
+        const seq = rank.get(station);
+        return `<label class="ed-stop-cell${served.size && !served.has(station) ? " is-off" : ""}">
+          <input type="checkbox" data-dir-station="${i}" value="${esc(station)}"
+            ${!served.size || served.has(station) ? "checked" : ""}>
+          <span class="ed-stop-seq">${seq ? seq : ""}</span>
+          <span class="ed-stop-name">${esc(station)}</span>
+        </label>`;
+      }).join("");
+      const seq = order.length > 8
+        ? `${order.slice(0, 8).join(" → ")} → …`
+        : order.join(" → ");
+      const summary = served.size
+        ? `停 ${current.length} / ${total} 站：${seq}`
+        : `按站表停靠全部 ${total} 站：${seq}`;
+      return `
+        <div class="ed-stop-dir" data-direction-stops="${i}">
+          <div class="ed-express-foot" style="margin:0 0 6px">
+            <b>${esc(label)}</b>
+            <span class="hint">${esc(summary)}</span>
+            <div class="spacer"></div>
+            <button type="button" data-dir-stops-reverse="${i}" title="把该方向的行车方向反过来（上下行对调时使用）">反向</button>
+            <button type="button" data-dir-stops-fill="${i}">全部停靠</button>
+            <button type="button" data-dir-stops-clear="${i}">清空设置</button>
+          </div>
+          <div class="ed-stop-grid">${cells}</div>
+        </div>`;
+    }).join("");
+    return `<div class="ed-dirs" id="ed-direction-stops">
+      <b>上下行停靠站</b>
+      <span class="hint">两个方向停靠站不一致时（跳站，或上下行各停各的），在此勾选每个方向实际停靠的车站：
+        方框内的数字为该方向的行车顺序，取消勾选的车站该方向不服务；全部勾选表示按站表停靠全部车站。
+        「反向」用于上下行走向对调的情形。</span>
+      ${rows}
+    </div>`;
   }
 
   /** 快车 / 大站车服务编辑：只停部分车站的列车，规划与记录均可选用。 */
@@ -1388,6 +1611,44 @@
     renderProps();
   }
 
+  function renderStationSystemMeta() {
+    const doc = state.doc;
+    const box = $("station-system-meta");
+    if (!box) return;
+    if (!doc) {
+      box.innerHTML = "";
+      return;
+    }
+    const systems = doc.station_systems || [];
+    const rows = systems.map((system, i) => `
+      <div class="ed-group-block" data-station-system="${i}">
+        <div class="ed-group-row">
+          <input data-ss-field="name" data-i="${i}" type="text" value="${esc(system.name)}" placeholder="系统名称，如 国家铁路系统">
+          <button type="button" data-del-station-system="${i}" title="删除该系统">✕</button>
+        </div>
+        <div class="ed-group-row">
+          <select data-ss-field="type" data-i="${i}" aria-label="交通类型">
+            <option value="" ${system.type ? "" : "selected"}>（不指定类型）</option>
+            ${[...new Set([...(state.typeKeys || []), system.type].filter(Boolean))]
+              .map((key) => `<option value="${esc(key)}" ${key === system.type ? "selected" : ""}>${esc(typeLabel(key))}</option>`)
+              .join("")}
+          </select>
+        </div>
+        <textarea data-ss-field="stations" data-i="${i}" rows="3"
+                  placeholder="车站名称，用顿号或换行分隔">${esc((system.stations || []).join("、"))}</textarea>
+        <div class="hint">共 ${(system.stations || []).length} 站；只登记站名，不做线路计算，在这些车站上视为可与本城市任一系统互通。</div>
+      </div>`).join("");
+    box.innerHTML = `
+      <div class="hint">「强互通系统」只登记车站名称（如广东城际系统、国家铁路系统），用于转乘提示；
+        类型选「国家铁路」时，规划页双击该提示会直接打开国铁车次查询。</div>
+      ${rows || '<p class="hint" style="margin:6px 0">尚未添加强互通系统。</p>'}
+      <button type="button" class="ed-add-btn" data-add-station-system="1">＋ 添加强互通系统</button>`;
+  }
+
+  function splitStationText(text) {
+    return String(text || "").split(/[、,，;；\n]+/).map((s) => s.trim()).filter(Boolean);
+  }
+
   function renderCityMeta() {
     const doc = state.doc;
     if (!doc) {
@@ -1398,6 +1659,11 @@
       <div class="grid2">
         <div class="field"><span>地区</span><input data-city="region" type="text" value="${esc(doc.region)}" placeholder="如：华东"></div>
         <div class="field"><span>版本</span><input data-city="version" type="text" value="${esc(doc.version)}" placeholder="1.0"></div>
+      </div>
+      <div class="field">
+        <span>同城组合共用车站</span>
+        <input data-city-shared type="text" value="${esc((doc.combined_shared_stations || []).join("、"))}" placeholder="如：花桥">
+        <div class="hint">与同城组合中其它城市的同名站可视为同一车站（如 上海-苏州 的花桥）；多个站名用顿号分隔。</div>
       </div>
       <div class="hint">数据来源：${esc(originLabel())}</div>`;
   }
@@ -1664,6 +1930,146 @@
     renderAll();
   }
 
+  /** 从粘贴的文本生成线路：第一行为线路名，其余每行为一个车站。 */
+  function parseQuickLine(text) {
+    const rows = String(text || "")
+      .replace(/\r\n?/g, "\n")
+      .split("\n")
+      .map((row) => row.trim())
+      .filter(Boolean);
+    if (!rows.length) return { name: "", stations: [] };
+    const [name, ...rest] = rows;
+    const stations = [];
+    rest.forEach((row) => {
+      row.split(/[、,，;；\s]+/).map((s) => s.trim()).filter(Boolean).forEach((station) => {
+        stations.push(station);
+      });
+    });
+    return { name, stations };
+  }
+
+  function nextQuickLineId(name) {
+    const base = `line_${(state.doc?.lines || []).length + 1}`;
+    let id = base;
+    let salt = 1;
+    while ((state.doc?.lines || []).some((line) => line.id === id)) id = `${base}_${salt++}`;
+    return { id };
+  }
+
+  function updateQuickLinePreview() {
+    const { name, stations } = parseQuickLine($("quick-line-text").value);
+    const hint = $("quick-line-preview");
+    if (!name) {
+      hint.textContent = "请在第一行填写线路名称。";
+      return;
+    }
+    if (stations.length < 2) {
+      hint.textContent = `「${name}」：至少需要 2 个车站（当前 ${stations.length} 个）。`;
+      return;
+    }
+    hint.textContent = `「${name}」：${stations.length} 站 / ${stations.length - 1} 个区间；`
+      + `首末站 ${stations[0]} → ${stations[stations.length - 1]}。`;
+  }
+
+  function fillQuickLineOptions() {
+    const typeSelect = $("quick-line-type");
+    typeSelect.innerHTML = [...new Set([...(state.typeKeys || []), "metro"])]
+      .map((key) => `<option value="${esc(key)}" ${key === "metro" ? "selected" : ""}>${esc(typeLabel(key))}</option>`)
+      .join("");
+    const systemSelect = $("quick-line-system");
+    systemSelect.innerHTML = ['<option value="">（未设置）</option>']
+      .concat((state.doc?.systems || []).map((system) => `<option value="${esc(system)}">${esc(system)}</option>`))
+      .join("");
+    if ((state.doc?.systems || []).length) systemSelect.value = state.doc.systems[0];
+  }
+
+  function openQuickLineDialog() {
+    if (!state.doc) return;
+    $("quick-line-text").value = "";
+    $("quick-line-minutes").value = "3";
+    $("quick-line-color").value = palette[state.doc.lines.length % palette.length];
+    $("quick-line-error").hidden = true;
+    fillQuickLineOptions();
+    updateQuickLinePreview();
+    $("quick-line-dialog").showModal();
+    setTimeout(() => $("quick-line-text").focus(), 0);
+  }
+
+  function createQuickLine() {
+    const error = $("quick-line-error");
+    const { name, stations } = parseQuickLine($("quick-line-text").value);
+    if (!name) {
+      error.textContent = "请在第一行填写线路名称。";
+      error.hidden = false;
+      return;
+    }
+    if (stations.length < 2) {
+      error.textContent = "至少需要 2 个车站，每行写一个车站。";
+      error.hidden = false;
+      return;
+    }
+    const minutes = Number($("quick-line-minutes").value);
+    const segment = Number.isFinite(minutes) && minutes >= 0 ? minutes : 3;
+    const { id } = nextQuickLineId(name);
+    const line = normalizeLine({
+      id,
+      name,
+      short_name: name,
+      type: $("quick-line-type").value || "metro",
+      system: $("quick-line-system").value || "",
+      color: $("quick-line-color").value || palette[state.doc.lines.length % palette.length],
+      stations,
+      travel_minutes: Array.from({ length: stations.length - 1 }, () => segment),
+      headway_rush: 10,
+      headway_normal: 15,
+      ring: false,
+      directions: [],
+    });
+    rebuildDirections(line);
+    state.doc.lines.push(line);
+    state.selectedLineId = id;
+    state.stationIndex = 0;
+    state.segmentIndex = -1;
+    switchView("props");
+    touch();
+    renderAll();
+    $("quick-line-dialog").close();
+    toast(`已添加「${name}」，共 ${stations.length} 站，可在「线路属性」中继续调整`);
+  }
+
+  /**
+   * 设置某方向的停靠站表。
+   * stops 为 null 表示恢复「按站表停靠全部车站」，空数组同样表示不单独限制。
+   * reverse 为 true 时把该方向的停靠顺序反过来（上下行走向对调）。
+   */
+  function setDirectionStops(index, stops, reverse = false) {
+    const line = selectedLine();
+    const direction = (line?.directions || [])[index];
+    if (!line || !direction) return;
+    if (!line.direction_stops) line.direction_stops = {};
+    if (!stops || !stops.length) {
+      delete line.direction_stops[direction.label];
+      delete state.dirFlip[directionFlipKey(line, direction.label)];
+      if (!Object.keys(line.direction_stops).length) line.direction_stops = {};
+      touch();
+      renderProps();
+      return;
+    }
+    const chosen = new Set(stops);
+    const axis = directionAxis(line, direction);
+    const key = directionFlipKey(line, direction.label);
+    const flipped = reverse ? !isDirectionFlipped(line, direction, axis) : isDirectionFlipped(line, direction, axis);
+    state.dirFlip[key] = flipped;
+    const ordered = (flipped ? [...axis].reverse() : axis).filter((station) => chosen.has(station));
+    if (ordered.length < 2) {
+      toast("至少需要保留 2 个停靠站");
+      return;
+    }
+    line.direction_stops[direction.label] = ordered;
+    touch();
+    renderProps();
+  }
+
   function deleteLine(id) {
     const group = window.LineBranches.groupOf(state.doc.lines, id);
     const line = state.doc.lines.find((item) => item.id === id);
@@ -1918,6 +2324,19 @@
       btn.addEventListener("click", () => switchView(btn.dataset.view));
     });
 
+    $("btn-quick-line").addEventListener("click", openQuickLineDialog);
+    $("btn-quick-line-close").addEventListener("click", () => $("quick-line-dialog").close());
+    $("btn-quick-line-cancel").addEventListener("click", () => $("quick-line-dialog").close());
+    $("btn-quick-line-ok").addEventListener("click", createQuickLine);
+    $("quick-line-text").addEventListener("input", () => {
+      $("quick-line-error").hidden = true;
+      updateQuickLinePreview();
+    });
+    $("quick-line-dialog").addEventListener("submit", (ev) => {
+      ev.preventDefault();
+      createQuickLine();
+    });
+
     $("map-toolbar").addEventListener("click", (ev) => {
       const btn = ev.target.closest("[data-tool]");
       if (!btn) return;
@@ -2073,14 +2492,108 @@
       if (ev.target.closest("#btn-add-express")) return addExpressService();
       const del = ev.target.closest("[data-express-del]");
       if (del) return deleteExpress(Number(del.dataset.expressDel));
+      const fill = ev.target.closest("[data-dir-stops-fill]");
+      if (fill) return setDirectionStops(Number(fill.dataset.dirStopsFill), null);
+      const clear = ev.target.closest("[data-dir-stops-clear]");
+      if (clear) return setDirectionStops(Number(clear.dataset.dirStopsClear), []);
+      const reverse = ev.target.closest("[data-dir-stops-reverse]");
+      if (reverse) {
+        const index = Number(reverse.dataset.dirStopsReverse);
+        const line = selectedLine();
+        const direction = (line?.directions || [])[index];
+        if (!line || !direction) return undefined;
+        const current = line.direction_stops?.[direction.label];
+        return setDirectionStops(index, current?.length ? current : (line.stations || []), true);
+      }
       return undefined;
     });
 
     $("city-meta").addEventListener("input", (ev) => {
+      if (!state.doc) return;
+      const shared = ev.target.closest("[data-city-shared]");
+      if (shared) {
+        state.doc.combined_shared_stations = splitNames(shared.value);
+        touch();
+        return;
+      }
       const el = ev.target.closest("[data-city]");
-      if (!el || !state.doc) return;
+      if (!el) return;
       state.doc[el.dataset.city] = el.value;
       touch();
+    });
+
+    $("station-system-meta").addEventListener("input", (ev) => {
+      const el = ev.target.closest("[data-ss-field]");
+      if (!el || !state.doc) return;
+      const index = Number(el.dataset.i);
+      const system = state.doc.station_systems?.[index];
+      if (!system) return;
+      if (el.dataset.ssField === "stations") system.stations = splitStationText(el.value);
+      else system[el.dataset.ssField] = el.value;
+      touch();
+    });
+    $("station-system-meta").addEventListener("change", (ev) => {
+      const el = ev.target.closest("[data-ss-field]");
+      if (!el || !state.doc) return;
+      const index = Number(el.dataset.i);
+      const system = state.doc.station_systems?.[index];
+      if (!system) return;
+      const value = el.dataset.ssField === "stations" ? splitStationText(el.value) : el.value;
+      if (el.dataset.ssField === "name") {
+        const name = String(value).trim();
+        if (!name) {
+          toast("强互通系统名称不能为空");
+          renderStationSystemMeta();
+          return;
+        }
+        if (state.doc.station_systems.some((item, i) => i !== index && item.name === name)) {
+          toast("强互通系统名称不能重复");
+          renderStationSystemMeta();
+          return;
+        }
+        const previous = system.name;
+        system.name = name;
+        // 同步转乘站对里引用该系统名的端点
+        if (previous && previous !== name) {
+          state.doc.transfers.forEach((group) => group.forEach((endpoint) => {
+            if (endpoint && typeof endpoint === "object" && endpoint.system === previous) endpoint.system = name;
+          }));
+        }
+        touch();
+        renderAll();
+        return;
+      }
+      system[el.dataset.ssField] = value;
+      touch();
+      renderAll();
+    });
+    $("station-system-meta").addEventListener("click", (ev) => {
+      if (!state.doc) return;
+      if (ev.target.closest("[data-add-station-system]")) {
+        if (!Array.isArray(state.doc.station_systems)) state.doc.station_systems = [];
+        let name = "新强互通系统";
+        let suffix = 2;
+        while (state.doc.station_systems.some((item) => item.name === name)) name = `新强互通系统${suffix++}`;
+        state.doc.station_systems.push({ name, type: "", stations: [] });
+        touch();
+        renderStationSystemMeta();
+        return;
+      }
+      const del = ev.target.closest("[data-del-station-system]");
+      if (!del) return;
+      const index = Number(del.dataset.delStationSystem);
+      const system = state.doc.station_systems?.[index];
+      if (!system) return;
+      const used = state.doc.transfers.some((group) => group.some(
+        (endpoint) => endpoint && typeof endpoint === "object" && endpoint.system === system.name,
+      ));
+      if (used) {
+        toast("该强互通系统仍被转乘站对引用，不能删除");
+        return;
+      }
+      state.doc.station_systems.splice(index, 1);
+      touch();
+      renderStationSystemMeta();
     });
 
     $("system-meta").addEventListener("change", (ev) => {
@@ -2257,6 +2770,23 @@
   }
 
   function onPropsChange(ev) {
+    const dirStation = ev.target.closest("[data-dir-station]");
+    if (dirStation) {
+      const index = Number(dirStation.dataset.dirStation);
+      const row = dirStation.closest("[data-direction-stops]");
+      const line = selectedLine();
+      if (!row || !line) return;
+      const chosen = Array.from(row.querySelectorAll("[data-dir-station]"))
+        .filter((el) => el.checked)
+        .map((el) => el.value);
+      // 全部勾选即等同「不限制」，回到按站表停靠全部车站
+      if (chosen.length === (line.stations || []).length) {
+        setDirectionStops(index, null);
+        return;
+      }
+      setDirectionStops(index, chosen);
+      return;
+    }
     const stopsSelect = ev.target.closest("[data-express-stops]");
     if (stopsSelect) {
       const index = Number(stopsSelect.dataset.expressStops);
@@ -2338,6 +2868,7 @@
       $("city-select").value = nextName;
     }
     state.doc = normalizeDoc(res.city || doc, state.cityName);
+    state.dirFlip = {};
     state.stationIndex = -1;
     state.segmentIndex = -1;
     if (!state.doc.lines.some((line) => line.id === state.selectedLineId)) {
@@ -2428,6 +2959,7 @@
     state.cityName = name;
     state.doc = doc;
     state.baseDoc = null;
+    state.dirFlip = {};
     state.origin = "new";
     state.dirty = true;
     state.submitted = false;
@@ -2480,6 +3012,7 @@
       state.cityName = name;
       state.doc = doc;
       state.baseDoc = null;
+      state.dirFlip = {};
       state.origin = "upload";
       state.dirty = true;
       state.submitted = false;

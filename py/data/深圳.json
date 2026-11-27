@@ -2,6 +2,11 @@
   "city": "深圳",
   "region": "华南",
   "version": "1.0",
+  "systems": [
+    "地铁系统",
+    "龙华有轨电车系统",
+    "云巴系统"
+  ],
   "lines": [
     {
       "id": "szn_m1",
@@ -90,7 +95,8 @@
           "terminal": "罗湖",
           "reverse": false
         }
-      ]
+      ],
+      "system": "地铁系统"
     },
     {
       "id": "szn_m2",
@@ -205,7 +211,8 @@
           "terminal": "赤湾",
           "reverse": false
         }
-      ]
+      ],
+      "system": "地铁系统"
     },
     {
       "id": "szn_m3",
@@ -310,7 +317,8 @@
           "terminal": "坪地六联",
           "reverse": false
         }
-      ]
+      ],
+      "system": "地铁系统"
     },
     {
       "id": "szn_m4",
@@ -385,7 +393,8 @@
           "terminal": "福田口岸",
           "reverse": false
         }
-      ]
+      ],
+      "system": "地铁系统"
     },
     {
       "id": "szn_m5",
@@ -488,7 +497,8 @@
           "terminal": "大剧院",
           "reverse": false
         }
-      ]
+      ],
+      "system": "地铁系统"
     },
     {
       "id": "szn_m6",
@@ -571,7 +581,8 @@
           "terminal": "松岗",
           "reverse": false
         }
-      ]
+      ],
+      "system": "地铁系统"
     },
     {
       "id": "szn_m6b",
@@ -615,7 +626,8 @@
           "terminal": "光明城",
           "reverse": false
         }
-      ]
+      ],
+      "system": "地铁系统"
     },
     {
       "id": "szn_m7",
@@ -702,7 +714,8 @@
           "terminal": "深大丽湖",
           "reverse": false
         }
-      ]
+      ],
+      "system": "地铁系统"
     },
     {
       "id": "szn_m9",
@@ -796,7 +809,8 @@
           "terminal": "文锦",
           "reverse": false
         }
-      ]
+      ],
+      "system": "地铁系统"
     },
     {
       "id": "szn_m10",
@@ -873,7 +887,8 @@
           "terminal": "福田口岸",
           "reverse": false
         }
-      ]
+      ],
+      "system": "地铁系统"
     },
     {
       "id": "szn_m11",
@@ -946,7 +961,8 @@
           "terminal": "岗厦北",
           "reverse": false
         }
-      ]
+      ],
+      "system": "地铁系统"
     },
     {
       "id": "szn_m12",
@@ -1053,7 +1069,8 @@
           "terminal": "左炮台东",
           "reverse": false
         }
-      ]
+      ],
+      "system": "地铁系统"
     },
     {
       "id": "szn_m13",
@@ -1134,7 +1151,8 @@
           "terminal": "深圳湾口岸",
           "reverse": false
         }
-      ]
+      ],
+      "system": "地铁系统"
     },
     {
       "id": "szn_m14",
@@ -1199,7 +1217,8 @@
           "terminal": "岗厦北",
           "reverse": false
         }
-      ]
+      ],
+      "system": "地铁系统"
     },
     {
       "id": "szn_m16",
@@ -1292,7 +1311,8 @@
           "terminal": "园山西坑",
           "reverse": false
         }
-      ]
+      ],
+      "system": "地铁系统"
     },
     {
       "id": "szn_m20",
@@ -1331,7 +1351,8 @@
           "terminal": "机场北",
           "reverse": false
         }
-      ]
+      ],
+      "system": "地铁系统"
     },
     {
       "id": "szn_tram_lh",
@@ -1390,7 +1411,8 @@
           "terminal": "清湖",
           "reverse": false
         }
-      ]
+      ],
+      "system": "龙华有轨电车系统"
     },
     {
       "id": "szn_tram_lhb",
@@ -1443,7 +1465,8 @@
           "terminal": "清湖",
           "reverse": false
         }
-      ]
+      ],
+      "system": "龙华有轨电车系统"
     },
     {
       "id": "szn_cloud_ps",
@@ -1494,27 +1517,78 @@
           "terminal": "坪山高铁站",
           "reverse": false
         }
-      ]
+      ],
+      "system": "云巴系统"
     }
   ],
   "external_walks": {},
   "transfers": [
     [
-      "深圳北站",
-      "深圳北"
+      {
+        "station": "观澜",
+        "system": "地铁系统"
+      },
+      {
+        "station": "新澜",
+        "system": "龙华有轨电车系统"
+      }
     ],
     [
-      "罗湖",
-      "深圳"
+      {
+        "station": "坪山高铁站",
+        "system": "云巴系统"
+      },
+      {
+        "station": "坪山",
+        "system": "地铁系统"
+      }
     ],
     [
-      "观澜",
-      "新澜"
+      {
+        "station": "清湖",
+        "system": "地铁系统"
+      },
+      {
+        "station": "清湖",
+        "system": "龙华有轨电车系统"
+      }
     ],
     [
-      "坪山高铁站",
-      "坪山"
+      {
+        "station": "深圳北站",
+        "system": "地铁系统"
+      },
+      {
+        "station": "深圳北",
+        "system": "广东城际系统"
+      }
+    ],
+    [
+      {
+        "station": "罗湖",
+        "system": "地铁系统"
+      },
+      {
+        "station": "深圳",
+        "system": "广东城际系统"
+      }
     ]
   ],
-  "aliases": []
+  "aliases": [],
+  "station_systems": {
+    "广东城际系统": {
+      "type": "intercity",
+      "stations": [
+        "深圳北",
+        "深圳"
+      ]
+    },
+    "国家铁路系统": {
+      "type": "national_rail",
+      "stations": [
+        "深圳北",
+        "深圳"
+      ]
+    }
+  }
 }

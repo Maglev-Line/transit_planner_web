@@ -72,6 +72,24 @@ def _station_lines(city: City) -> dict[str, list[tuple[Line, int]]]:
     return out
 
 
+def _direction_skips(line: Line) -> tuple[set[str], set[str]]:
+    """按行驶走向返回「通过不停靠」的站集合：(正向, 反向)。
+
+    同一走向若有多个方向声明，取并集；用于在图上跳过不能上下车的车站。
+    """
+    forward: set[str] = set()
+    reverse: set[str] = set()
+    for direction in line.directions:
+        skipped = line.skipped_stations(direction.label)
+        if not skipped:
+            continue
+        if engine.direction_sign(line, direction) > 0:
+            forward.update(skipped)
+        else:
+            reverse.update(skipped)
+    return forward, reverse
+
+
 def _ride_edges(city: City) -> dict[tuple[str, int], list[_Edge]]:
     """构建普通车和快车停靠站之间的双向乘车边。"""
     edges: dict[tuple[str, int], list[_Edge]] = {}
@@ -154,18 +172,41 @@ def _transfer_options(city: City, station_lines: dict[str, list[tuple[Line, int]
     return options
 
 
+def _skip_index(city: City) -> dict[str, tuple[set[str], set[str]]]:
+    """线路 ID → (正向通过不停靠站, 反向通过不停靠站)。"""
+    return {
+        line.id: _direction_skips(line)
+        for line in city.lines
+        if line.direction_stops
+    }
+
+
+def _is_skipped(skips: dict[str, tuple[set[str], set[str]]],
+                line_id: str, station: str, sign: int) -> bool:
+    """该站是否在本方向「通过但不停靠」（不能上下车）。"""
+    entry = skips.get(line_id)
+    if not entry or not sign:
+        return False
+    return station in (entry[0] if sign > 0 else entry[1])
+
+
 def _dijkstra(starts: Iterable[tuple[str, int]], ride_edges: dict, transfer_options,
-              max_transfers: int, exclude_line_id: str = "") -> tuple[dict, dict]:
+              max_transfers: int, exclude_line_id: str = "",
+              station_of=lambda node: "", skips: dict | None = None) -> tuple[dict, dict]:
     """多标签 Dijkstra：键 = (节点, 换乘次数, 最后一步类型)。
 
     最后一步类型用 (kind, sign) 表示：乘车为 ("ride", ±1)，换乘为 ("transfer", 0)，
     起点为 ("start", 0)。保留「同时间但来向不同」的标签，才能同时保留
     「从 A 方向进入」和「从 B 方向进入」的后续可能，避免同时间折返方案把正常方案挤掉。
 
+    `skips` 给出各线路「通过但不停靠」的车站：列车可以穿过这些站，
+    但不会把它们记为可上下的终点，也不会在该方向下就地换乘。
+
     返回 (labels, ride_labels)：
     - labels 用于继续搜索；
     - ride_labels 只记录「最后一步是乘车」的标签，供方案终点使用。
     """
+    skips = skips or {}
     labels: dict[_LabelKey, _Label] = {}
     ride_labels: dict[_LabelKey, _Label] = {}
     heap: list[tuple[float, int, tuple[str, int], int, _Last]] = []
@@ -175,10 +216,11 @@ def _dijkstra(starts: Iterable[tuple[str, int]], ride_edges: dict, transfer_opti
              prev: _LabelKey | None, edge: _Edge | None, last: _Last) -> None:
         # 先记录乘车终点，即使该状态随后被同时间的换乘标签占位
         if edge is not None and edge.kind == "ride":
-            ride_key = (node, transfers, last)
-            current = ride_labels.get(ride_key)
-            if current is None or minutes < current.minutes - 1e-9:
-                ride_labels[ride_key] = _Label(minutes, prev, edge)
+            if not _is_skipped(skips, edge.end[0], station_of(edge.end), edge.sign):
+                ride_key = (node, transfers, last)
+                current = ride_labels.get(ride_key)
+                if current is None or minutes < current.minutes - 1e-9:
+                    ride_labels[ride_key] = _Label(minutes, prev, edge)
 
         key = (node, transfers, last)
         current = labels.get(key)
@@ -202,10 +244,14 @@ def _dijkstra(starts: Iterable[tuple[str, int]], ride_edges: dict, transfer_opti
         if label is None or label.minutes + 1e-9 < minutes:
             continue
         parent_edge = label.edge
+        boarding = parent_edge is None or parent_edge.kind != "ride"
         for edge in ride_edges.get(node, ()):
             if exclude_line_id and edge.end[0] == exclude_line_id:
                 continue
             if edge.end[0] != node[0]:
+                continue
+            # 在本方向「通过不停靠」的车站不能上车（但可以随车穿过）
+            if boarding and _is_skipped(skips, edge.start[0], station_of(edge.start), edge.sign):
                 continue
             # 同一条线路上原地折返永远不会更优，直接剪掉，避免出现绕一圈再坐回来的方案
             if (parent_edge is not None and parent_edge.kind == "ride"
@@ -214,6 +260,9 @@ def _dijkstra(starts: Iterable[tuple[str, int]], ride_edges: dict, transfer_opti
                 continue
             push(edge.end, transfers, minutes + edge.minutes, key, edge, ("ride", edge.sign))
         if transfers >= max_transfers:
+            continue
+        # 在「通过但不停靠」的车站不能下车换乘
+        if last[0] == "ride" and _is_skipped(skips, node[0], station_of(node), last[1]):
             continue
         for edge in transfer_options(node):
             if exclude_line_id and edge.end[0] == exclude_line_id:
@@ -540,7 +589,12 @@ def _plan_station_mode(city: City, start_names: list[str], target: str,
     goal_names = set(engine.alias_names(city, target))
     if not any(name in station_lines for name in goal_names):
         raise LineError(f"车站「{target}」不在当前线路库中")
-    labels, ride_labels = _dijkstra(starts, ride_edges, transfer_options, MAX_TRANSFERS)
+    labels, ride_labels = _dijkstra(
+        starts, ride_edges, transfer_options, MAX_TRANSFERS,
+        station_of=lambda node: line_by_id[node[0]].stations[node[1]]
+        if 0 <= node[1] < len(line_by_id[node[0]].stations) else "",
+        skips=_skip_index(city),
+    )
 
     best_at_transfers: dict[int, tuple[float, _LabelKey]] = {}
     for key, label in ride_labels.items():
@@ -592,6 +646,7 @@ def _plan_line_mode(city: City, origin: str, line_id: str, default_walk: float) 
         raise LineError("跨线交路不参与智能规划")
     station_lines = _station_lines(city)
     ride_edges = _ride_edges(city)
+    skips = _skip_index(city)
     transfer_options = _transfer_options(city, station_lines, line_by_id, default_walk)
 
     origin_names = set(engine.alias_names(city, origin))
@@ -605,6 +660,9 @@ def _plan_line_mode(city: City, origin: str, line_id: str, default_walk: float) 
     labels, ride_labels = _dijkstra(
         starts, ride_edges, transfer_options, MAX_TRANSFERS,
         exclude_line_id=target_line.id,
+        station_of=lambda node: line_by_id[node[0]].stations[node[1]]
+        if 0 <= node[1] < len(line_by_id[node[0]].stations) else "",
+        skips=skips,
     ) if starts else ({}, {})
 
     target_stations = [target_line.stations[i] for i in range(_unique_count(target_line))]

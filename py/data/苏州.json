@@ -7,6 +7,20 @@
     "有轨电车系统",
     "智轨系统"
   ],
+  "station_systems": {
+    "国家铁路系统": {
+      "type": "national_rail",
+      "stations": [
+        "苏州",
+        "苏州北",
+        "苏州新区",
+        "苏州园区"
+      ]
+    }
+  },
+  "combined_shared_stations": [
+    "花桥"
+  ],
   "lines": [
     {
       "id": "sz_m1",
@@ -1033,50 +1047,6 @@
       ]
     }
   ],
-  "external_walks": {},
-  "transfers": [
-    [
-      {
-        "station": "狮子山",
-        "system": "地铁系统"
-      },
-      {
-        "station": "狮子山",
-        "system": "有轨电车系统"
-      }
-    ],
-    [
-      {
-        "station": "苏州新区火车站",
-        "system": "地铁系统"
-      },
-      {
-        "station": "苏州新区火车站",
-        "system": "有轨电车系统"
-      }
-    ],
-    [
-      {
-        "station": "文昌路",
-        "system": "地铁系统"
-      },
-      {
-        "station": "文昌路",
-        "system": "有轨电车系统"
-      }
-    ],
-    [
-      {
-        "station": "同里",
-        "system": "地铁系统"
-      },
-      {
-        "station": "同里",
-        "system": "智轨系统"
-      }
-    ]
-  ],
-  "aliases": [],
   "through_services": [
     {
       "id": "sz_through_m3_m11",
@@ -1120,5 +1090,89 @@
         }
       ]
     }
-  ]
+  ],
+  "external_walks": {},
+  "transfers": [
+    [
+      {
+        "station": "狮子山",
+        "system": "地铁系统"
+      },
+      {
+        "station": "狮子山",
+        "system": "有轨电车系统"
+      }
+    ],
+    [
+      {
+        "station": "苏州新区火车站",
+        "system": "地铁系统"
+      },
+      {
+        "station": "苏州新区火车站",
+        "system": "有轨电车系统"
+      }
+    ],
+    [
+      {
+        "station": "文昌路",
+        "system": "地铁系统"
+      },
+      {
+        "station": "文昌路",
+        "system": "有轨电车系统"
+      }
+    ],
+    [
+      {
+        "station": "同里",
+        "system": "地铁系统"
+      },
+      {
+        "station": "同里",
+        "system": "智轨系统"
+      }
+    ],
+    [
+      {
+        "system": "地铁系统",
+        "station": "苏州火车站"
+      },
+      {
+        "system": "国家铁路系统",
+        "station": "苏州"
+      }
+    ],
+    [
+      {
+        "system": "地铁系统",
+        "station": "高铁苏州北站"
+      },
+      {
+        "system": "国家铁路系统",
+        "station": "苏州北"
+      }
+    ],
+    [
+      {
+        "system": "地铁系统",
+        "station": "苏州新区火车站"
+      },
+      {
+        "system": "国家铁路系统",
+        "station": "苏州新区"
+      }
+    ],
+    [
+      {
+        "system": "地铁系统",
+        "station": "苏州园区火车站"
+      },
+      {
+        "system": "国家铁路系统",
+        "station": "苏州园区"
+      }
+    ]
+  ],
+  "aliases": []
 }

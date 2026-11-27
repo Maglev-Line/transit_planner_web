@@ -61,6 +61,53 @@ def _source_version(init_py: Path) -> str:
         return "unknown"
 
 
+def _build_city_catalog(py_dir: Path, data_files: list[str]) -> list[dict]:
+    """城市目录（浏览器据此按地区列出城市、按需只加载所选城市的数据）。
+
+    每条记录含城市名、数据文件名与地区；同城组合（如上海-苏州）另列 parts，
+    共用数据文件的城市（如广州 / 佛山）指向同一文件。
+    """
+    combined: dict[str, tuple[str, ...]] = {}
+    shared: dict[str, str] = {}
+    try:
+        if str(py_dir) not in sys.path:
+            sys.path.insert(0, str(py_dir))
+        from transit_planner.core.models import CityLibrary  # noqa: PLC0415
+
+        combined = dict(CityLibrary.COMBINED_CITIES)
+        shared = dict(CityLibrary.SHARED_CITY_FILES)
+    except Exception as exc:  # noqa: BLE001
+        print(f"[!] 读取同城组合信息失败，城市目录将不含组合城市：{exc}", file=sys.stderr)
+
+    regions: dict[str, str] = {}
+    entries: list[dict] = []
+    for name in data_files:
+        try:
+            doc = json.loads((py_dir / "data" / name).read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            doc = {}
+        city = str(doc.get("city") or Path(name).stem).strip()
+        region = str(doc.get("region") or "").strip()
+        regions[city] = region
+        entries.append({"name": city, "file": name, "region": region})
+
+    known = {entry["name"] for entry in entries}
+    for city, stem in shared.items():
+        if city in known:
+            continue
+        entries.append({"name": city, "file": f"{stem}.json", "region": regions.get(stem, "")})
+        known.add(city)
+
+    for combo, parts in combined.items():
+        if combo in known:
+            continue
+        region = next((regions.get(part, "") for part in parts if regions.get(part)), "")
+        entries.append({"name": combo, "file": "", "region": region, "parts": list(parts)})
+        known.add(combo)
+
+    return entries
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description="同步内核源工程的 core 与 data 到本项目")
     ap.add_argument("--src", type=Path, default=DEFAULT_SRC, help="内核源工程目录")
@@ -95,6 +142,7 @@ def main() -> int:
         "syncedAt": datetime.now(timezone.utc).astimezone().isoformat(timespec="seconds"),
         "coreFiles": core_files,
         "dataFiles": data_files,
+        "cities": _build_city_catalog(py_dir, data_files),
     }
     (py_dir / "manifest.json").write_text(
         json.dumps(manifest, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"

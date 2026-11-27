@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="zh-CN">
 
 <head>
@@ -25,9 +25,11 @@
         <div class="topbar-row topbar-row-primary">
           <a class="home-nav" href="index.html" title="返回首页">首页</a>
           <div class="brand">规划模式</div>
-          <label>城市
-            <select id="city-select" title="选择城市线路库；也可选「纯手动」不使用线路库"></select>
-          </label>
+          <button type="button" class="city-switch" id="btn-city-switch" title="选择城市线路库；也可选「纯手动」不使用线路库">
+            <span class="ico ico-mono" style="--icon:url(assets/icons/map.svg)" aria-hidden="true"></span>
+            城市：<b id="city-switch-name">不使用线路库</b>
+          </button>
+          <select id="city-select" hidden aria-hidden="true" tabindex="-1"></select>
           <label>方案名 <input id="trip-name" type="text" size="14" placeholder="我的运转方案"></label>
           <label>日期 <input id="trip-date" type="date"></label>
           <label class="check" title="不出闸的连续行程视为一段付费区，票价按进闸→出闸一次计费">
@@ -45,9 +47,6 @@
           <button id="btn-clear" class="danger top-delete" aria-label="清空规划" title="清空全部行程段，可通过撤销恢复"><span class="ico ico-mono" style="--icon:url(assets/icons/trash.svg)" aria-hidden="true"></span></button>
           <button id="btn-undo" type="button" aria-label="撤销" title="撤销上一步" disabled><span class="ico ico-mono" style="--icon:url(assets/icons/undo.svg)" aria-hidden="true"></span></button>
           <button id="btn-redo" type="button" aria-label="重做" title="重做上一步" disabled><span class="ico ico-mono" style="--icon:url(assets/icons/redo.svg)" aria-hidden="true"></span></button>
-          <a class="btn-link topbar-editor-link" id="btn-editor" href="editor.html" aria-label="数据工坊" title="编辑城市线路数据、提交审核">
-            <span class="ico ico-mono" style="--icon:url(assets/icons/edit.svg)" aria-hidden="true"></span>
-          </a>
         </nav>
       </header>
     </div>
@@ -67,9 +66,15 @@
     <main>
       <!-- 左：线路库 -->
       <aside class="panel library">
-        <h2>线路库 <span class="hint" id="city-label"></span></h2>
+        <h2>
+          <span class="library-title">线路库</span>
+          <span class="hint" id="city-label"></span>
+          <a class="btn-link library-editor-link" id="btn-editor" href="editor.html" aria-label="数据工坊" title="编辑该城市的线路数据、提交审核">
+            <span class="ico ico-mono" style="--icon:url(assets/icons/edit.svg)" aria-hidden="true"></span>
+          </a>
+        </h2>
         <input class="search" id="line-search" type="search" placeholder="搜索线路（名称 / 简称 / ID）">
-        <div id="line-list"></div>
+        <div id="line-list" class="line-list"></div>
         <div class="library-splitter" id="library-splitter" role="separator" aria-orientation="horizontal"
              aria-label="拖动调整线路列表与线路详情的高度" tabindex="0"
              title="上下拖动调整「线路列表 / 线路详情」的高度，双击恢复默认" hidden></div>
@@ -390,9 +395,12 @@
   <script src="https://cdn.jsdelivr.net/pyodide/v0.27.2/full/pyodide.js"></script>
   <script src="js/drafts.js"></script>
   <script src="js/line-branches.js"></script>
+  <script src="js/line-library.js?v=dual-color-1"></script>
   <script src="js/bridge.js"></script>
   <script src="js/contact.js"></script>
-  <script src="js/app.js"></script>
+  <script src="js/city-picker.js?v=city-picker-2"></script>
+  <script src="js/pdf-export.js?v=pdf-export-1"></script>
+  <script src="js/app.js?v=dual-color-1"></script>
 </body>
 
 </html>

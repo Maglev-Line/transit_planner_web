@@ -12,10 +12,129 @@
   "dataFiles": [
     "上海.json",
     "东莞.json",
+    "乌鲁木齐.json",
+    "兰州.json",
     "北京.json",
+    "呼和浩特.json",
+    "天津.json",
+    "太原.json",
     "广州-佛山.json",
+    "武汉.json",
     "深圳.json",
     "苏州.json",
+    "南京.json",
     "重庆.json"
+  ],
+  "cities": [
+    {
+      "name": "上海",
+      "file": "上海.json",
+      "region": "华东"
+    },
+    {
+      "name": "东莞",
+      "file": "东莞.json",
+      "region": "华南"
+    },
+    {
+      "name": "乌鲁木齐",
+      "file": "乌鲁木齐.json",
+      "region": "西北"
+    },
+    {
+      "name": "兰州",
+      "file": "兰州.json",
+      "region": "西北"
+    },
+    {
+      "name": "北京",
+      "file": "北京.json",
+      "region": "华北"
+    },
+    {
+      "name": "呼和浩特",
+      "file": "呼和浩特.json",
+      "region": "华北"
+    },
+    {
+      "name": "天津",
+      "file": "天津.json",
+      "region": "华北"
+    },
+    {
+      "name": "太原",
+      "file": "太原.json",
+      "region": "华北"
+    },
+    {
+      "name": "广州-佛山",
+      "file": "广州-佛山.json",
+      "region": "华南"
+    },
+    {
+      "name": "武汉",
+      "file": "武汉.json",
+      "region": "华中"
+    },
+    {
+      "name": "深圳",
+      "file": "深圳.json",
+      "region": "华南"
+    },
+    {
+      "name": "苏州",
+      "file": "苏州.json",
+      "region": "华东"
+    },
+    {
+      "name": "南京",
+      "file": "南京.json",
+      "region": "华东"
+    },
+    {
+      "name": "马鞍山",
+      "file": "南京.json",
+      "region": "华东"
+    },
+    {
+      "name": "滁州",
+      "file": "南京.json",
+      "region": "华东"
+    },
+    {
+      "name": "重庆",
+      "file": "重庆.json",
+      "region": "西南"
+    },
+    {
+      "name": "广州",
+      "file": "广州-佛山.json",
+      "region": "华南"
+    },
+    {
+      "name": "佛山",
+      "file": "广州-佛山.json",
+      "region": "华南"
+    },
+    {
+      "name": "上海-苏州",
+      "file": "",
+      "region": "华东",
+      "parts": [
+        "上海",
+        "苏州"
+      ]
+    },
+    {
+      "name": "珠江三角洲",
+      "file": "",
+      "region": "华南",
+      "parts": [
+        "广州",
+        "深圳",
+        "佛山",
+        "东莞"
+      ]
+    }
   ]
 }

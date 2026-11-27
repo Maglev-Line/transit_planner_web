@@ -12,7 +12,8 @@
     "test:core": "python tools/smoke_test.py"
   },
   "dependencies": {
-    "@netlify/blobs": "^11.1.7"
+    "@netlify/blobs": "^11.1.7",
+    "html2canvas": "^1.4.1"
   },
   "engines": {
     "node": ">=20"

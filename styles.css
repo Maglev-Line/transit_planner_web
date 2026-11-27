@@ -172,8 +172,19 @@ label > input, label > select { margin-left: 4px; }
 .topbar-row-actions button.danger:hover, .topbar-row-actions button.danger:focus-visible {
   border: 0; background: #eef4ff; color: var(--brand);
 }
-.topbar-editor-link { margin-left: auto; }
 .topbar-row .draft-chip { white-space: nowrap; }
+/* 线路库标题栏右侧的「数据工坊」图标 */
+.library-title { flex: 0 0 auto; }
+a.library-editor-link {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 26px; height: 26px; margin-left: auto; padding: 0;
+  border: 0; border-radius: 6px; color: var(--ink-2); background: transparent;
+  text-decoration: none;
+}
+a.library-editor-link:hover, a.library-editor-link:focus-visible {
+  border: 0; background: #eef4ff; color: var(--brand);
+}
+a.library-editor-link .ico { font-size: 16px; }
 .topbar-row .home-nav { flex: 0 0 auto; }
 .topbar-row-primary > label { white-space: nowrap; }
 .topbar-row-primary .brand { white-space: nowrap; }
@@ -237,11 +248,22 @@ main {
 .tag-branch { color: #6b3fa0; background: #f3edff; border: 1px solid #d9cbf5; }
 .search { width: 100%; margin-bottom: 8px; }
 
+/* 线路库按系统分组：同一系统的线路集中在一起，线路行不再标注系统 */
+.line-group + .line-group { margin-top: 6px; }
+.line-group-title {
+  position: sticky; top: 0; z-index: 1;
+  display: flex; align-items: center; gap: 6px;
+  margin: 0 0 2px; padding: 3px 8px;
+  font-size: 11.5px; font-weight: 700; color: var(--ink-2);
+  background: #f6f8fc; border: 1px solid var(--line); border-radius: 6px;
+}
+.line-group-title .count { margin-left: auto; font-weight: 600; color: var(--ink-3); }
+
 /* 线路库：列表与详情各占一段高度，中间的分割条可上下拖动 */
 .library { display: flex; flex-direction: column; overflow: hidden; height: calc(100vh - 90px); }
 .library > h2, .library > .search { flex: 0 0 auto; }
-.library > #line-list { flex: 1 1 auto; min-height: 60px; overflow: auto; scrollbar-gutter: stable; }
-.library.has-detail > #line-list { flex: 0 0 auto; }
+.library > .line-list { flex: 1 1 auto; min-height: 60px; overflow: auto; scrollbar-gutter: stable; }
+.library.has-detail > .line-list { flex: 0 0 auto; }
 .library > .detail { flex: 1 1 auto; min-height: 96px; overflow: auto; scrollbar-gutter: stable; margin-top: 0; border-top: 0; padding-top: 0; }
 
 /* 线路列表 / 线路详情之间的分割条 */
@@ -339,6 +361,14 @@ main {
   display: inline-block; border: 1px solid rgba(0, 0, 0, .12);
 }
 .hint-item .dirs { flex: 1 1 auto; min-width: 0; color: var(--ink-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* 强互通系统提示（广东城际、国家铁路等只登记站名的系统） */
+.hint-item.hint-system { color: var(--ink-2); }
+.hint-item.hint-rail {
+  cursor: pointer; border-radius: 6px; padding: 2px 4px; margin: 0 -4px; user-select: none;
+}
+.hint-item.hint-rail:hover, .hint-item.hint-rail:focus-visible { background: #f3f6fb; outline: none; }
+.hint-item.hint-rail:focus-visible { box-shadow: inset 0 0 0 2px #b8cdfa; }
+.hint-item.hint-rail .dirs { color: var(--brand); }
 .zone-item { font-size: 12.5px; color: var(--ink-2); border-bottom: 1px dashed var(--line); padding: 4px 0; }
 .zone-item:last-child { border-bottom: none; }
 .zone-item b { color: var(--ink); }
@@ -598,6 +628,24 @@ main {
 .mode-card.record .mode-go { color: var(--ok); }
 
 .home-tip { margin: 24px 0 0; font-size: 12.5px; color: var(--ink-3); }
+
+/* 首页：规划 / 记录下方的小入口（线路数据工坊、数据审核台） */
+.home-extra {
+  display: flex; flex-wrap: wrap; justify-content: center; gap: 10px;
+  max-width: 820px; margin: 18px auto 0;
+}
+.home-extra-link {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 6px 13px;
+  font-size: 12.5px; font-weight: 600; color: var(--ink-2);
+  background: var(--panel); border: 1px solid var(--line); border-radius: 99px;
+  text-decoration: none;
+  transition: color .15s, background .15s, border-color .15s;
+}
+.home-extra-link:hover, .home-extra-link:focus-visible {
+  color: var(--brand); background: #eef4ff; border-color: #c3d5fb;
+}
+.home-extra-link .ico { font-size: 13px; }
 .home-body .site-footer { margin-top: auto; }
 .home-body .home-topbar,
 .home-body .hero > *,
@@ -612,7 +660,8 @@ main {
 .home-body .mode-card.plan { animation-delay: .55s; }
 .home-body .mode-card.record { animation-delay: .68s; }
 .home-body .hero > :nth-child(5) { animation-delay: .82s; }
-.home-body .site-footer { animation-delay: .92s; }
+.home-body .hero > :nth-child(6) { animation-delay: .9s; }
+.home-body .site-footer { animation-delay: .98s; }
 @keyframes home-fade-in {
   from { opacity: 0; transform: translateY(8px); }
   to { opacity: 1; transform: translateY(0); }
@@ -742,7 +791,6 @@ dialog.start-dialog { width: min(620px, 94vw); }
   .smart-checklist { grid-template-columns: 1fr; max-height: 180px; }
 }
 @media (max-width: 760px) {
-  .topbar-editor-link { margin-left: 0; }
   .topbar-row-actions { gap: 6px; }
 }
 
@@ -781,6 +829,37 @@ dialog::backdrop { background: rgba(18, 24, 36, .42); }
   border-top: 1px solid var(--line); background: #fafbfe;
 }
 .modal-foot .spacer { flex: 1 1 auto; }
+
+/* ---------- 城市选择弹窗 ---------- */
+dialog.city-picker-dialog { width: min(660px, 95vw); }
+.city-picker-list { display: flex; flex-direction: column; gap: 12px; }
+.city-region h4 {
+  margin: 0 0 6px; font-size: 12.5px; color: var(--ink-2);
+  font-weight: 700; letter-spacing: .04em;
+}
+.city-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(132px, 1fr)); gap: 8px; }
+.city-option {
+  display: flex; align-items: center; gap: 6px; justify-content: space-between;
+  padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px;
+  background: #fff; color: inherit; font: inherit; text-align: left; cursor: pointer;
+}
+.city-option:hover, .city-option:focus-visible { border-color: var(--brand); background: #f4f7ff; }
+.city-option.active { border-color: var(--brand); background: #eaf0ff; font-weight: 700; }
+.city-option.manual { justify-content: center; margin-bottom: 4px; }
+.city-option .city-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.city-option .city-tag {
+  flex: 0 0 auto; font-size: 11px; color: var(--ink-2);
+  background: #eef1f6; border-radius: 999px; padding: 1px 6px;
+}
+.city-switch {
+  display: inline-flex; align-items: center; gap: 6px; padding: 5px 10px;
+  border: 1px solid var(--line); border-radius: 8px; background: #fff; color: inherit;
+  font: inherit; cursor: pointer; max-width: 220px;
+}
+.city-switch:hover, .city-switch:focus-visible { border-color: var(--brand); background: #f4f7ff; }
+.city-switch b { font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ico-btn { display: inline-flex; align-items: center; justify-content: center; padding: 4px 7px; }
+.ico-btn .ico { font-size: 17px; }
 .grid2 { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px 14px; }
 .grid1 { display: grid; gap: 10px; }
 .field { display: flex; flex-direction: column; gap: 4px; }
@@ -897,6 +976,11 @@ dialog.smart-dialog { width: min(760px, 96vw); }
 #print-view table { border-collapse: collapse; font-size: 11.5px; margin-top: 4px; }
 #print-view table th, #print-view table td { border: 1px solid #bbb; padding: 2px 6px; }
 #print-view .zone { font-size: 12px; margin-top: 8px; }
+/* 导出 PDF 时在屏幕外按 A4 宽度排版，避免打印预览 */
+#print-view.pdf-render {
+  position: fixed; left: -10000px; top: 0; display: block !important;
+  background: #fff; padding: 0;
+}
 
 @page { size: A4; margin: 12mm; }
 
@@ -913,7 +997,7 @@ dialog.smart-dialog { width: min(760px, 96vw); }
   .library { height: auto; }
   .library-splitter { display: none; }
   /* 窄屏下页面整体滚动，解除弹内滚动，改用脚本滚动定位 */
-  .library, .library > #line-list, .library > .detail { overflow: visible; }
+  .library, .library > .line-list, .library > .detail { overflow: visible; }
 }
 
 /* ================= 数据工坊 / 审核台共用：徽章与差异对比 ================= */

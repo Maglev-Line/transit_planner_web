@@ -11,11 +11,13 @@
 .record-main {
   flex: 1 1 auto;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 330px;
+  grid-template-columns: 280px minmax(0, 1fr) 330px;
   gap: 14px;
   padding: 14px;
   align-items: start;
 }
+
+/* 线路库面板沿用 styles.css 的 .library / .line-list 样式，与规划模式保持一致 */
 
 .record-list-panel { min-height: 240px; }
 .record-side {
@@ -181,6 +183,12 @@
   padding-top: 6px;
 }
 #rec-print-view .rec-foot { margin-top: 10px; font-size: 11px; color: #666; }
+/* 导出 PDF 时在屏幕外按 A4 宽度排版，避免打印预览 */
+#rec-print-view.pdf-render {
+  display: block !important;
+  position: fixed; left: -10000px; top: 0;
+  background: #fff; padding: 0;
+}
 
 @media print {
   body.record-body { background: #fff; }
@@ -195,6 +203,10 @@
 @media (max-width: 1100px) {
   .record-main { grid-template-columns: 1fr; }
   .record-side { position: static; max-height: none; }
+  /* 窄屏下线路库随页面滚动，隐藏分割条 */
+  .record-library { position: static; max-height: none; height: auto; }
+  .record-library .library-splitter { display: none; }
+  .record-library, .record-library > .line-list, .record-library > .detail { overflow: visible; }
 }
 
 @media (max-width: 560px) {

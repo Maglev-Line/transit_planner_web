@@ -1,0 +1,207 @@
+{
+  "city": "太原",
+  "region": "华北",
+  "version": "1.0",
+  "systems": [
+    "地铁系统"
+  ],
+  "lines": [
+    {
+      "id": "ty_m1",
+      "name": "太原地铁1号线",
+      "short_name": "1号线",
+      "type": "metro",
+      "color": "#2675C5",
+      "color2": "",
+      "operator": "太原轨道交通",
+      "stations": [
+        "河龙湾",
+        "西铭路",
+        "西客站",
+        "金阳路",
+        "闫家沟（小井峪路）",
+        "下元",
+        "太原理工大学",
+        "桃园路",
+        "大南门",
+        "柳南",
+        "五一广场",
+        "太原站西广场",
+        "太原站东广场",
+        "郝家沟",
+        "朝阳街",
+        "双塔",
+        "南十方街",
+        "长风东街",
+        "学府东街",
+        "许坦东街",
+        "太原南站",
+        "北营",
+        "黄陵",
+        "武宿1号2号航站楼"
+      ],
+      "travel_minutes": [
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3
+      ],
+      "headway_rush": 5,
+      "headway_normal": 10,
+      "first_train": "06:00",
+      "last_train": "22:50",
+      "ring": false,
+      "directions": [
+        {
+          "label": "武宿1号2号航站楼方向",
+          "terminal": "武宿1号2号航站楼",
+          "reverse": false
+        },
+        {
+          "label": "河龙湾方向",
+          "terminal": "河龙湾",
+          "reverse": false
+        }
+      ],
+      "system": "地铁系统"
+    },
+    {
+      "id": "ty_m2",
+      "name": "太原地铁2号线",
+      "short_name": "2号线",
+      "type": "metro",
+      "color": "#DE3C3C",
+      "color2": "",
+      "operator": "太原轨道交通",
+      "stations": [
+        "尖草坪",
+        "涧河",
+        "胜利街",
+        "大北门",
+        "缉虎营",
+        "府西街",
+        "开化寺街",
+        "大南门",
+        "体育馆",
+        "南内环",
+        "王村南街",
+        "长风街",
+        "学府街",
+        "南中环",
+        "晋阳街",
+        "龙兴街",
+        "龙城公园",
+        "嘉节",
+        "电子西街",
+        "康宁街",
+        "通达街",
+        "化章西街",
+        "西桥"
+      ],
+      "travel_minutes": [
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3
+      ],
+      "headway_rush": 5,
+      "headway_normal": 10,
+      "first_train": "06:00",
+      "last_train": "22:00",
+      "ring": false,
+      "directions": [
+        {
+          "label": "西桥方向",
+          "terminal": "西桥",
+          "reverse": false
+        },
+        {
+          "label": "尖草坪方向",
+          "terminal": "尖草坪",
+          "reverse": false
+        }
+      ],
+      "system": "地铁系统"
+    }
+  ],
+  "external_walks": {},
+  "transfers": [
+    [
+      {
+        "station": "太原站西广场",
+        "system": "地铁系统"
+      },
+      {
+        "station": "太原",
+        "system": "国家铁路系统"
+      }
+    ],
+    [
+      {
+        "station": "太原站东广场",
+        "system": "地铁系统"
+      },
+      {
+        "station": "太原",
+        "system": "国家铁路系统"
+      }
+    ],
+    [
+      {
+        "station": "太原南站",
+        "system": "地铁系统"
+      },
+      {
+        "station": "太原南",
+        "system": "国家铁路系统"
+      }
+    ]
+  ],
+  "aliases": [],
+  "station_systems": {
+    "国家铁路系统": {
+      "type": "national_rail",
+      "stations": [
+        "太原",
+        "太原南"
+      ]
+    }
+  }
+}

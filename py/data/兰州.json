@@ -1,0 +1,218 @@
+{
+  "city": "兰州",
+  "region": "西北",
+  "version": "1.0",
+  "systems": [
+    "地铁系统",
+    "公交系统"
+  ],
+  "lines": [
+    {
+      "id": "lz_m1",
+      "name": "兰州地铁1号线",
+      "short_name": "1号线",
+      "type": "metro",
+      "color": "#4290E0",
+      "color2": "",
+      "operator": "兰州轨道交通",
+      "stations": [
+        "陈官营",
+        "奥体中心",
+        "兰州城市学院（省科技馆）",
+        "兰州海关",
+        "马滩",
+        "土门墩",
+        "兰州西站北广场",
+        "西站什字",
+        "七里河",
+        "小西湖",
+        "文化宫",
+        "西关",
+        "省政府",
+        "东方红广场",
+        "兰州大学",
+        "五里铺",
+        "省气象局",
+        "拱星墩",
+        "焦家湾",
+        "东岗"
+      ],
+      "travel_minutes": [
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3
+      ],
+      "headway_rush": 5,
+      "headway_normal": 8,
+      "first_train": "",
+      "last_train": "",
+      "ring": false,
+      "directions": [],
+      "system": "地铁系统"
+    },
+    {
+      "id": "lz_m2",
+      "name": "兰州地铁2号线",
+      "short_name": "2号线",
+      "type": "metro",
+      "color": "#F9232E",
+      "color2": "",
+      "operator": "兰州轨道交通",
+      "stations": [
+        "东方红广场",
+        "邮电大楼",
+        "兰州火车站",
+        "红星巷",
+        "团结新村",
+        "五里铺",
+        "张苏滩",
+        "均家滩",
+        "雁白大桥"
+      ],
+      "travel_minutes": [
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3
+      ],
+      "headway_rush": 5,
+      "headway_normal": 8,
+      "first_train": "",
+      "last_train": "",
+      "ring": false,
+      "directions": [],
+      "system": "地铁系统"
+    },
+    {
+      "id": "lz_bus_brt1",
+      "name": "兰州BRT1路",
+      "short_name": "BRT1路",
+      "type": "bus",
+      "color": "#1D6FB8",
+      "color2": "",
+      "operator": "兰州公交集团",
+      "stations": [
+        "刘家堡广场",
+        "世纪大道",
+        "桃海市场",
+        "费家营",
+        "安宁区政府",
+        "兰州交通大学",
+        "政法大学",
+        "西北师大",
+        "培黎广场",
+        "十里店",
+        "幸福巷",
+        "七里河黄河桥北",
+        "七里河黄河桥南",
+        "兰州四中",
+        "西站十字"
+      ],
+      "travel_minutes": [
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3
+      ],
+      "headway_rush": 10,
+      "headway_normal": 15,
+      "first_train": "06:30",
+      "last_train": "22:00",
+      "ring": false,
+      "directions": [],
+      "system": "公交系统"
+    },
+    {
+      "id": "lz_bus_brt2",
+      "name": "兰州BRT2路",
+      "short_name": "BRT2路",
+      "type": "bus",
+      "color": "#1D6FB8",
+      "color2": "",
+      "operator": "兰州公交集团",
+      "stations": [
+        "刘家堡广场",
+        "莫高大道",
+        "城临路口",
+        "众邦大道北口",
+        "安宁堡（仁寿山）"
+      ],
+      "travel_minutes": [
+        3,
+        3,
+        3,
+        3
+      ],
+      "headway_rush": 10,
+      "headway_normal": 15,
+      "first_train": "06:30",
+      "last_train": "21:00",
+      "ring": false,
+      "directions": [],
+      "system": "公交系统"
+    }
+  ],
+  "external_walks": {},
+  "transfers": [
+    [
+      {
+        "station": "兰州西站北广场",
+        "system": "地铁系统"
+      },
+      {
+        "station": "兰州西",
+        "system": "国家铁路系统"
+      }
+    ],
+    [
+      {
+        "station": "兰州火车站",
+        "system": "地铁系统"
+      },
+      {
+        "station": "兰州",
+        "system": "国家铁路系统"
+      }
+    ]
+  ],
+  "aliases": [],
+  "station_systems": {
+    "国家铁路系统": {
+      "type": "national_rail",
+      "stations": [
+        "兰州西",
+        "兰州"
+      ]
+    }
+  }
+}

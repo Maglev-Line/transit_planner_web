@@ -76,6 +76,18 @@ export function validateCityDoc(doc) {
     }
   }
 
+  if (Object.hasOwn(doc, "combined_shared_stations")) {
+    if (!Array.isArray(doc.combined_shared_stations)) {
+      errors.push("combined_shared_stations 必须是字符串数组");
+    } else {
+      doc.combined_shared_stations.forEach((name, i) => {
+        if (typeof name !== "string" || !name.trim()) {
+          errors.push(`第 ${i + 1} 个同城组合共用车站必须是非空字符串`);
+        }
+      });
+    }
+  }
+
   const idSeen = new Map();
   const nameSeen = new Set();
   const allStations = new Set();
@@ -231,6 +243,31 @@ export function validateCityDoc(doc) {
       }
     }
 
+    if (line.direction_stops != null) {
+      const stops = line.direction_stops;
+      if (typeof stops !== "object" || Array.isArray(stops)) {
+        errors.push(`${label}的 direction_stops 必须是「方向 → 停靠站数组」对象`);
+      } else {
+        const stationSet = new Set(line.stations.filter((s) => typeof s === "string"));
+        Object.entries(stops).forEach(([direction, stations]) => {
+          if (!Array.isArray(stations)) {
+            errors.push(`${label}的「${direction}」停靠站必须是数组`);
+            return;
+          }
+          if (stations.length < 2) {
+            errors.push(`${label}的「${direction}」至少需要 2 个停靠站`);
+          }
+          stations.forEach((station) => {
+            if (typeof station !== "string" || !station.trim()) {
+              errors.push(`${label}的「${direction}」停靠站名称不能为空`);
+            } else if (!stationSet.has(station.trim())) {
+              errors.push(`${label}的「${direction}」停靠站「${station}」不在本站表内`);
+            }
+          });
+        });
+      }
+    }
+
     stats.lines += 1;
     stats.segments += Math.max(0, line.stations.length - 1);
     stats.stations += line.stations.length;
@@ -382,6 +419,37 @@ export function validateCityDoc(doc) {
     });
   });
 
+  // 强互通系统：只登记车站名称、没有线路数据的系统（如广东城际、国家铁路）
+  if (Object.hasOwn(doc, "station_systems")) {
+    const raw = doc.station_systems;
+    if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
+      errors.push("station_systems 必须是对象（系统名 → 车站数组）");
+    } else {
+      Object.entries(raw).forEach(([name, value]) => {
+        const label = `强互通系统「${name}」`;
+        if (!name.trim()) errors.push("station_systems 中存在空的系统名称");
+        const stations = Array.isArray(value)
+          ? value
+          : (value && typeof value === "object" && Array.isArray(value.stations) ? value.stations : null);
+        if (!stations) {
+          errors.push(`${label}的车站必须是数组`);
+          return;
+        }
+        if (value && !Array.isArray(value) && value.type != null && typeof value.type !== "string") {
+          errors.push(`${label}的 type 必须是字符串`);
+        }
+        if (!stations.length) warnings.push(`${label}没有登记车站`);
+        stations.forEach((station, i) => {
+          if (typeof station !== "string" || !station.trim()) {
+            errors.push(`${label}第 ${i + 1} 个车站名称为空`);
+            return;
+          }
+          knownSystemStations.add(`${name.trim()}\u0000${station.trim()}`);
+        });
+      });
+    }
+  }
+
   for (const key of ["transfers", "aliases"]) {
     const groups = doc[key];
     if (groups == null) continue;
@@ -412,7 +480,7 @@ export function validateCityDoc(doc) {
           if (!system) errors.push(`${key} 第 ${i + 1} 组的「${station}」端点缺少 system`);
           else explicitSystems.add(system);
           if (station && system && !knownSystemStations.has(`${system}\u0000${station}`)) {
-            errors.push(`${key} 第 ${i + 1} 组的端点「${system}|${station}」无法匹配到线路`);
+            errors.push(`${key} 第 ${i + 1} 组的端点「${system}|${station}」无法匹配到线路或强互通系统车站`);
           }
         });
         if (!hasLegacyEndpoint && explicitSystems.size < 2) {

@@ -176,8 +176,8 @@
     preview.innerHTML = '<p class="hint">正在加载说明…</p>';
     try {
       if (!window.MarkdownPreview) throw new Error("Markdown 渲染器未加载");
-      const response = await fetch(new URL("README.md", document.baseURI), { cache: "no-cache" });
-      if (!response.ok) throw new Error(`读取 README 失败（HTTP ${response.status}）`);
+      const response = await fetch(new URL("instructions.md", document.baseURI), { cache: "no-cache" });
+      if (!response.ok) throw new Error(`读取使用说明失败（HTTP ${response.status}）`);
       preview.innerHTML = window.MarkdownPreview.render(await response.text());
       guideLoaded = true;
     } catch (error) {
@@ -193,6 +193,7 @@
     loadGuide();
   });
   $("btn-guide-close").addEventListener("click", () => closeAnimatedDialog($("readme-dialog")));
+  $("btn-guide-download").addEventListener("click", downloadGuide);
   $("readme-dialog").addEventListener("click", (ev) => {
     if (ev.target === $("readme-dialog")) closeAnimatedDialog($("readme-dialog"));
   });
@@ -204,7 +205,69 @@
     if (ev.target.closest("[data-guide-retry]")) loadGuide();
   });
 
+  const pad2 = (n) => String(n).padStart(2, "0");
+
+  /** 说明文件的更新日期：优先用服务器上的 Last-Modified（即上传 / 部署该文件的日期）。 */
+  function guideUpdateDate(response) {
+    const candidates = [
+      response?.headers?.get("last-modified"),
+      document.lastModified,
+    ];
+    for (const value of candidates) {
+      const time = Date.parse(value || "");
+      if (Number.isFinite(time)) {
+        const d = new Date(time);
+        return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
+      }
+    }
+    const now = new Date();
+    return `${now.getFullYear()}-${pad2(now.getMonth() + 1)}-${pad2(now.getDate())}`;
+  }
+
+  /** 下载使用说明：文件名带上更新日期，方便与旧版本区分。 */
+  async function downloadGuide() {
+    const button = $("btn-guide-download");
+    if (button.disabled) return;
+    button.disabled = true;
+    try {
+      const response = await fetch(new URL("instructions.md", document.baseURI), { cache: "no-cache" });
+      if (!response.ok) throw new Error(`读取使用说明失败（HTTP ${response.status}）`);
+      const text = await response.text();
+      const blob = new Blob([text], { type: "text/markdown;charset=utf-8" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `运转计划助手使用说明${guideUpdateDate(response)}.md`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+      toast("已下载使用说明");
+    } catch (error) {
+      toast(`下载失败：${error.message || error}`);
+    } finally {
+      button.disabled = false;
+    }
+  }
+
   loadMessages();
+
+  // ---------------- 线路数据工坊（先选城市） ----------------
+
+  /** 进入数据工坊前先选城市：只加载所选城市的数据，避免误改其他城市。 */
+  function pickCityThenGo(link, { title = "选择城市" } = {}) {
+    link.addEventListener("click", async (ev) => {
+      ev.preventDefault();
+      const city = await window.CityPicker.pick({ title, allowManual: false });
+      if (!city) return;
+      const url = new URL(link.getAttribute("href") || "editor.html", location.href);
+      url.searchParams.set("city", city);
+      location.href = `${url.pathname.split("/").pop()}${url.search}${url.hash}`;
+    });
+  }
+
+  const editorLink = $("home-editor-link");
+  if (editorLink) pickCityThenGo(editorLink);
 
   // ---------------- 弹窗 ----------------
 
@@ -234,10 +297,20 @@
     if (ev.target === $("start-dialog")) closeStartDialog();
   });
 
-  // ---------------- 新建 ----------------
+  // ---------------- 新建（先选城市，再进入） ----------------
 
-  $("start-new").addEventListener("click", () => {
-    const draft = D.create(kind);
+  $("start-new").addEventListener("click", async () => {
+    const city = await window.CityPicker.pick({ title: "选择城市", current: "" });
+    if (city === null) return;
+    closeStartDialog();
+    const data = D.empty(kind);
+    data.city = city;
+    const draft = D.create(kind, {
+      title: data.name,
+      city,
+      summary: D.summarize(kind, data),
+      data,
+    });
     goToDraft(draft);
   });
 

@@ -19,9 +19,9 @@
 
   // 内置交通类型的中文名：内核未加载时也能把 metro / bus 等 key 显示成中文
   const BUILTIN_TYPE_LABELS = {
-    metro: "地铁", suburban: "市域铁路", tram: "有轨电车", monorail: "单轨",
+    metro: "地铁", suburban: "市域铁路", intercity: "城际铁路", tram: "有轨电车", monorail: "单轨",
     cloudrail: "比亚迪云巴", bus: "公交", national_rail: "国家铁路", maglev: "磁浮",
-    ferry: "轮渡", cableway: "索道", apm: "APM",
+    ferry: "轮渡", cableway: "索道", apm: "APM", intercity: "城际铁路",
   };
 
   const TYPE_COLORS = {
@@ -39,6 +39,7 @@
     dialogExtras: [],
     kernel: { ready: false, loading: false, error: "", cities: [], typeLabels: {} },
     city: "",
+    cityInfo: null,
     lines: [],
     lineDetail: new Map(),
     dialog: {
@@ -49,6 +50,31 @@
   const history = { current: null, undo: [], redo: [], lastChangeAt: 0, ready: false, restoring: false };
   const maxHistoryEntries = 100;
   const historyCoalesceMs = 700;
+
+  // ---------------- 线路库面板（与规划模式同一套交互） ----------------
+
+  const libraryPanel = window.LineLibrary.createPanel({
+    panel: document.querySelector(".record-library"),
+    list: $("rec-line-list"),
+    search: $("rec-line-search"),
+    detail: $("rec-line-detail"),
+    splitter: $("rec-library-splitter"),
+    resolveLine: (lineId) => {
+      const cached = state.lineDetail.get(lineId);
+      if (cached) return { ok: true, line: cached };
+      const res = TP.line(lineId);
+      if (res.ok) state.lineDetail.set(lineId, res.line);
+      return res;
+    },
+    prefillHint: "双击左侧线路可把该线路预填成新的一段记录。",
+    itemTitle: "单击查看详情，双击预填成新的一段记录",
+    onPick: (lineId) => addRecordWithLine(lineId),
+    onError: (message) => toast(message),
+  });
+
+  function renderLibrary() {
+    libraryPanel.render(state.lines, { systems: state.cityInfo?.systems || [] });
+  }
 
   // ---------------- 小工具 ----------------
 
@@ -381,9 +407,14 @@
     recordHistoryChange();
     state.city = state.record.city;
     $("rec-city").value = state.record.city;
+    syncCityButton();
     state.lines = [];
+    state.cityInfo = null;
     state.lineDetail.clear();
+    libraryPanel.reset();
     if (!name) {
+      $("rec-city-label").textContent = "";
+      renderAll();
       if (!silent) await refreshStationOptions();
       scheduleSave();
       return;
@@ -391,14 +422,20 @@
     const ready = await warmKernel();
     if (!ready) {
       if (!silent) toast("线路库尚未就绪，可先用手动自选");
+      renderAll();
       return;
     }
-    const res = TP.loadCity(name);
+    const res = await TP.loadCity(name);
     if (!res.ok) {
       if (!silent) toast(res.error || "加载线路库失败");
+      renderAll();
       return;
     }
     state.lines = res.lines || [];
+    state.cityInfo = res.city || null;
+    $("rec-city-label").textContent = res.city
+      ? `${res.city.lineCount} 条线路 · ${res.city.stationCount} 站${res.city.combined ? " · 只读同城组合" : ""}`
+      : "";
     await refreshStationOptions();
     renderAll();
     if (!silent) scheduleSave();
@@ -416,6 +453,20 @@
   }
 
   $("rec-city").addEventListener("change", (ev) => setCity(ev.target.value));
+
+  /** 「切换城市」按钮显示当前城市；未选择时提示纯手动。 */
+  function syncCityButton() {
+    const el = $("rec-city-switch-name");
+    if (el) el.textContent = state.city || "不使用线路库";
+  }
+
+  $("btn-rec-city-switch").addEventListener("click", () => {
+    window.CityPicker.open({
+      title: "切换城市",
+      current: state.city,
+      onPick: (name) => setCity(name),
+    });
+  });
 
   /** 线路库未就绪时，通过按钮手动加载；加载成功后隐藏按钮并填入城市列表。 */
   function syncKernelButton() {
@@ -435,6 +486,7 @@
   // ---------------- 渲染 ----------------
 
   function renderAll() {
+    renderLibrary();
     renderList();
     renderStats();
     renderTimeline();
@@ -1066,6 +1118,16 @@
     });
   }
 
+  /** 双击线路库中的线路：打开「添加行程记录」弹窗并预填该线路。 */
+  async function addRecordWithLine(lineId) {
+    if (!state.kernel.ready || !state.city) {
+      toast("请先在上方选择城市线路库");
+      return;
+    }
+    openDialog(-1);
+    await setDialogLine(lineId);
+  }
+
   $("btn-rec-add").addEventListener("click", () => openDialog(-1));
   $("btn-rec-dlg-close").addEventListener("click", closeDialog);
   $("btn-rec-dlg-cancel").addEventListener("click", closeDialog);
@@ -1247,9 +1309,36 @@
   });
   $("btn-rec-export-pdf").addEventListener("click", () => {
     $("rec-export-dialog").close();
-    printRecord();
+    exportRecordPdf();
   });
   $("rec-export-dialog").querySelector("[data-close-export]").addEventListener("click", () => $("rec-export-dialog").close());
+
+  /** 导出 PDF 文件（直接下载，不弹出打印预览）。 */
+  async function exportRecordPdf() {
+    flushSave();
+    if (!state.record.steps.length) {
+      toast("还没有可导出的行程记录");
+      return;
+    }
+    if (!window.PDFExport) {
+      printRecord();
+      return;
+    }
+    const view = $("rec-print-view");
+    view.innerHTML = buildPrintSheet();
+    const button = $("btn-rec-export-pdf");
+    button.disabled = true;
+    try {
+      await window.PDFExport.download(view, { filename: D.safeFileName(state.record.name, DEFAULT_TITLE) });
+      toast("已导出 PDF");
+    } catch (err) {
+      console.warn("PDF 导出失败，改为打印", err);
+      toast(`PDF 导出失败，已改用打印：${err.message || err}`);
+      printRecord();
+    } finally {
+      button.disabled = false;
+    }
+  }
 
   function printRecord() {
     flushSave();

@@ -2,6 +2,9 @@
   "city": "东莞",
   "region": "华南",
   "version": "1.0",
+  "systems": [
+    "地铁系统"
+  ],
   "lines": [
     {
       "id": "dg_m1",
@@ -80,7 +83,8 @@
           "terminal": "东莞西站",
           "reverse": false
         }
-      ]
+      ],
+      "system": "地铁系统"
     },
     {
       "id": "dg_m2",
@@ -139,32 +143,87 @@
           "terminal": "东莞火车站",
           "reverse": false
         }
-      ]
+      ],
+      "system": "地铁系统"
     }
   ],
   "external_walks": {},
   "transfers": [
     [
-      "东莞火车站",
-      "东莞"
+      {
+        "station": "东莞火车站",
+        "system": "地铁系统"
+      },
+      {
+        "station": "东莞",
+        "system": "广东城际系统"
+      }
     ],
     [
-      "虎门火车站",
-      "虎门",
-      "虎门北"
+      {
+        "station": "虎门火车站",
+        "system": "地铁系统"
+      },
+      {
+        "station": "虎门",
+        "system": "广东城际系统"
+      },
+      {
+        "station": "虎门北",
+        "system": "广东城际系统"
+      }
     ],
     [
-      "西平",
-      "西平西"
+      {
+        "station": "西平",
+        "system": "地铁系统"
+      },
+      {
+        "station": "西平西",
+        "system": "广东城际系统"
+      }
     ],
     [
-      "东莞西站",
-      "东莞西"
+      {
+        "station": "东莞西站",
+        "system": "地铁系统"
+      },
+      {
+        "station": "东莞西",
+        "system": "广东城际系统"
+      }
     ],
     [
-      "东城南站",
-      "东城南"
+      {
+        "station": "东城南站",
+        "system": "地铁系统"
+      },
+      {
+        "station": "东城南",
+        "system": "广东城际系统"
+      }
     ]
   ],
-  "aliases": []
+  "aliases": [],
+  "station_systems": {
+    "广东城际系统": {
+      "type": "intercity",
+      "stations": [
+        "东莞",
+        "虎门",
+        "虎门北",
+        "西平西",
+        "东莞西",
+        "东城南"
+      ]
+    },
+    "国家铁路系统": {
+      "type": "national_rail",
+      "stations": [
+        "东莞",
+        "虎门",
+        "东莞西"
+      ]
+    }
+  }
 }

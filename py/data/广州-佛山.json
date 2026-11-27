@@ -2,6 +2,12 @@
   "city": "广州-佛山",
   "region": "华南",
   "version": "1.0",
+  "systems": [
+    "地铁系统",
+    "APM",
+    "海珠有轨系统",
+    "黄埔有轨系统"
+  ],
   "lines": [
     {
       "id": "gz_m1",
@@ -62,7 +68,8 @@
           "terminal": "广州东站",
           "reverse": false
         }
-      ]
+      ],
+      "system": "地铁系统"
     },
     {
       "id": "gz_m2",
@@ -139,7 +146,8 @@
           "terminal": "嘉禾望岗",
           "reverse": false
         }
-      ]
+      ],
+      "system": "地铁系统"
     },
     {
       "id": "gz_m3",
@@ -226,7 +234,8 @@
           "terminal": "机场北",
           "reverse": false
         }
-      ]
+      ],
+      "system": "地铁系统"
     },
     {
       "id": "gz_m3b",
@@ -295,7 +304,8 @@
           "terminal": "海傍",
           "reverse": false
         }
-      ]
+      ],
+      "system": "地铁系统"
     },
     {
       "id": "gz_m4",
@@ -370,7 +380,8 @@
           "terminal": "黄村",
           "reverse": false
         }
-      ]
+      ],
+      "system": "地铁系统"
     },
     {
       "id": "gz_m5",
@@ -459,7 +470,8 @@
           "terminal": "滘口",
           "reverse": false
         }
-      ]
+      ],
+      "system": "地铁系统"
     },
     {
       "id": "gz_m6",
@@ -552,7 +564,8 @@
           "terminal": "浔峰岗",
           "reverse": false
         }
-      ]
+      ],
+      "system": "地铁系统"
     },
     {
       "id": "gz_m7",
@@ -637,7 +650,8 @@
           "terminal": "美的大道",
           "reverse": false
         }
-      ]
+      ],
+      "system": "地铁系统"
     },
     {
       "id": "gz_m8",
@@ -722,7 +736,8 @@
           "terminal": "滘心",
           "reverse": false
         }
-      ]
+      ],
+      "system": "地铁系统"
     },
     {
       "id": "gz_m9",
@@ -773,7 +788,8 @@
           "terminal": "飞鹅岭",
           "reverse": false
         }
-      ]
+      ],
+      "system": "地铁系统"
     },
     {
       "id": "gz_m10",
@@ -826,7 +842,8 @@
           "terminal": "西塱",
           "reverse": false
         }
-      ]
+      ],
+      "system": "地铁系统"
     },
     {
       "id": "gz_m11",
@@ -920,7 +937,8 @@
           "terminal": null,
           "reverse": true
         }
-      ]
+      ],
+      "system": "地铁系统"
     },
     {
       "id": "gz_m12",
@@ -967,7 +985,8 @@
           "terminal": "二沙岛",
           "reverse": false
         }
-      ]
+      ],
+      "system": "地铁系统"
     },
     {
       "id": "gz_m12w",
@@ -1014,7 +1033,8 @@
           "terminal": "浔峰岗",
           "reverse": false
         }
-      ]
+      ],
+      "system": "地铁系统"
     },
     {
       "id": "gz_m13",
@@ -1073,7 +1093,8 @@
           "terminal": "天河公园",
           "reverse": false
         }
-      ]
+      ],
+      "system": "地铁系统"
     },
     {
       "id": "gz_m14",
@@ -1142,7 +1163,8 @@
           "terminal": "乐嘉路",
           "reverse": false
         }
-      ]
+      ],
+      "system": "地铁系统"
     },
     {
       "id": "gz_m14b",
@@ -1219,7 +1241,8 @@
           "terminal": "乐嘉路",
           "reverse": false
         }
-      ]
+      ],
+      "system": "地铁系统"
     },
     {
       "id": "gz_m18",
@@ -1264,7 +1287,8 @@
           "terminal": "冼村",
           "reverse": false
         }
-      ]
+      ],
+      "system": "地铁系统"
     },
     {
       "id": "gz_m21",
@@ -1333,7 +1357,8 @@
           "terminal": "天河公园",
           "reverse": false
         }
-      ]
+      ],
+      "system": "地铁系统"
     },
     {
       "id": "gz_m22",
@@ -1378,7 +1403,8 @@
           "terminal": "番禺广场",
           "reverse": false
         }
-      ]
+      ],
+      "system": "地铁系统"
     },
     {
       "id": "gz_apm",
@@ -1425,7 +1451,8 @@
           "terminal": "广州塔",
           "reverse": false
         }
-      ]
+      ],
+      "system": "APM"
     },
     {
       "id": "fs_m1",
@@ -1504,7 +1531,8 @@
           "terminal": "新城东",
           "reverse": false
         }
-      ]
+      ],
+      "system": "地铁系统"
     },
     {
       "id": "fs_m2",
@@ -1567,7 +1595,8 @@
           "terminal": "南庄",
           "reverse": false
         }
-      ]
+      ],
+      "system": "地铁系统"
     },
     {
       "id": "fs_m3",
@@ -1670,7 +1699,8 @@
           "terminal": "顺德学院站",
           "reverse": false
         }
-      ]
+      ],
+      "system": "地铁系统"
     },
     {
       "id": "THZ1",
@@ -1719,7 +1749,8 @@
           "terminal": "广州塔",
           "reverse": false
         }
-      ]
+      ],
+      "system": "海珠有轨系统"
     },
     {
       "id": "THP1",
@@ -1737,7 +1768,7 @@
         "会议中心",
         "地铁水西",
         "峻泰路",
-        "水西（有轨）",
+        "水西",
         "北师大实验学校",
         "地铁长平",
         "羌洞",
@@ -1786,7 +1817,8 @@
           "terminal": "地铁香雪",
           "reverse": false
         }
-      ]
+      ],
+      "system": "黄埔有轨系统"
     },
     {
       "id": "THP2",
@@ -1831,7 +1863,8 @@
           "terminal": "地铁香雪",
           "reverse": false
         }
-      ]
+      ],
+      "system": "黄埔有轨系统"
     },
     {
       "id": "TNH1",
@@ -1890,98 +1923,307 @@
           "terminal": "𧒽岗",
           "reverse": false
         }
-      ]
+      ],
+      "system": "地铁系统"
     }
   ],
   "external_walks": {},
   "transfers": [
     [
-      "广州火车站",
-      "广州"
+      {
+        "station": "萝岗",
+        "system": "地铁系统"
+      },
+      {
+        "station": "市民广场",
+        "system": "黄埔有轨系统"
+      }
     ],
     [
-      "广州南站",
-      "广州南",
-      "番禺"
+      {
+        "station": "香雪",
+        "system": "地铁系统"
+      },
+      {
+        "station": "地铁香雪",
+        "system": "黄埔有轨系统"
+      }
     ],
     [
-      "广州东站",
-      "广州东"
+      {
+        "station": "水西",
+        "system": "地铁系统"
+      },
+      {
+        "station": "地铁水西",
+        "system": "黄埔有轨系统"
+      }
     ],
     [
-      "汉溪长隆",
-      "广州长隆"
+      {
+        "station": "长平",
+        "system": "地铁系统"
+      },
+      {
+        "station": "地铁长平",
+        "system": "黄埔有轨系统"
+      }
     ],
     [
-      "大石",
-      "大石东"
+      {
+        "station": "广州塔",
+        "system": "地铁系统"
+      },
+      {
+        "station": "广州塔",
+        "system": "APM"
+      },
+      {
+        "station": "广州塔",
+        "system": "海珠有轨系统"
+      }
     ],
     [
-      "机场南",
-      "白云机场南"
+      {
+        "station": "万胜围",
+        "system": "地铁系统"
+      },
+      {
+        "station": "万胜围",
+        "system": "海珠有轨系统"
+      }
     ],
     [
-      "机场北",
-      "白云机场北"
+      {
+        "station": "林和西",
+        "system": "地铁系统"
+      },
+      {
+        "station": "林和西",
+        "system": "APM"
+      }
     ],
     [
-      "庆盛",
-      "南沙北"
+      {
+        "station": "广州火车站",
+        "system": "地铁系统"
+      },
+      {
+        "station": "广州",
+        "system": "广东城际系统"
+      }
     ],
     [
-      "萝岗",
-      "市民广场"
+      {
+        "station": "广州南站",
+        "system": "地铁系统"
+      },
+      {
+        "station": "广州南",
+        "system": "广东城际系统"
+      },
+      {
+        "station": "番禺",
+        "system": "广东城际系统"
+      }
     ],
     [
-      "香雪",
-      "地铁香雪"
+      {
+        "station": "广州东站",
+        "system": "地铁系统"
+      },
+      {
+        "station": "广州东",
+        "system": "广东城际系统"
+      }
     ],
     [
-      "水西",
-      "地铁水西"
+      {
+        "station": "汉溪长隆",
+        "system": "地铁系统"
+      },
+      {
+        "station": "广州长隆",
+        "system": "广东城际系统"
+      }
     ],
     [
-      "石潭",
-      "广州白云站",
-      "广州白云"
+      {
+        "station": "大石",
+        "system": "地铁系统"
+      },
+      {
+        "station": "大石东",
+        "system": "广东城际系统"
+      }
     ],
     [
-      "广州北站",
-      "花都",
-      "广州北"
+      {
+        "station": "机场南",
+        "system": "地铁系统"
+      },
+      {
+        "station": "白云机场南",
+        "system": "广东城际系统"
+      }
     ],
     [
-      "新塘",
-      "新塘南"
+      {
+        "station": "机场北",
+        "system": "地铁系统"
+      },
+      {
+        "station": "白云机场北",
+        "system": "广东城际系统"
+      }
     ],
     [
-      "新南",
-      "九佛"
+      {
+        "station": "庆盛",
+        "system": "地铁系统"
+      },
+      {
+        "station": "南沙北",
+        "system": "广东城际系统"
+      }
     ],
     [
-      "长平",
-      "地铁长平"
+      {
+        "station": "石潭",
+        "system": "地铁系统"
+      },
+      {
+        "station": "广州白云站",
+        "system": "地铁系统"
+      },
+      {
+        "station": "广州白云",
+        "system": "广东城际系统"
+      }
     ],
     [
-      "东平",
-      "顺德北"
+      {
+        "station": "广州北站",
+        "system": "地铁系统"
+      },
+      {
+        "station": "花都",
+        "system": "广东城际系统"
+      },
+      {
+        "station": "广州北",
+        "system": "广东城际系统"
+      }
     ],
     [
-      "顺德学院站",
-      "顺德学院"
+      {
+        "station": "新塘",
+        "system": "地铁系统"
+      },
+      {
+        "station": "新塘南",
+        "system": "广东城际系统"
+      }
     ],
     [
-      "北滘西站",
-      "北滘西"
+      {
+        "station": "新南",
+        "system": "地铁系统"
+      },
+      {
+        "station": "九佛",
+        "system": "广东城际系统"
+      }
     ],
     [
-      "佛山站",
-      "佛山"
+      {
+        "station": "东平",
+        "system": "地铁系统"
+      },
+      {
+        "station": "顺德北",
+        "system": "广东城际系统"
+      }
     ],
     [
-      "佛山西站",
-      "佛山西"
+      {
+        "station": "顺德学院站",
+        "system": "地铁系统"
+      },
+      {
+        "station": "顺德学院",
+        "system": "广东城际系统"
+      }
+    ],
+    [
+      {
+        "station": "北滘西站",
+        "system": "地铁系统"
+      },
+      {
+        "station": "北滘西",
+        "system": "广东城际系统"
+      }
+    ],
+    [
+      {
+        "station": "佛山站",
+        "system": "地铁系统"
+      },
+      {
+        "station": "佛山",
+        "system": "广东城际系统"
+      }
+    ],
+    [
+      {
+        "station": "佛山西站",
+        "system": "地铁系统"
+      },
+      {
+        "station": "佛山西",
+        "system": "广东城际系统"
+      }
     ]
   ],
-  "aliases": []
+  "aliases": [],
+  "station_systems": {
+    "广东城际系统": {
+      "type": "intercity",
+      "stations": [
+        "广州",
+        "广州南",
+        "番禺",
+        "广州东",
+        "广州长隆",
+        "大石东",
+        "白云机场南",
+        "白云机场北",
+        "南沙北",
+        "广州白云",
+        "花都",
+        "广州北",
+        "新塘南",
+        "九佛",
+        "顺德北",
+        "顺德学院",
+        "北滘西",
+        "佛山",
+        "佛山西"
+      ]
+    },
+    "国家铁路系统": {
+      "type": "national_rail",
+      "stations": [
+        "广州",
+        "广州南",
+        "广州东",
+        "广州北",
+        "花都",
+        "广州白云",
+        "佛山",
+        "佛山西"
+      ]
+    }
+  }
 }

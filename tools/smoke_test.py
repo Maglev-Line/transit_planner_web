@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import json
 import sys
+import tempfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -239,6 +240,45 @@ def check_combined_city() -> None:
     ), "同城组合应仅将配置的花桥站声明为跨系统共站"
     print(f"[√] 上海-苏州同城组合：{len(shared_names)} 个重名站中仅花桥共站")
 
+    # 共用车站由参与城市的数据声明（数据工坊可编辑），任一城市声明即生效
+    with tempfile.TemporaryDirectory() as tmp:
+        data_dir = Path(tmp)
+        def write_city(name: str, stations: list[str], shared: list[str] | None = None) -> None:
+            doc = {
+                "city": name,
+                "systems": ["地铁系统"],
+                "lines": [{
+                    "id": f"{name}_m1", "name": f"{name}1号线", "system": "地铁系统",
+                    "stations": stations, "travel_minutes": [2] * (len(stations) - 1),
+                }],
+            }
+            if shared is not None:
+                doc["combined_shared_stations"] = shared
+            (data_dir / f"{name}.json").write_text(
+                json.dumps(doc, ensure_ascii=False), encoding="utf-8"
+            )
+
+        write_city("上海", ["甲", "交界"], shared=["交界"])
+        write_city("苏州", ["交界", "乙"])
+        library = CityLibrary(data_dir)
+        merged = library.load("上海-苏州")
+        assert "交界" in merged.line("上海_m1").stations, "声明的共用车站应保留原名"
+        assert "交界" in merged.line("苏州_m1").stations, "声明的共用车站应保留原名"
+        assert any(
+            endpoint.station == "交界"
+            for endpoint in engine.transfer_targets(
+                merged, "交界", merged.line("上海_m1").system,
+            )
+        ), "声明的共用车站应自动成为跨系统转乘站"
+
+        write_city("上海", ["甲", "交界"])
+        isolated = CityLibrary(data_dir).load("上海-苏州")
+        assert "交界（上海）" in isolated.line("上海_m1").stations, "未声明的重名站应按城市区分"
+        assert not engine.transfer_targets(
+            isolated, "交界（上海）", isolated.line("上海_m1").system,
+        ), "未声明的重名站不应自动转乘"
+    print("[√] 同城组合共用车站由数据声明，可在数据工坊中编辑")
+
 
 def check_network_services() -> None:
     """跨线贯通与线路内快车都能校验、搜索并计算。"""
@@ -453,10 +493,17 @@ def check_network_services() -> None:
     configured_transfer_groups = {
         frozenset((endpoint["station"], endpoint["system"]) for endpoint in group)
         for group in suzhou_doc["transfers"]
+        if not any(endpoint["system"] in (suzhou_doc.get("station_systems") or {}) for endpoint in group)
     }
     assert configured_transfer_groups == expected_transfer_groups, (
         "苏州应且仅应声明所有跨系统同名车站为转乘站"
     )
+    suzhou_rail_pairs = {
+        (group[0]["station"], group[1]["station"])
+        for group in suzhou_doc["transfers"]
+        if group[1]["system"] == "国家铁路系统"
+    }
+    assert ("苏州火车站", "苏州") in suzhou_rail_pairs, f"苏州火车站应登记国铁转乘：{suzhou_rail_pairs}"
     invalid_system_doc = json.loads(json.dumps(suzhou_doc, ensure_ascii=False))
     invalid_system_doc["systems"].remove("智轨系统")
     invalid_system_check = call(
@@ -686,8 +733,98 @@ def check_express() -> None:
         data_path.write_text(original, encoding="utf-8")
         call("api_load_city", "上海")
 
+    check_direction_stops()
+    check_station_systems()
+
     print("\n全部检查通过。")
     return 0
+
+
+def check_direction_stops() -> None:
+    """上下行停靠站不一致：按方向计算时长与经停站，穿越不服务站但不作为终点。"""
+    call("api_load_city", "北京")
+    line = call("api_line", "bj_msdjc")["line"]
+    stops = line["directionSkips"]
+    assert set(stops) == {"2号航站楼方向", "北新桥方向"}, f"首都机场线应有两个方向的停靠表：{stops}"
+    assert stops["北新桥方向"] == ["2号航站楼", "三元桥", "东直门", "北新桥"], \
+        f"北新桥方向应跳过 3号航站楼，实际 {stops['北新桥方向']}"
+
+    def ride(direction: str, origin: str, target: str) -> dict:
+        payload = {
+            "city": "北京",
+            "steps": [{
+                "line_id": "bj_msdjc", "direction_label": direction,
+                "from_station": origin, "to_station": target, "manual": False,
+            }],
+        }
+        res = call("api_evaluate", json.dumps(payload, ensure_ascii=False))
+        assert res["ok"], f"{origin} → {target}（{direction}）应可计算：{res.get('error')}"
+        return res["segments"][0]
+
+    outbound = ride("2号航站楼方向", "北新桥", "2号航站楼")
+    inbound = ride("北新桥方向", "2号航站楼", "北新桥")
+    assert outbound["stops"] == ["北新桥", "东直门", "三元桥", "3号航站楼", "2号航站楼"], \
+        f"2号航站楼方向应停靠全部车站，实际 {outbound['stops']}"
+    assert inbound["stops"] == ["2号航站楼", "三元桥", "东直门", "北新桥"], \
+        f"北新桥方向不应停靠 3号航站楼，实际 {inbound['stops']}"
+    assert len(outbound["stops"]) == 5 and len(inbound["stops"]) == 4
+
+    blocked = call("api_evaluate", json.dumps({
+        "city": "北京",
+        "steps": [{
+            "line_id": "bj_msdjc", "direction_label": "北新桥方向",
+            "from_station": "3号航站楼", "to_station": "北新桥", "manual": False,
+        }],
+    }, ensure_ascii=False))
+    assert blocked["evaluatedSteps"] == 0 and blocked["failedStep"] == 0, "北新桥方向不应在 3号航站楼办客"
+    assert "不停靠" in blocked["error"], f"应提示该方向不停靠：{blocked['error']}"
+
+    # 智能规划可以让列车穿过不服务站，但不能在该站上下车
+    plan = call("api_plan_routes", json.dumps({
+        "origin": "2号航站楼", "target": "东直门", "mode": "station", "limit": 1,
+    }, ensure_ascii=False))
+    assert plan["ok"] and plan["plans"], f"2号航站楼 应能直达 东直门：{plan.get('error')}"
+    assert plan["plans"][0]["legs"][0]["stops"] == ["2号航站楼", "三元桥", "东直门"], \
+        f"应穿过 3号航站楼但不停靠：{plan['plans'][0]['legs'][0]['stops']}"
+    no_plan = json.loads(web_api.api_plan_routes(json.dumps({
+        "origin": "3号航站楼", "target": "东直门", "mode": "station", "limit": 1,
+    }, ensure_ascii=False)))
+    assert not no_plan["ok"], "3号航站楼 不在北新桥方向停靠，不应规划出反向方案"
+    print(f"[√] 上下行停靠站：正向 {len(outbound['stops'])} 站 / 反向 {len(inbound['stops'])} 站，"
+          "反向不停靠的车站无法上下车，智能规划可穿过但不停靠")
+
+
+def check_station_systems() -> None:
+    """强互通系统：只登记站名的城际 / 国铁系统出现在转乘提示中，不进入线路库。"""
+    city = call("api_load_city", "珠江三角洲")
+    systems = {item["name"]: item for item in city["city"]["stationSystems"]}
+    assert systems["广东城际系统"]["type"] == "intercity", "广东城际系统应以 intercity 类型登记"
+    assert systems["国家铁路系统"]["type"] == "national_rail", "国家铁路系统应以 national_rail 类型登记"
+    assert all(line["system"] not in systems for line in city["lines"]), "强互通系统不应出现在线路库中"
+
+    hints = call("api_transfer_hints", "广州南站", "gz_m2")
+    names = {item["system"]: item for item in hints["stationSystems"]}
+    assert names["广东城际系统"]["station"] == "广州南", f"应提示转乘广东城际系统的广州南站：{names}"
+    assert names["国家铁路系统"]["typeLabel"] == "国家铁路", "国铁系统提示应带类型文字"
+    assert not any(hint.get("system") in names for hint in hints["hints"]), "强互通系统不应作为可乘坐线路返回"
+
+    dongguan = call("api_city_json", "东莞")["city"]
+    stations = {s for line in dongguan["lines"] for s in line["stations"]}
+    transfer_names = {
+        endpoint["station"] for pair in dongguan["transfers"] for endpoint in pair
+        if endpoint["station"] not in stations
+    }
+    declared = set(dongguan["station_systems"]["广东城际系统"]["stations"])
+    assert transfer_names <= declared, \
+        f"无所属系统的转乘站应全部登记为广东城际系统：{transfer_names - declared}"
+
+    # 同站异名的写法同样要继承国铁提示（汉口站北广场 → 汉口火车站 → 国铁汉口）
+    call("api_load_city", "武汉")
+    wuhan_hints = call("api_transfer_hints", "汉口站北广场", "")
+    wuhan_names = {item["system"]: item for item in wuhan_hints["stationSystems"]}
+    assert wuhan_names["国家铁路系统"]["station"] == "汉口", \
+        f"异名车站应继承国铁转乘提示：{wuhan_names}"
+    print("[√] 强互通系统：转乘提示可用、不进线路库，珠三角无所属系统的转乘站已登记为广东城际系统")
 
 
 if __name__ == "__main__":

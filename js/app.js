@@ -13,9 +13,11 @@
   const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
   const fmtMin = (m) => (m == null || Number.isNaN(+m) ? "—" : (Number.isInteger(+m) ? `${+m} 分钟` : `${(+m).toFixed(1)} 分钟`));
   const numOrNull = (v) => (v === "" || v == null ? null : Number(v));
-  const swatch = (c1, c2) => (c2 ? `linear-gradient(90deg, ${c1} 0 50%, ${c2} 50% 100%)` : (c1 || "#888888"));
+  // 双色渐变按「边框盒」铺满且不重复：否则边框区域会重复平铺，两端各露出一条另一颜色的色带
+  const DUAL_SUFFIX = "border-box no-repeat";
+  const swatch = (c1, c2) => (c2 ? `linear-gradient(90deg, ${c1} 0 50%, ${c2} 50% 100%) ${DUAL_SUFFIX}` : (c1 || "#888888"));
   // 双色线路的「上下各半」写法（用于彩色时间轴：上=主色、下=副色）
-  const swatchV = (c1, c2) => (c2 ? `linear-gradient(180deg, ${c1} 0 50%, ${c2} 50% 100%)` : (c1 || "#888888"));
+  const swatchV = (c1, c2) => (c2 ? `linear-gradient(180deg, ${c1} 0 50%, ${c2} 50% 100%) ${DUAL_SUFFIX}` : (c1 || "#888888"));
   const debounce = (fn, ms = 280) => { let t; return (...a) => { clearTimeout(t); t = setTimeout(() => fn(...a), ms); }; };
   const D = window.TPDrafts;
   const history = { current: null, undo: [], redo: [], lastChangeAt: 0, ready: false, restoring: false };
@@ -33,7 +35,6 @@
     cityInfo: null,
     lines: [],
     lineDetail: new Map(),
-    selectedLine: "",
     result: null,
     draftId: "",
     trip: {
@@ -68,8 +69,8 @@
 
       loadDraft();
       syncTopbar();
-      const city = state.city || state.cities[0] || "";
-      await setCity(city, { silent: true });
+      // 城市由草稿带入（新建时先选城市）；为空表示纯手动，不加载任何城市数据
+      await setCity(state.city || "", { silent: true });
       resetHistory();
 
       $("boot").hidden = true;
@@ -101,9 +102,16 @@
 
   function syncTopbar() {
     $("city-select").value = state.trip.city || "";
+    syncCityButton();
     $("trip-name").value = state.trip.name || "";
     $("trip-date").value = state.trip.date || "";
     $("paid-zone").checked = !!state.trip.paid_zone_mode;
+  }
+
+  /** 「切换城市」按钮显示当前城市；未选择时提示纯手动。 */
+  function syncCityButton(name = state.city) {
+    const el = $("city-switch-name");
+    if (el) el.textContent = name || "不使用线路库";
   }
 
   function updateHistoryButtons() {
@@ -231,13 +239,11 @@
     state.city = name;
     state.trip.city = name;
     recordHistoryChange();
-    state.selectedLine = "";
     $("city-select").value = name;
-    $("line-detail").hidden = true;
-    $("library-splitter").hidden = true;
-    resetLibrarySplit();
+    syncCityButton(name);
+    libraryPanel.reset();
 
-    const res = TP.loadCity(name);
+    const res = await TP.loadCity(name);
     if (!res.ok) {
       setStatus(res.error, true);
       state.lines = [];
@@ -257,7 +263,7 @@
         if (name && !res.city?.combined) editorParams.set("city", stem);
         editorButton.href = `editor.html?${editorParams}`;
         editorButton.title = res.city?.combined
-          ? "同城组合由多座城市合并而成，请分别编辑组成城市的数据"
+          ? "同城组合由多座城市合并而成，共用换乘车站请在组成城市的「同城组合共用车站」中编辑"
           : "编辑该城市线路数据、提交审核";
       }
     }
@@ -278,161 +284,31 @@
   }
 
   function renderLibrary() {
-    const kw = ($("line-search").value || "").trim().toLowerCase();
-    const items = state.lines.filter((ln) => {
-      if (!kw) return true;
-      return `${ln.name} ${ln.shortName} ${ln.id}`.toLowerCase().includes(kw);
-    });
-    if (!items.length) {
-      $("line-list").innerHTML = `<p class="hint">${state.lines.length ? "没有匹配的线路" : "未加载线路库"}</p>`;
-      return;
-    }
-    const isBranch = (name) => Boolean(window.LineBranches?.parseBranchName(name));
-    $("line-list").innerHTML = items.map((ln) => `
-      <div class="line-item${ln.id === state.selectedLine ? " active" : ""}" data-line="${esc(ln.id)}" title="单击查看详情，双击预填到新行程">
-        <span class="swatch" style="background:${swatch(ln.color, ln.color2)}"></span>
-        <span class="nm">${esc(ln.name)}</span>
-        ${isBranch(ln.name) ? '<span class="tag tag-branch">支线</span>' : ""}
-        <span class="tag">${esc(ln.typeLabel)}</span>
-        ${ln.system ? `<span class="tag">${esc(ln.system)}</span>` : ""}
-      </div>`).join("");
+    libraryPanel.render(state.lines, { systems: state.cityInfo?.systems || [] });
   }
 
-  async function showLineDetail(lineId) {
-    state.selectedLine = lineId;
-    renderLibrary();
-    let line = state.lineDetail.get(lineId);
-    if (!line) {
-      const res = TP.line(lineId);
-      if (!res.ok) { setStatus(res.error, true); return; }
-      line = res.line;
-      state.lineDetail.set(lineId, line);
-    }
-    const chain = line.stations.map((s, i) => {
-      const seg = i < line.travelMinutes.length ? `<span class="seg-min">${line.travelMinutes[i]}′</span>` : "";
-      return `<span class="st">${esc(s)}</span>${seg}`;
-    }).join("");
-    $("line-detail").hidden = false;
-    $("library-splitter").hidden = false;
-    $("line-detail").innerHTML = `
-      <div class="kv"><b>${esc(line.name)}</b><span class="tag">${esc(line.typeLabel)}</span></div>
-      ${line.system ? `<div class="kv">系统：${esc(line.system)}</div>` : ""}
-      <div class="kv">方向：${esc(line.directions.join(" / "))}</div>
-      <div class="kv">班次：${esc(line.headwayText)}${line.firstTrain ? ` · 首班 ${esc(line.firstTrain)}` : ""}${line.lastTrain ? ` · 末班 ${esc(line.lastTrain)}` : ""}</div>
-      ${line.operator ? `<div class="kv">运营：${esc(line.operator)}</div>` : ""}
-      ${line.ring ? `<div class="kv">环线（首尾闭合）</div>` : ""}
-      ${lineServices(line).length ? `<div class="kv">快车：${lineServices(line).map((svc) => `${esc(svc.name)}（停 ${(svc.stops || []).length} 站）`).join(" / ")}</div>` : ""}
-      <div class="station-chain">${chain}</div>
-      <p class="hint" style="margin:6px 0 0">双击左侧线路可把该线路预填到新行程。</p>`;
-    $("line-detail").scrollTop = 0;
-    // 默认布局优先保证线路信息完整显示，之后可用分割条上下拖动调整
-    fitLibrarySplit();
+  /** 线路详情（带缓存）：内核按需读取，读过的线路留在 state.lineDetail 里复用。 */
+  function resolveLine(lineId) {
+    const cached = state.lineDetail.get(lineId);
+    if (cached) return { ok: true, line: cached };
+    const res = TP.line(lineId);
+    if (res.ok) state.lineDetail.set(lineId, res.line);
+    return res;
   }
 
-  // ---------------- 线路库分割条（列表 / 详情高度可拖动） ----------------
+  // ---------------- 线路库面板（列表 / 详情 / 分割条） ----------------
 
-  const SPLIT_MIN_LIST = 60;
-  const SPLIT_MIN_DETAIL = 96;
-
-  function librarySplitterVisible() {
-    const splitter = $("library-splitter");
-    return !splitter.hidden && splitter.offsetParent !== null;
-  }
-
-  /** 列表顶边到面板内容区底边之间的垂直空间（含列表、分割条、详情）。 */
-  function librarySplitSpace() {
-    const lib = document.querySelector(".library");
-    const rect = lib.getBoundingClientRect();
-    const cs = getComputedStyle(lib);
-    const bottom = rect.bottom - parseFloat(cs.paddingBottom) - parseFloat(cs.borderBottomWidth);
-    return Math.max(0, bottom - $("line-list").getBoundingClientRect().top);
-  }
-
-  function splitterHeight() {
-    const splitter = $("library-splitter");
-    const cs = getComputedStyle(splitter);
-    return splitter.offsetHeight + parseFloat(cs.marginTop) + parseFloat(cs.marginBottom);
-  }
-
-  function maxListHeight() {
-    return Math.max(SPLIT_MIN_LIST, librarySplitSpace() - splitterHeight() - SPLIT_MIN_DETAIL);
-  }
-
-  function setListHeight(px) {
-    $("line-list").style.flexBasis = `${Math.max(0, Math.round(px))}px`;
-  }
-
-  function resetLibrarySplit() {
-    $("line-list").style.flexBasis = "";
-    document.querySelector(".library").classList.remove("has-detail", "dragging");
-  }
-
-  /** 详情的自然高度：临时解除 flex 拉伸，量完立即还原。 */
-  function detailNaturalHeight() {
-    const detail = $("line-detail");
-    const prev = detail.style.flex;
-    detail.style.flex = "0 0 auto";
-    const height = detail.scrollHeight;
-    detail.style.flex = prev;
-    return height + 2;
-  }
-
-  /** 默认布局：优先给足详情高度，列表占用剩余空间；详情过长时才在内部滚动。 */
-  function fitLibrarySplit() {
-    document.querySelector(".library").classList.add("has-detail");
-    if (!librarySplitterVisible()) {
-      $("line-list").style.flexBasis = "";
-      return;
-    }
-    const available = librarySplitSpace() - splitterHeight();
-    const listHeight = available - detailNaturalHeight();
-    setListHeight(Math.min(Math.max(listHeight, SPLIT_MIN_LIST), maxListHeight()));
-  }
-
-  function initLibrarySplitter() {
-    const splitter = $("library-splitter");
-    const list = $("line-list");
-    const lib = document.querySelector(".library");
-    let drag = null;
-
-    splitter.addEventListener("pointerdown", (ev) => {
-      if (ev.pointerType === "mouse" && ev.button !== 0) return;
-      ev.preventDefault();
-      drag = { y: ev.clientY, height: list.getBoundingClientRect().height };
-      splitter.setPointerCapture(ev.pointerId);
-      lib.classList.add("dragging");
-    });
-    splitter.addEventListener("pointermove", (ev) => {
-      if (!drag) return;
-      const height = drag.height + (ev.clientY - drag.y);
-      setListHeight(Math.min(Math.max(height, SPLIT_MIN_LIST), maxListHeight()));
-    });
-    const stopDrag = () => {
-      drag = null;
-      lib.classList.remove("dragging");
-    };
-    splitter.addEventListener("pointerup", stopDrag);
-    splitter.addEventListener("pointercancel", stopDrag);
-    splitter.addEventListener("lostpointercapture", stopDrag);
-    splitter.addEventListener("dblclick", fitLibrarySplit);
-
-    splitter.addEventListener("keydown", (ev) => {
-      const current = list.getBoundingClientRect().height;
-      let next = null;
-      if (ev.key === "ArrowUp") next = current - 24;
-      else if (ev.key === "ArrowDown") next = current + 24;
-      else if (ev.key === "Home") next = SPLIT_MIN_LIST;
-      else if (ev.key === "End") next = maxListHeight();
-      if (next == null) return;
-      ev.preventDefault();
-      setListHeight(Math.min(Math.max(next, SPLIT_MIN_LIST), maxListHeight()));
-    });
-
-    // 窄屏隐藏分割条时，清掉内联高度，恢复按内容自然排布
-    window.addEventListener("resize", debounce(() => {
-      if (!librarySplitterVisible()) list.style.flexBasis = "";
-    }, 150));
-  }
+  const libraryPanel = window.LineLibrary.createPanel({
+    panel: document.querySelector(".library"),
+    list: $("line-list"),
+    search: $("line-search"),
+    detail: $("line-detail"),
+    splitter: $("library-splitter"),
+    resolveLine,
+    prefillHint: "双击左侧线路可把该线路预填到新行程。",
+    onPick: (lineId) => addStepWithLine(lineId),
+    onError: (message) => setStatus(message, true),
+  });
 
   async function refreshStationOptions() {
     if (!state.city) {
@@ -605,8 +481,8 @@
       ["总时长", t ? fmtMin(t.minutes) : "—"],
       ["其中运行", t ? fmtMin(t.run) : "—"],
       ["换乘 / 站外步行", t ? fmtMin(t.walk) : "—"],
-      ["换乘次数", t ? `${t.transferCount} 次` : "—"],
-      ["转乘次数", t ? `${t.systemTransferCount ?? t.fareTransferCount} 次` : "—"],
+      ["换乘次数", t ? `${t.transferCount ?? 0} 次` : "—"],
+      ["转乘次数", t ? `${t.systemTransferCount ?? t.fareTransferCount ?? 0} 次` : "—"],
       ["线路数", t ? `${t.lineCount} 条` : "—"],
       ["总站数", t ? `${t.stopCount} 站` : "—"],
       ["总票价", t ? `¥${t.price}` : "—"],
@@ -675,7 +551,8 @@
     const res = TP.transferHints(station, last.manual ? "" : last.line_id);
     if (!res.ok) { $("hints").innerHTML = `<p class="hint">${esc(res.error)}</p>`; return; }
     const others = res.hints.filter((h) => !h.current);
-    if (!others.length) {
+    const stationSystems = res.stationSystems || [];
+    if (!others.length && !stationSystems.length) {
       $("hints").innerHTML = `<p class="hint">「${esc(station)}」暂无其他可换乘线路（本地数据未收录或不含换乘站）。</p>`;
       return;
     }
@@ -693,6 +570,24 @@
           <span class="dirs" title="${esc(h.directions.join(" / "))}">${esc(h.directions.join(" / "))}</span>
         </div>`;
     };
+    // 强互通系统（如广东城际系统、国家铁路系统）：数据里只有站名，没有具体线路。
+    const systemRow = (system) => {
+      const isRail = system.type === "national_rail";
+      const stationName = system.station || station;
+      const title = isRail
+        ? `双击按国铁车次查询「${stationName}」出发的列车`
+        : `「${stationName}」可转乘${system.system}（仅提供站名，不做线路计算）`;
+      return `
+        <div class="hint-item hint-system${isRail ? " hint-rail" : ""}"
+             ${isRail ? `data-rail-from="${esc(stationName)}" data-system="${esc(system.system)}"` : ""}
+             ${isRail ? 'role="button" tabindex="0"' : ""} title="${esc(title)}">
+          <i class="dot" style="background:${isRail ? "#8a5a2b" : "#0f9b8e"}"></i>
+          <span>${esc(system.system)}</span>
+          ${system.typeLabel ? `<span class="tag">${esc(system.typeLabel)}</span>` : ""}
+          <span class="badge-transfer">强互通</span>
+          <span class="dirs">${isRail ? "双击查询车次" : "仅站名"}</span>
+        </div>`;
+    };
     const parts = [];
     if (inZone.length) {
       parts.push(`<p class="hint" style="margin:0">在「${esc(station)}」可换乘：</p>`, ...inZone.map(row));
@@ -704,7 +599,10 @@
         ...crossZone.map(row),
       );
     }
-    parts.push('<p class="hint" style="margin:4px 0 0">双击线路可添加为下一段，起点自动填为当前站。</p>');
+    if (stationSystems.length) {
+      parts.push(`<p class="hint" style="margin:0">在「${esc(station)}」还可转乘：</p>`, ...stationSystems.map(systemRow));
+    }
+    parts.push('<p class="hint" style="margin:4px 0 0">双击线路可添加为下一段，起点自动填为当前站；双击国铁系统可查询车次。</p>');
     $("hints").innerHTML = parts.join("");
   }
 
@@ -714,7 +612,23 @@
     addStepWithLine(item.dataset.line, item.dataset.from || "");
   }
 
+  /** 双击国铁强互通系统：打开「添加行程」并切到国铁车次查询，预填起点站。 */
+  async function queryRailFromHint(item) {
+    const from = item?.dataset.railFrom || currentStation();
+    await openStepDialog(null, { prefillFrom: from });
+    setMode("rail");
+    $("rail-from").value = from;
+    $("rail-to").value = "";
+    $("rail-to").focus();
+  }
+
   $("hints").addEventListener("dblclick", (ev) => {
+    const railItem = ev.target.closest("[data-rail-from]");
+    if (railItem) {
+      ev.preventDefault();
+      queryRailFromHint(railItem);
+      return;
+    }
     const item = ev.target.closest("[data-line]");
     if (!item) return;
     ev.preventDefault();
@@ -722,6 +636,12 @@
   });
   $("hints").addEventListener("keydown", (ev) => {
     if (ev.key !== "Enter" && ev.key !== " ") return;
+    const railItem = ev.target.closest("[data-rail-from]");
+    if (railItem) {
+      ev.preventDefault();
+      queryRailFromHint(railItem);
+      return;
+    }
     const item = ev.target.closest("[data-line]");
     if (!item) return;
     ev.preventDefault();
@@ -760,23 +680,6 @@
   });
 
   $("btn-add").addEventListener("click", () => openStepDialog(null));
-  $("line-search").addEventListener("input", debounce(renderLibrary, 150));
-  initLibrarySplitter();
-
-  // 单击查看线路详情；双击（同一线路 400ms 内两次单击）打开「添加行程」并预填该线路。
-  // 注意：这里不能用原生 dblclick——单击会重绘线路列表、替换掉被点的节点，
-  // 浏览器便不再对 line-list 派发 dblclick，双击会完全没有反应。
-  let lastLineClick = { id: "", at: 0 };
-  $("line-list").addEventListener("click", async (ev) => {
-    const item = ev.target.closest("[data-line]");
-    if (!item) return;
-    const id = item.dataset.line;
-    const now = Date.now();
-    const isDouble = lastLineClick.id === id && now - lastLineClick.at < 400;
-    lastLineClick = isDouble ? { id: "", at: 0 } : { id, at: now };
-    if (isDouble) await addStepWithLine(id);
-    else await showLineDetail(id);
-  });
 
   /** 打开「添加行程」弹窗并预填指定数据库线路；prefillFrom 默认当前站。 */
   async function addStepWithLine(lineId, prefillFrom = "") {
@@ -1001,10 +904,13 @@
     return Array.from({ length: limit }, (_, index) => stations[Math.floor(index * (stations.length - 1) / (limit - 1))]);
   }
 
+  /** 内核未返回的计数字段按 0 处理，避免界面出现「undefined 次」。 */
+  const planCount = (value) => (Number.isFinite(Number(value)) ? Number(value) : 0);
+
   function smartPlanHtml(plan, index) {
     const legs = (plan.legs || []).map((leg, legIndex) => {
       const color = leg.color2
-        ? `linear-gradient(90deg, ${leg.color} 0 50%, ${leg.color2} 50% 100%)`
+        ? `linear-gradient(90deg, ${leg.color} 0 50%, ${leg.color2} 50% 100%) ${DUAL_SUFFIX}`
         : (leg.color || "#888888");
       const walk = leg.walk > 0
         ? `<div class="smart-walk">上车前步行 ${fmtMin(leg.walk)}</div>`
@@ -1024,11 +930,20 @@
         ${transfer}
       </div>`;
     }).join("");
+    const coverage = String(plan.experienceSummary ?? "").trim();
+    const summary = [
+      `起点 ${plan.origin || "—"}`,
+      coverage ? `覆盖 ${coverage}` : "",
+      `换乘 ${planCount(plan.transfers)} 次`,
+      `转乘 ${planCount(plan.systemTransfers)} 次`,
+      `${planCount(plan.lineCount)} 条线路`,
+      `${planCount(plan.stopCount)} 站`,
+    ].filter(Boolean).join(" · ");
     return `<div class="smart-card">
       <div class="smart-card-head">
         <span class="smart-tag">${esc(plan.tag || "备选")}</span>
         <span class="smart-time">${fmtMin(plan.minutes)}</span>
-        <span class="hint">起点 ${esc(plan.origin)} · 覆盖 ${esc(plan.experienceSummary)} · 换乘 ${plan.transfers} 次 · 转乘 ${plan.systemTransfers} 次 · ${plan.lineCount} 条线路 · ${plan.stopCount} 站</span>
+        <span class="hint">${esc(summary)}</span>
         <div class="spacer"></div>
         <button type="button" data-smart-apply="append" data-smart-index="${index}">追加到末尾</button>
         <button type="button" class="primary" data-smart-apply="replace" data-smart-index="${index}">替换规划</button>
@@ -1081,6 +996,13 @@
   // ---------------- 顶栏交互 ----------------
 
   $("city-select").addEventListener("change", (ev) => setCity(ev.target.value));
+  $("btn-city-switch").addEventListener("click", () => {
+    window.CityPicker.open({
+      title: "切换城市",
+      current: state.city,
+      onPick: (name) => setCity(name),
+    });
+  });
   $("trip-name").addEventListener("input", (ev) => { state.trip.name = ev.target.value; persist(); });
   $("trip-date").addEventListener("change", (ev) => { state.trip.date = ev.target.value; persist(); });
   $("paid-zone").addEventListener("change", (ev) => { state.trip.paid_zone_mode = ev.target.checked; evaluate(); });
@@ -1114,7 +1036,7 @@
   });
   $("btn-export-pdf").addEventListener("click", () => {
     $("export-dialog").close();
-    printPlan();
+    exportPlanPdf();
   });
   $("export-dialog").querySelector("[data-close-export]").addEventListener("click", () => $("export-dialog").close());
 
@@ -2089,7 +2011,33 @@
     await evaluate();
   }
 
-  // ---------------- 导出图纸（打印 / 另存为 PDF） ----------------
+  // ---------------- 导出图纸（下载 PDF；不支持时退回打印） ----------------
+
+  /** 导出 PDF 文件（直接下载，不弹出打印预览）。 */
+  async function exportPlanPdf() {
+    if (!state.result || !state.result.segments.length) {
+      setStatus("还没有可导出的行程", true);
+      return;
+    }
+    if (!window.PDFExport) {
+      printPlan();
+      return;
+    }
+    const view = $("print-view");
+    view.innerHTML = buildPrintSheet();
+    const button = $("btn-export-pdf");
+    button.disabled = true;
+    try {
+      await window.PDFExport.download(view, { filename: printFileTitle() });
+      toast("已导出 PDF");
+    } catch (err) {
+      console.warn("PDF 导出失败，改为打印", err);
+      toast(`PDF 导出失败，已改用打印：${err.message || err}`);
+      printPlan();
+    } finally {
+      button.disabled = false;
+    }
+  }
 
   function printPlan() {
     if (!state.result || !state.result.segments.length) {
@@ -2174,10 +2122,10 @@
           <span>总时长 <b class="${hasConfirmedTimetable ? "duration-emphasis" : ""}">${fmtMin(t.minutes)}</b></span>
           <span>运行 ${fmtMin(t.run)}</span>
           <span>换乘/步行 ${fmtMin(t.walk)}</span>
-          <span>换乘 ${t.transferCount} 次</span>
-          <span>转乘 ${t.fareTransferCount} 次</span>
-          <span>线路 ${t.lineCount} 条</span>
-          <span>站数 ${t.stopCount}</span>
+          <span>换乘 ${t.transferCount ?? 0} 次</span>
+          <span>转乘 ${t.fareTransferCount ?? 0} 次</span>
+          <span>线路 ${t.lineCount ?? 0} 条</span>
+          <span>站数 ${t.stopCount ?? 0}</span>
           <span>票价 ¥${t.price}</span>
         </div>
         <div class="tl">${tl}</div>

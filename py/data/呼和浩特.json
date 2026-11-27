@@ -1,0 +1,191 @@
+{
+  "city": "呼和浩特",
+  "region": "华北",
+  "version": "1.0",
+  "systems": [
+    "地铁系统"
+  ],
+  "lines": [
+    {
+      "id": "hhht_m1",
+      "name": "呼和浩特地铁1号线",
+      "short_name": "1号线",
+      "type": "metro",
+      "color": "#FF3C3C",
+      "color2": "",
+      "operator": "呼和浩特城市轨道交通",
+      "stations": [
+        "伊利健康谷",
+        "西二环路",
+        "孔家营",
+        "呼钢南路",
+        "西龙王庙",
+        "乌兰夫纪念馆",
+        "附属医院",
+        "新华广场",
+        "人民会堂",
+        "将军衙署",
+        "艺术学院",
+        "东影路",
+        "内蒙古展览馆",
+        "内蒙古博物院",
+        "市政府",
+        "呼和浩特东站",
+        "后不塔气",
+        "什兰岱",
+        "白塔西",
+        "坝堰（机场）"
+      ],
+      "travel_minutes": [
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3
+      ],
+      "headway_rush": 5,
+      "headway_normal": 10,
+      "first_train": "",
+      "last_train": "",
+      "ring": false,
+      "directions": [
+        {
+          "label": "坝堰（机场）方向",
+          "terminal": "坝堰（机场）",
+          "reverse": false
+        },
+        {
+          "label": "伊利健康谷方向",
+          "terminal": "伊利健康谷",
+          "reverse": false
+        }
+      ],
+      "system": "地铁系统"
+    },
+    {
+      "id": "hhht_m2",
+      "name": "呼和浩特地铁2号线",
+      "short_name": "2号线",
+      "type": "metro",
+      "color": "#1B85D2",
+      "color2": "",
+      "operator": "呼和浩特城市轨道交通",
+      "stations": [
+        "塔利东路",
+        "新店",
+        "百合路",
+        "北山公园",
+        "丝绸之路大道",
+        "一家村",
+        "成吉思汗公园",
+        "毫沁营",
+        "成吉思汗广场",
+        "内蒙古体育馆",
+        "呼和浩特体育场",
+        "公主府",
+        "呼和浩特站",
+        "新华广场",
+        "中山路",
+        "大学西街",
+        "诺和木勒",
+        "水上公园",
+        "五里营",
+        "锡林公园",
+        "内大南校区",
+        "帅家营",
+        "喇嘛营",
+        "阿尔山路"
+      ],
+      "travel_minutes": [
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3
+      ],
+      "headway_rush": 5,
+      "headway_normal": 10,
+      "first_train": "",
+      "last_train": "",
+      "ring": false,
+      "directions": [
+        {
+          "label": "阿尔山路方向",
+          "terminal": "阿尔山路",
+          "reverse": false
+        },
+        {
+          "label": "塔利东路方向",
+          "terminal": "塔利东路",
+          "reverse": false
+        }
+      ],
+      "system": "地铁系统"
+    }
+  ],
+  "external_walks": {},
+  "transfers": [
+    [
+      {
+        "station": "呼和浩特东站",
+        "system": "地铁系统"
+      },
+      {
+        "station": "呼和浩特东",
+        "system": "国家铁路系统"
+      }
+    ],
+    [
+      {
+        "station": "呼和浩特站",
+        "system": "地铁系统"
+      },
+      {
+        "station": "呼和浩特",
+        "system": "国家铁路系统"
+      }
+    ]
+  ],
+  "aliases": [],
+  "station_systems": {
+    "国家铁路系统": {
+      "type": "national_rail",
+      "stations": [
+        "呼和浩特东",
+        "呼和浩特"
+      ]
+    }
+  }
+}

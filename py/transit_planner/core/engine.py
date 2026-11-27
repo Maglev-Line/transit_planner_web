@@ -70,9 +70,9 @@ def related_station_names(city: City, station: str, system: str | None = None) -
 
 
 def station_name_on_line(city: City, line: Line, station: str) -> str:
-    """返回关联站名中在线路上实际使用的名称。"""
+    """返回关联站名中在线路上实际使用的名称（同站异名、已声明的转乘站对都算）。"""
     return next(
-        (name for name in related_station_names(city, station, line.system) if name in line.stations),
+        (name for name in related_station_names(city, station) if name in line.stations),
         station,
     )
 
@@ -177,7 +177,8 @@ def _path_indices(line: Line, sign: int, from_idx: int, to_idx: int):
     if sign < 0 and delta >= 0:
         raise LineError(f"在 {line.name} 当前方向中，无法从 {line.stations[from_idx]} 到 {line.stations[to_idx]}")
     indices = list(range(from_idx, to_idx + sign, sign))
-    minutes = sum(line.travel_minutes[i if sign > 0 else i - 1] for i in range(min(from_idx, to_idx), max(from_idx, to_idx)))
+    # 上下行都沿同一组区间行驶：取两站之间全部区间的时长（下行不再错开一段）
+    minutes = sum(line.travel_minutes[i] for i in range(min(from_idx, to_idx), max(from_idx, to_idx)))
     return indices, minutes
 
 
@@ -260,16 +261,36 @@ def compute_step(line: Line, direction: Direction, from_station: str, to_station
     """计算一段行程。返回 (经停站列表[含起点终点], 运行分钟)。
 
     service_id 非空时按该快车服务的停靠站表计算（只停大站、运行更快）。
+    方向有自己的停靠站表（上下行不一致）时，只有表内的车站可以上下车。
     """
+    own_stops = line.stop_list(direction.label)
     if service_id:
-        return compute_service_step(line, direction, from_station, to_station, service_id)
-    from_idx = line.station_index(from_station)
-    to_idx = line.station_index(to_station)
-    if from_idx == to_idx and not line.ring:
-        raise LineError("起点与终点相同")
-    sign = direction_sign(line, direction)
-    indices, minutes = _path_indices(line, sign, from_idx, to_idx)
-    stops = [line.stations[i] for i in indices]
+        stops, minutes = compute_service_step(line, direction, from_station, to_station, service_id)
+    elif own_stops:
+        if from_station not in own_stops or to_station not in own_stops:
+            blocked = [s for s in (from_station, to_station) if s not in own_stops]
+            raise LineError(f"「{direction.label}」不停靠 {'、'.join(blocked)}")
+        from_i = own_stops.index(from_station)
+        to_i = own_stops.index(to_station)
+        if from_i == to_i:
+            raise LineError("起点与终点相同")
+        minutes = _section_minutes(line, from_station, to_station)
+        stops = own_stops[from_i:to_i + 1] if from_i < to_i else list(reversed(own_stops[to_i:from_i + 1]))
+        return stops, minutes
+    else:
+        from_idx = line.station_index(from_station)
+        to_idx = line.station_index(to_station)
+        if from_idx == to_idx and not line.ring:
+            raise LineError("起点与终点相同")
+        sign = direction_sign(line, direction)
+        indices, minutes = _path_indices(line, sign, from_idx, to_idx)
+        stops = [line.stations[i] for i in indices]
+    if own_stops:
+        served = set(own_stops)
+        if from_station not in served or to_station not in served:
+            blocked = [s for s in (from_station, to_station) if s not in served]
+            raise LineError(f"「{direction.label}」不停靠 {'、'.join(blocked)}")
+        stops = [s for s in stops if s in served]
     return stops, minutes
 
 
@@ -417,10 +438,7 @@ def pick_direction(line: Line, from_station: str, to_station: str,
         return None
     for d in line.directions:
         try:
-            if service_id:
-                compute_service_step(line, d, from_station, to_station, service_id)
-            else:
-                _path_indices(line, direction_sign(line, d), from_idx, to_idx)
+            compute_step(line, d, from_station, to_station, service_id)
             return d
         except LineError:
             continue
@@ -548,7 +566,18 @@ def reachable_from(city: City, line: Line, direction: Direction, from_station: s
     """当前站、当前方向下，可以到达的后续站点列表（供界面选择）。
 
     service_id 非空时只返回该快车服务停靠的后续车站。
+    方向有自己的停靠站表时，按该表顺序返回后续车站（表外车站不服务）。
     """
+    own_stops = line.stop_list(direction.label)
+    if own_stops:
+        if from_station not in own_stops:
+            raise LineError(f"「{direction.label}」不停靠 {from_station}")
+        served = set(own_stops)
+        out = own_stops[own_stops.index(from_station) + 1:]
+        if service_id:
+            stalls = set(line.express_service(service_id).stops)
+            out = [s for s in out if s in stalls and s in served]
+        return out
     if service_id:
         stops = line.express_service(service_id).stops
         if from_station not in stops:
@@ -556,20 +585,45 @@ def reachable_from(city: City, line: Line, direction: Direction, from_station: s
         m = len(stops)
         i = stops.index(from_station)
         forward = [stops[(i + k) % m] for k in range(1, m)] if line.ring else stops[i + 1:]
-        if direction_sign(line, direction) > 0:
-            return list(forward)
-        return list(reversed(forward))
+        return list(forward) if direction_sign(line, direction) > 0 else list(reversed(forward))
     sign = direction_sign(line, direction)
     from_idx = line.station_index(from_station)
     if line.ring:
         m = _ring_unique_count(line)
         from_idx %= m
         return [line.stations[(from_idx + sign * k) % m] for k in range(1, m)]
-    else:
-        if sign > 0:
-            out = line.stations[from_idx + 1:]
-        else:
-            out = list(reversed(line.stations[:from_idx]))
+    if sign > 0:
+        return line.stations[from_idx + 1:]
+    return list(reversed(line.stations[:from_idx]))
+
+
+def station_system_hints(city: City, station: str,
+                         source_system: str | None = None) -> list[tuple[str, list[str], str]]:
+    """强互通系统提示：某站可转乘的、只登记车站名的系统。
+
+    返回 [(系统名, 该站在此系统中的站名列表, 交通类型)]；同一系统只出现一次。
+    """
+    out: list[tuple[str, list[str], str]] = []
+    seen: set[str] = set()
+    names = alias_names(city, station, source_system)
+    for name in names:
+        for system in city.station_systems_at(name):
+            if system.name in seen:
+                continue
+            seen.add(system.name)
+            out.append((system.name, [name], system.type))
+    # 同站异名的其它写法也可能登记了转乘站对（如「汉口站北广场」↔ 国铁「汉口」）
+    endpoints: list[TransferEndpoint] = []
+    for name in names:
+        for endpoint in transfer_targets(city, name, source_system):
+            if all(endpoint.station != item.station for item in endpoints):
+                endpoints.append(endpoint)
+    for endpoint in endpoints:
+        for system in city.station_systems_at(endpoint.station):
+            if system.name in seen:
+                continue
+            seen.add(system.name)
+            out.append((system.name, [endpoint.station], system.type))
     return out
 
 
