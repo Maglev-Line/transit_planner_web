@@ -80,7 +80,18 @@
       "first_train": "",
       "last_train": "",
       "ring": false,
-      "directions": [],
+      "directions": [
+        {
+          "label": "双桥河方向",
+          "terminal": "双桥河",
+          "reverse": false
+        },
+        {
+          "label": "刘园方向",
+          "terminal": "刘园",
+          "reverse": false
+        }
+      ],
       "system": "地铁系统"
     },
     {
@@ -139,7 +150,18 @@
       "first_train": "",
       "last_train": "",
       "ring": false,
-      "directions": [],
+      "directions": [
+        {
+          "label": "滨海国际机场方向",
+          "terminal": "滨海国际机场",
+          "reverse": false
+        },
+        {
+          "label": "曹庄方向",
+          "terminal": "曹庄",
+          "reverse": false
+        }
+      ],
       "system": "地铁系统"
     },
     {
@@ -210,7 +232,18 @@
       "first_train": "",
       "last_train": "",
       "ring": false,
-      "directions": [],
+      "directions": [
+        {
+          "label": "小淀方向",
+          "terminal": "小淀",
+          "reverse": false
+        },
+        {
+          "label": "南站方向",
+          "terminal": "南站",
+          "reverse": false
+        }
+      ],
       "system": "地铁系统"
     },
     {
@@ -257,7 +290,18 @@
       "first_train": "",
       "last_train": "",
       "ring": false,
-      "directions": [],
+      "directions": [
+        {
+          "label": "新兴村方向",
+          "terminal": "新兴村",
+          "reverse": false
+        },
+        {
+          "label": "东南角方向",
+          "terminal": "东南角",
+          "reverse": false
+        }
+      ],
       "system": "地铁系统"
     },
     {
@@ -308,7 +352,18 @@
       "first_train": "",
       "last_train": "",
       "ring": false,
-      "directions": [],
+      "directions": [
+        {
+          "label": "西站方向",
+          "terminal": "西站",
+          "reverse": false
+        },
+        {
+          "label": "小街方向",
+          "terminal": "小街",
+          "reverse": false
+        }
+      ],
       "system": "地铁系统"
     },
     {
@@ -385,7 +440,18 @@
       "first_train": "",
       "last_train": "",
       "ring": false,
-      "directions": [],
+      "directions": [
+        {
+          "label": "京华东道方向",
+          "terminal": "京华东道",
+          "reverse": false
+        },
+        {
+          "label": "北辰科技园北方向",
+          "terminal": "北辰科技园北",
+          "reverse": false
+        }
+      ],
       "system": "地铁系统"
     },
     {
@@ -484,7 +550,18 @@
       "first_train": "",
       "last_train": "",
       "ring": false,
-      "directions": [],
+      "directions": [
+        {
+          "label": "渌水道方向",
+          "terminal": "渌水道",
+          "reverse": false
+        },
+        {
+          "label": "南孙庄方向",
+          "terminal": "南孙庄",
+          "reverse": false
+        }
+      ],
       "system": "地铁系统"
     },
     {
@@ -521,7 +598,18 @@
       "first_train": "",
       "last_train": "",
       "ring": false,
-      "directions": [],
+      "directions": [
+        {
+          "label": "咸水沽西方向",
+          "terminal": "咸水沽西",
+          "reverse": false
+        },
+        {
+          "label": "渌水道方向",
+          "terminal": "渌水道",
+          "reverse": false
+        }
+      ],
       "system": "地铁系统"
     },
     {
@@ -570,7 +658,18 @@
       "first_train": "",
       "last_train": "",
       "ring": false,
-      "directions": [],
+      "directions": [
+        {
+          "label": "鼓楼方向",
+          "terminal": "鼓楼",
+          "reverse": false
+        },
+        {
+          "label": "赛达路方向",
+          "terminal": "赛达路",
+          "reverse": false
+        }
+      ],
       "system": "地铁系统"
     },
     {
@@ -631,7 +730,18 @@
       "first_train": "",
       "last_train": "",
       "ring": false,
-      "directions": [],
+      "directions": [
+        {
+          "label": "东海路方向",
+          "terminal": "东海路",
+          "reverse": false
+        },
+        {
+          "label": "天津站方向",
+          "terminal": "天津站",
+          "reverse": false
+        }
+      ],
       "system": "地铁系统"
     },
     {
@@ -692,7 +802,18 @@
       "first_train": "",
       "last_train": "",
       "ring": false,
-      "directions": [],
+      "directions": [
+        {
+          "label": "于台方向",
+          "terminal": "于台",
+          "reverse": false
+        },
+        {
+          "label": "屿东城方向",
+          "terminal": "屿东城",
+          "reverse": false
+        }
+      ],
       "system": "地铁系统"
     },
     {
@@ -753,7 +874,18 @@
       "first_train": "",
       "last_train": "",
       "ring": false,
-      "directions": [],
+      "directions": [
+        {
+          "label": "东丽六经路方向",
+          "terminal": "东丽六经路",
+          "reverse": false
+        },
+        {
+          "label": "水上公园西路方向",
+          "terminal": "水上公园西路",
+          "reverse": false
+        }
+      ],
       "system": "地铁系统"
     },
     {
@@ -780,7 +912,18 @@
       "first_train": "",
       "last_train": "",
       "ring": false,
-      "directions": [],
+      "directions": [
+        {
+          "label": "团泊医学园方向",
+          "terminal": "团泊医学园",
+          "reverse": false
+        },
+        {
+          "label": "京华东道方向",
+          "terminal": "京华东道",
+          "reverse": false
+        }
+      ],
       "system": "地铁系统"
     },
     {
@@ -819,7 +962,18 @@
       "first_train": "",
       "last_train": "",
       "ring": false,
-      "directions": [],
+      "directions": [
+        {
+          "label": "寨上方向",
+          "terminal": "寨上",
+          "reverse": false
+        },
+        {
+          "label": "北塘方向",
+          "terminal": "北塘",
+          "reverse": false
+        }
+      ],
       "system": "地铁系统"
     }
   ],

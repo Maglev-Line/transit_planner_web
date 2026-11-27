@@ -63,7 +63,18 @@
       "first_train": "",
       "last_train": "",
       "ring": false,
-      "directions": [],
+      "directions": [
+        {
+          "label": "东岗方向",
+          "terminal": "东岗",
+          "reverse": false
+        },
+        {
+          "label": "陈官营方向",
+          "terminal": "陈官营",
+          "reverse": false
+        }
+      ],
       "system": "地铁系统"
     },
     {
@@ -100,7 +111,18 @@
       "first_train": "",
       "last_train": "",
       "ring": false,
-      "directions": [],
+      "directions": [
+        {
+          "label": "雁白大桥方向",
+          "terminal": "雁白大桥",
+          "reverse": false
+        },
+        {
+          "label": "东方红广场方向",
+          "terminal": "东方红广场",
+          "reverse": false
+        }
+      ],
       "system": "地铁系统"
     },
     {
@@ -149,7 +171,18 @@
       "first_train": "06:30",
       "last_train": "22:00",
       "ring": false,
-      "directions": [],
+      "directions": [
+        {
+          "label": "西站十字方向",
+          "terminal": "西站十字",
+          "reverse": false
+        },
+        {
+          "label": "刘家堡广场方向",
+          "terminal": "刘家堡广场",
+          "reverse": false
+        }
+      ],
       "system": "公交系统"
     },
     {
@@ -178,7 +211,18 @@
       "first_train": "06:30",
       "last_train": "21:00",
       "ring": false,
-      "directions": [],
+      "directions": [
+        {
+          "label": "安宁堡（仁寿山）方向",
+          "terminal": "安宁堡（仁寿山）",
+          "reverse": false
+        },
+        {
+          "label": "刘家堡广场方向",
+          "terminal": "刘家堡广场",
+          "reverse": false
+        }
+      ],
       "system": "公交系统"
     }
   ],

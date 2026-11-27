@@ -1928,7 +1928,18 @@
       "first_train": "06:00",
       "last_train": "23:00",
       "ring": false,
-      "directions": [],
+      "directions": [
+        {
+          "label": "汇臻路方向",
+          "terminal": "汇臻路",
+          "reverse": false
+        },
+        {
+          "label": "沈杜公路方向",
+          "terminal": "沈杜公路",
+          "reverse": false
+        }
+      ],
       "system": "地铁系统"
     },
     {

@@ -133,7 +133,7 @@ npm run test:core     # python tools/smoke_test.py
 | `travel_minutes` | `stations[i] → stations[i+1]` 的分钟数 |
 | `headway_rush` / `headway_normal` / `first_train` / `last_train` | 班次与首末班（估算） |
 | `ring` | 是否环线 |
-| `directions` | 方向表；往返线路可省略，加载时按站表自动生成 |
+| `directions` | 方向表。`label` 统一写作「终点站名+方向」（如「莘庄方向」），`terminal` 为终点站；环线没有终点站，沿用「内圈/外圈」或「顺时针/逆时针」。可省略，加载时按站表自动生成 |
 | `direction_stops` | 可选。`{"方向名": [按行车顺序的停靠站]}`，用于上下行停靠站不一致（跳站或上下行分离）；未列出的车站该方向不服务 |
 | `express` | 快车 / 大站车 / 直达车服务（停靠站与区段时长） |
 

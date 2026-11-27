@@ -65,7 +65,18 @@
       "first_train": "",
       "last_train": "",
       "ring": false,
-      "directions": [],
+      "directions": [
+        {
+          "label": "三屯碑方向",
+          "terminal": "三屯碑",
+          "reverse": false
+        },
+        {
+          "label": "国际机场方向",
+          "terminal": "国际机场",
+          "reverse": false
+        }
+      ],
       "system": "地铁系统"
     },
     {
@@ -104,7 +115,18 @@
       "first_train": "",
       "last_train": "",
       "ring": false,
-      "directions": [],
+      "directions": [
+        {
+          "label": "南门方向",
+          "terminal": "南门",
+          "reverse": false
+        },
+        {
+          "label": "华山街方向",
+          "terminal": "华山街",
+          "reverse": false
+        }
+      ],
       "system": "地铁系统"
     },
     {
@@ -127,7 +149,18 @@
       "first_train": "",
       "last_train": "",
       "ring": false,
-      "directions": [],
+      "directions": [
+        {
+          "label": "国际机场北方向",
+          "terminal": "国际机场北",
+          "reverse": false
+        },
+        {
+          "label": "国际机场方向",
+          "terminal": "国际机场",
+          "reverse": false
+        }
+      ],
       "system": "地铁系统"
     },
     {
@@ -188,7 +221,18 @@
       "first_train": "07:20",
       "last_train": "00:00",
       "ring": false,
-      "directions": [],
+      "directions": [
+        {
+          "label": "火车南站方向",
+          "terminal": "火车南站",
+          "reverse": false
+        },
+        {
+          "label": "机械厂方向",
+          "terminal": "机械厂",
+          "reverse": false
+        }
+      ],
       "system": "公交系统"
     },
     {
@@ -241,7 +285,18 @@
       "first_train": "07:20",
       "last_train": "00:00",
       "ring": false,
-      "directions": [],
+      "directions": [
+        {
+          "label": "红桥方向",
+          "terminal": "红桥",
+          "reverse": false
+        },
+        {
+          "label": "银川路方向",
+          "terminal": "银川路",
+          "reverse": false
+        }
+      ],
       "system": "公交系统",
       "direction_stops": {
         "红桥方向": [
@@ -336,7 +391,18 @@
       "first_train": "07:20",
       "last_train": "23:20",
       "ring": false,
-      "directions": [],
+      "directions": [
+        {
+          "label": "红山方向",
+          "terminal": "红山",
+          "reverse": false
+        },
+        {
+          "label": "机械厂方向",
+          "terminal": "机械厂",
+          "reverse": false
+        }
+      ],
       "system": "公交系统"
     },
     {
@@ -417,7 +483,18 @@
       "first_train": "07:30",
       "last_train": "23:20",
       "ring": false,
-      "directions": [],
+      "directions": [
+        {
+          "label": "榆树沟停车场方向",
+          "terminal": "榆树沟停车场",
+          "reverse": false
+        },
+        {
+          "label": "乌鲁木齐站北广场方向",
+          "terminal": "乌鲁木齐站北广场",
+          "reverse": false
+        }
+      ],
       "system": "公交系统"
     },
     {
@@ -480,7 +557,18 @@
       "first_train": "07:20",
       "last_train": "23:00",
       "ring": false,
-      "directions": [],
+      "directions": [
+        {
+          "label": "北郊客运站方向",
+          "terminal": "北郊客运站",
+          "reverse": false
+        },
+        {
+          "label": "轮台东路停车场方向",
+          "terminal": "轮台东路停车场",
+          "reverse": false
+        }
+      ],
       "system": "公交系统"
     },
     {
@@ -531,7 +619,18 @@
       "first_train": "07:20",
       "last_train": "23:00",
       "ring": false,
-      "directions": [],
+      "directions": [
+        {
+          "label": "北郊客运站方向",
+          "terminal": "北郊客运站",
+          "reverse": false
+        },
+        {
+          "label": "四道岔方向",
+          "terminal": "四道岔",
+          "reverse": false
+        }
+      ],
       "system": "公交系统"
     },
     {
@@ -594,7 +693,18 @@
       "first_train": "07:20",
       "last_train": "23:30",
       "ring": false,
-      "directions": [],
+      "directions": [
+        {
+          "label": "人民广场方向",
+          "terminal": "人民广场",
+          "reverse": false
+        },
+        {
+          "label": "酉众和综合市场方向",
+          "terminal": "酉众和综合市场",
+          "reverse": false
+        }
+      ],
       "system": "公交系统"
     },
     {
@@ -653,7 +763,18 @@
       "first_train": "07:20",
       "last_train": "23:00",
       "ring": false,
-      "directions": [],
+      "directions": [
+        {
+          "label": "卡子湾方向",
+          "terminal": "卡子湾",
+          "reverse": false
+        },
+        {
+          "label": "乌鲁木齐站南广场方向",
+          "terminal": "乌鲁木齐站南广场",
+          "reverse": false
+        }
+      ],
       "system": "公交系统"
     },
     {
@@ -710,7 +831,18 @@
       "first_train": "08:00",
       "last_train": "22:00",
       "ring": false,
-      "directions": [],
+      "directions": [
+        {
+          "label": "卡子湾方向",
+          "terminal": "卡子湾",
+          "reverse": false
+        },
+        {
+          "label": "银川路方向",
+          "terminal": "银川路",
+          "reverse": false
+        }
+      ],
       "system": "公交系统"
     },
     {
@@ -767,7 +899,18 @@
       "first_train": "06:30",
       "last_train": "22:00",
       "ring": false,
-      "directions": [],
+      "directions": [
+        {
+          "label": "望谷路方向",
+          "terminal": "望谷路",
+          "reverse": false
+        },
+        {
+          "label": "乌鲁木齐站南广场方向",
+          "terminal": "乌鲁木齐站南广场",
+          "reverse": false
+        }
+      ],
       "system": "公交系统"
     }
   ],

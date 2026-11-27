@@ -88,7 +88,18 @@
       "first_train": "",
       "last_train": "",
       "ring": false,
-      "directions": [],
+      "directions": [
+        {
+          "label": "中国药科大学方向",
+          "terminal": "中国药科大学",
+          "reverse": false
+        },
+        {
+          "label": "八卦洲大桥南方向",
+          "terminal": "八卦洲大桥南",
+          "reverse": false
+        }
+      ],
       "system": "地铁系统"
     },
     {
@@ -167,7 +178,18 @@
       "first_train": "",
       "last_train": "",
       "ring": false,
-      "directions": [],
+      "directions": [
+        {
+          "label": "鱼嘴方向",
+          "terminal": "鱼嘴",
+          "reverse": false
+        },
+        {
+          "label": "经天路方向",
+          "terminal": "经天路",
+          "reverse": false
+        }
+      ],
       "system": "地铁系统"
     },
     {
@@ -248,7 +270,18 @@
       "first_train": "",
       "last_train": "",
       "ring": false,
-      "directions": [],
+      "directions": [
+        {
+          "label": "秣陵方向",
+          "terminal": "秣陵",
+          "reverse": false
+        },
+        {
+          "label": "林场方向",
+          "terminal": "林场",
+          "reverse": false
+        }
+      ],
       "system": "地铁系统"
     },
     {
@@ -303,7 +336,18 @@
       "first_train": "",
       "last_train": "",
       "ring": false,
-      "directions": [],
+      "directions": [
+        {
+          "label": "仙林湖方向",
+          "terminal": "仙林湖",
+          "reverse": false
+        },
+        {
+          "label": "龙江方向",
+          "terminal": "龙江",
+          "reverse": false
+        }
+      ],
       "system": "地铁系统"
     },
     {
@@ -382,7 +426,18 @@
       "first_train": "",
       "last_train": "",
       "ring": false,
-      "directions": [],
+      "directions": [
+        {
+          "label": "吉印大道方向",
+          "terminal": "吉印大道",
+          "reverse": false
+        },
+        {
+          "label": "方家营方向",
+          "terminal": "方家营",
+          "reverse": false
+        }
+      ],
       "system": "地铁系统"
     },
     {
@@ -457,7 +512,18 @@
       "first_train": "",
       "last_train": "",
       "ring": false,
-      "directions": [],
+      "directions": [
+        {
+          "label": "空港新城江宁方向",
+          "terminal": "空港新城江宁",
+          "reverse": false
+        },
+        {
+          "label": "栖霞山方向",
+          "terminal": "栖霞山",
+          "reverse": false
+        }
+      ],
       "system": "地铁系统"
     },
     {
@@ -530,7 +596,18 @@
       "first_train": "",
       "last_train": "",
       "ring": false,
-      "directions": [],
+      "directions": [
+        {
+          "label": "西善桥方向",
+          "terminal": "西善桥",
+          "reverse": false
+        },
+        {
+          "label": "仙新路方向",
+          "terminal": "仙新路",
+          "reverse": false
+        }
+      ],
       "system": "地铁系统"
     },
     {
@@ -597,7 +674,18 @@
       "first_train": "",
       "last_train": "",
       "ring": false,
-      "directions": [],
+      "directions": [
+        {
+          "label": "雨山路方向",
+          "terminal": "雨山路",
+          "reverse": false
+        },
+        {
+          "label": "东麒路方向",
+          "terminal": "东麒路",
+          "reverse": false
+        }
+      ],
       "system": "地铁系统"
     },
     {
@@ -648,7 +736,18 @@
       "first_train": "",
       "last_train": "",
       "ring": false,
-      "directions": [],
+      "directions": [
+        {
+          "label": "太白方向",
+          "terminal": "太白",
+          "reverse": false
+        },
+        {
+          "label": "西善桥方向",
+          "terminal": "西善桥",
+          "reverse": false
+        }
+      ],
       "system": "地铁系统"
     },
     {
@@ -705,7 +804,18 @@
       "first_train": "",
       "last_train": "",
       "ring": false,
-      "directions": [],
+      "directions": [
+        {
+          "label": "高家冲方向",
+          "terminal": "高家冲",
+          "reverse": false
+        },
+        {
+          "label": "南京南站方向",
+          "terminal": "南京南站",
+          "reverse": false
+        }
+      ],
       "system": "地铁系统"
     },
     {
@@ -744,7 +854,18 @@
       "first_train": "",
       "last_train": "",
       "ring": false,
-      "directions": [],
+      "directions": [
+        {
+          "label": "汊河方向",
+          "terminal": "汊河",
+          "reverse": false
+        },
+        {
+          "label": "滁州高铁站方向",
+          "terminal": "滁州高铁站",
+          "reverse": false
+        }
+      ],
       "system": "地铁系统"
     },
     {
@@ -789,7 +910,18 @@
       "first_train": "",
       "last_train": "",
       "ring": false,
-      "directions": [],
+      "directions": [
+        {
+          "label": "句容方向",
+          "terminal": "句容",
+          "reverse": false
+        },
+        {
+          "label": "马群方向",
+          "terminal": "马群",
+          "reverse": false
+        }
+      ],
       "express": [
         {
           "id": "rapid",
@@ -853,7 +985,18 @@
       "first_train": "",
       "last_train": "",
       "ring": false,
-      "directions": [],
+      "directions": [
+        {
+          "label": "鱼嘴方向",
+          "terminal": "鱼嘴",
+          "reverse": false
+        },
+        {
+          "label": "奥体中心东门方向",
+          "terminal": "奥体中心东门",
+          "reverse": false
+        }
+      ],
       "system": "河西有轨电车系统"
     },
     {
@@ -898,7 +1041,18 @@
       "first_train": "",
       "last_train": "",
       "ring": false,
-      "directions": [],
+      "directions": [
+        {
+          "label": "石杨路方向",
+          "terminal": "石杨路",
+          "reverse": false
+        },
+        {
+          "label": "马群方向",
+          "terminal": "马群",
+          "reverse": false
+        }
+      ],
       "system": "麒麟有轨电车系统"
     },
     {
@@ -935,7 +1089,18 @@
       "first_train": "",
       "last_train": "",
       "ring": false,
-      "directions": [],
+      "directions": [
+        {
+          "label": "无想山方向",
+          "terminal": "无想山",
+          "reverse": false
+        },
+        {
+          "label": "空港新城江宁方向",
+          "terminal": "空港新城江宁",
+          "reverse": false
+        }
+      ],
       "express": [
         {
           "id": "rapid",
@@ -1008,7 +1173,18 @@
       "first_train": "",
       "last_train": "",
       "ring": false,
-      "directions": [],
+      "directions": [
+        {
+          "label": "金牛湖方向",
+          "terminal": "金牛湖",
+          "reverse": false
+        },
+        {
+          "label": "长江大桥北方向",
+          "terminal": "长江大桥北",
+          "reverse": false
+        }
+      ],
       "system": "地铁系统"
     },
     {
@@ -1039,7 +1215,18 @@
       "first_train": "",
       "last_train": "",
       "ring": false,
-      "directions": [],
+      "directions": [
+        {
+          "label": "高淳方向",
+          "terminal": "高淳",
+          "reverse": false
+        },
+        {
+          "label": "翔宇路南方向",
+          "terminal": "翔宇路南",
+          "reverse": false
+        }
+      ],
       "express": [
         {
           "id": "direct",
