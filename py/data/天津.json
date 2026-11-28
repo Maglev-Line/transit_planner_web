@@ -565,54 +565,6 @@
       "system": "地铁系统"
     },
     {
-      "id": "tj_m6b",
-      "name": "天津地铁6号线二期",
-      "short_name": "6号线二期",
-      "type": "metro",
-      "color": "#704992",
-      "color2": "",
-      "operator": "天津轨道交通",
-      "stations": [
-        "渌水道",
-        "双港",
-        "景荷道",
-        "景荔道",
-        "天津大学北洋园校区",
-        "海河教育园区",
-        "南开大学津南校区",
-        "和慧西路",
-        "咸水沽西"
-      ],
-      "travel_minutes": [
-        3,
-        3,
-        3,
-        3,
-        3,
-        3,
-        3,
-        3
-      ],
-      "headway_rush": 10,
-      "headway_normal": 15,
-      "first_train": "",
-      "last_train": "",
-      "ring": false,
-      "directions": [
-        {
-          "label": "咸水沽西方向",
-          "terminal": "咸水沽西",
-          "reverse": false
-        },
-        {
-          "label": "渌水道方向",
-          "terminal": "渌水道",
-          "reverse": false
-        }
-      ],
-      "system": "地铁系统"
-    },
-    {
       "id": "tj_m7",
       "name": "天津地铁7号线",
       "short_name": "7号线",
@@ -667,6 +619,96 @@
         {
           "label": "赛达路方向",
           "terminal": "赛达路",
+          "reverse": false
+        }
+      ],
+      "system": "地铁系统"
+    },
+    {
+      "id": "tj_m8",
+      "name": "天津地铁8号线",
+      "short_name": "8号线",
+      "type": "metro",
+      "color": "#5b2e88",
+      "color2": "",
+      "operator": "天津轨道交通",
+      "stations": [
+        "中北",
+        "福姜路",
+        "南泥湾路",
+        "乐山道",
+        "绿水公园",
+        "兰坪路",
+        "鞍山西道",
+        "南丰路",
+        "天津大学六里台",
+        "西康路",
+        "成都道",
+        "马场道",
+        "人民公园",
+        "下瓦房",
+        "湘江道",
+        "土城",
+        "澧水道",
+        "梅江道东",
+        "南珠桥",
+        "沂山路",
+        "长泰河东",
+        "渌水道",
+        "双港",
+        "景荷道",
+        "景荔道",
+        "天津大学北洋园校区",
+        "海河教育园区",
+        "南开大学津南校区",
+        "和慧南路",
+        "咸水沽西"
+      ],
+      "travel_minutes": [
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3
+      ],
+      "headway_rush": 10,
+      "headway_normal": 15,
+      "first_train": "",
+      "last_train": "",
+      "ring": false,
+      "directions": [
+        {
+          "label": "咸水沽西方向",
+          "terminal": "咸水沽西",
+          "reverse": false
+        },
+        {
+          "label": "中北方向",
+          "terminal": "中北",
           "reverse": false
         }
       ],
